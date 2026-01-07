@@ -22,8 +22,7 @@ jobs:
           cache: 'npm'
 
       - name: 安裝套件 (Install dependencies)
-        # 使用 npm ci 可以確保安裝的版本與 package-lock.json 完全一致
-        run: npm ci
+        run: npm install
 
       - name: 打包專案 (Build)
         run: npm run build
