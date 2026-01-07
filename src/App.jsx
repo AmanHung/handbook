@@ -1,24 +1,14 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  User, Stethoscope, ClipboardCheck, Calendar, Menu, Sun, BookOpen, Zap
+  User, Stethoscope, ClipboardCheck, Calendar, Menu, Sun, BookOpen, Zap, Search
 } from 'lucide-react';
 import ShiftNavigator from './components/ShiftNavigator'; 
-
-// --- 模擬其他尚未拆分的元件 ---
-const PediatricSection = () => <div className="p-4 bg-white rounded-xl">兒科計算機區塊 (開發中)</div>;
-const PassportSection = () => <div className="p-4 bg-white rounded-xl">學習護照區塊 (開發中)</div>;
-
-// --- Firebase 設定 ---
-const firebaseConfig = null; 
-
+import QuickLookup from './components/QuickLookup'; // <--- 新增引入
+import PassportSection from './components/PassportSection'; // 引入新元件
 export default function App() {
   const [activeTab, setActiveTab] = useState('home'); 
-  const [user, setUser] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    setUser({ uid: 'local-test-user' }); 
-  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-24 max-w-md mx-auto shadow-2xl relative">
@@ -55,10 +45,14 @@ export default function App() {
                 <Sun className="absolute -right-4 -bottom-4 opacity-10 w-32 h-32" />
               </div>
 
-              {/* 呼叫我們剛剛做好的班表模組 */}
+              {/* 呼叫班表模組 */}
               <ShiftNavigator /> 
            </div>
         )}
+        
+        {/* 新增：速查頁面 */}
+        {activeTab === 'lookup' && <QuickLookup />}
+
         {activeTab === 'pediatric' && <PediatricSection />}
         {activeTab === 'passport' && <PassportSection />}
       </main>
@@ -66,6 +60,12 @@ export default function App() {
       {/* Bottom Navigation */}
       <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border flex justify-around items-center p-2 z-50">
         <button onClick={() => setActiveTab('home')} className={`p-4 rounded-full transition-all ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}><User className="w-5 h-5" /></button>
+        
+        {/* 新增：搜尋按鈕 */}
+        <button onClick={() => setActiveTab('lookup')} className={`p-4 rounded-full transition-all ${activeTab === 'lookup' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
+          <Search className="w-5 h-5" />
+        </button>
+
         <button onClick={() => setActiveTab('pediatric')} className={`p-4 rounded-full transition-all ${activeTab === 'pediatric' ? 'bg-teal-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}><Stethoscope className="w-5 h-5" /></button>
         <button onClick={() => setActiveTab('passport')} className={`p-4 rounded-full transition-all ${activeTab === 'passport' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}><ClipboardCheck className="w-5 h-5" /></button>
       </nav>
@@ -76,7 +76,7 @@ export default function App() {
           <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-8" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-10">
               <span className="font-black text-slate-400 text-[10px] tracking-widest uppercase">Profile</span>
-              <button onClick={() => setSidebarOpen(false)}><X className="text-slate-300" /></button>
+              <button onClick={() => setSidebarOpen(false)}><Menu className="w-6 h-6 text-slate-300" /></button>
             </div>
             <div className="space-y-4 opacity-40">
               <div className="flex items-center gap-4 text-sm font-bold p-3"><BookOpen className="w-4 h-4" /> SOP 手冊</div>

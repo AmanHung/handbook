@@ -43,16 +43,31 @@ export const ADMIN_NOTICES = [
     color: 'bg-purple-50 border-purple-100',
     content: (
       <div className="space-y-3 text-sm text-slate-600">
-        <div>
-          <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">需出席</span>
-          <p className="text-xs mt-1 leading-relaxed">
-            D1, D5, D6, D7, D8, D9, TP1, DP2, DP1, D, 化療, TPN
-          </p>
-          <p className="text-[10px] text-slate-400 mt-1">* D5 需於 08:30 支援調劑</p>
+        {/* 上半部：需出席名單 */}
+        <div className="bg-white/50 rounded-lg p-2 border border-purple-100">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              需出席
+            </span>
+            <span className="text-[10px] text-slate-400">* D5 08:30 支援調劑</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1 text-center">
+            {['D1', 'D5', 'D6', 'D7', 'D8', 'D9', 'TP1', 'DP2', 'DP1', 'D', '化療', 'TPN'].map(p => (
+              <span key={p} className="text-xs font-medium text-slate-700 bg-white rounded border border-purple-50 py-1">
+                {p}
+              </span>
+            ))}
+          </div>
         </div>
-        <div>
-          <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">免出席 (留守)</span>
-          <p className="text-xs mt-1 leading-relaxed text-slate-500">
+
+        {/* 下半部：免出席名單 */}
+        <div className="px-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+              免出席 (留守)
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed pl-1">
             D2, D3, D4, TD, ED, RD, TS1, SP, A, NN
           </p>
         </div>
