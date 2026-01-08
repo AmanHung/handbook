@@ -115,4 +115,5 @@ export const EXTENSION_DATA = [
   { id: 8, area: '藥庫', ext: '1063', note: '叫貨相關' },
   { id: 9, area: '急診藥局', ext: '5151', note: '' },
   { id: 10, area: '資訊室 (報修)', ext: '3253', note: '電腦故障' },
+  { id: 11, area: '門診診間', ext: '26XX', note: '26+診號' },
 ];
