@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Phone, Package, BookOpen, Loader2, X, ChevronRight } from 'lucide-react'; // ✨ 新增 X 和 ChevronRight icon
+// src/components/QuickLookup.jsx
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Search, Phone, Package, BookOpen, Loader2, X, ChevronRight } from 'lucide-react'; 
 import { PREPACK_DATA, EXTENSION_DATA } from '../data/sopData';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
@@ -12,10 +13,26 @@ export default function QuickLookup() {
   const [sopArticles, setSopArticles] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // ✨ 新增：用來控制目前選中的 SOP (閱讀模式狀態)
+  // 閱讀模式狀態
   const [selectedSop, setSelectedSop] = useState(null);
 
-  // 1. 載入時抓取雲端資料
+  // ✨ 1. 新增：用來定位第一個關鍵字的 Ref
+  const firstMatchRef = useRef(null);
+
+  // 2. 新增：當閱讀模式開啟且有搜尋關鍵字時，自動捲動到該位置
+  useEffect(() => {
+    if (selectedSop && searchTerm && firstMatchRef.current) {
+      // 延遲一點點確保 DOM 渲染完畢
+      setTimeout(() => {
+        firstMatchRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' // ✨ 將關鍵字置中於畫面
+        });
+      }, 100);
+    }
+  }, [selectedSop, searchTerm]);
+
+  // 1. 載入時抓取雲端資料 (維持原樣)
   useEffect(() => {
     const fetchSOPs = async () => {
       setLoading(true);
@@ -31,7 +48,7 @@ export default function QuickLookup() {
     fetchSOPs();
   }, []);
 
-  // 2. 搜尋過濾邏輯
+  // 搜尋過濾邏輯 (維持原樣)
   const filteredSOPs = useMemo(() => {
     return sopArticles.filter(article => {
       if (!searchTerm) return true;
@@ -42,7 +59,7 @@ export default function QuickLookup() {
         (article.keywords && article.keywords.some(k => k.toLowerCase().includes(lowerTerm)))
       );
     }).map(article => {
-      // 製作預覽段落 (Snippet)
+      // 製作預覽段落
       if (!searchTerm) {
         return { ...article, snippet: article.content.slice(0, 50) + '...' };
       }
@@ -59,7 +76,7 @@ export default function QuickLookup() {
     });
   }, [searchTerm, sopArticles]);
 
-  // (保留) 預包量邏輯
+  // (保留) 預包量邏輯 (維持原樣)
   const groupedPrepacks = useMemo(() => {
     const filtered = PREPACK_DATA.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.id.toLowerCase().includes(searchTerm.toLowerCase()));
     const groups = filtered.reduce((acc, item) => {
@@ -68,10 +85,8 @@ export default function QuickLookup() {
     return Object.values(groups).sort((a, b) => (parseInt(a.qty)||999) - (parseInt(b.qty)||999));
   }, [searchTerm]);
 
-  // (保留) 分機表邏輯
   const filteredExtensions = EXTENSION_DATA.filter(item => item.area.includes(searchTerm) || item.ext.includes(searchTerm));
 
-  // (保留) 顏色樣式
   const getQtyColorStyles = (qty) => {
       if (qty === '14') return 'bg-emerald-500 text-white border-emerald-600';
       if (qty === '21') return 'bg-rose-500 text-white border-rose-600';
@@ -117,10 +132,9 @@ export default function QuickLookup() {
               <div className="flex justify-center py-10 text-slate-400"><Loader2 className="animate-spin mr-2" /> 資料讀取中...</div>
             ) : filteredSOPs.length > 0 ? (
               filteredSOPs.map(item => (
-                // ✨ 修改：加入 onClick 觸發閱讀模式
                 <div
                   key={item.id}
-                  onClick={() => setSelectedSop(item)} // 👈 點擊設定狀態
+                  onClick={() => setSelectedSop(item)} 
                   className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-blue-200 transition-all cursor-pointer active:scale-95 group"
                 >
                   <div className="mb-2 flex items-center justify-between">
@@ -128,12 +142,11 @@ export default function QuickLookup() {
                         <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold whitespace-nowrap">{item.category}</span>
                         <h3 className="text-sm font-bold text-slate-800 truncate">{item.title}</h3>
                     </div>
-                    {/* 箭頭提示可以點擊 */}
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
                   </div>
 
                   <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed whitespace-pre-wrap line-clamp-2">
-                     {/* 搜尋關鍵字高亮 */}
+                     {/* 搜尋關鍵字高亮 (列表預覽用) */}
                      {searchTerm ? (
                         <span>
                           {item.snippet.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) =>
@@ -152,7 +165,7 @@ export default function QuickLookup() {
           </div>
         )}
 
-        {/* ... (預包量與分機表渲染區塊保持不變) ... */}
+        {/* ... 預包量與分機表渲染 (維持不變) ... */}
         {activeTab === 'prepack' && (
              groupedPrepacks.length > 0 ? groupedPrepacks.map(group => (
                  <div key={group.qty} className="flex rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-white">
@@ -197,21 +210,21 @@ export default function QuickLookup() {
         )}
       </div>
 
-      {/* ✨ 新增：閱讀模式 Modal (全螢幕覆蓋層) */}
+      {/* 閱讀模式 Modal */}
       {selectedSop && (
         <div className="fixed inset-0 z-[100] flex flex-col bg-white animate-in slide-in-from-bottom-10 duration-200">
-            {/* 標題列 (固定在上方) */}
+            {/* 標題列 */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/90 backdrop-blur-md sticky top-0 z-10 shadow-sm">
                 <h2 className="font-black text-lg text-slate-800 truncate pr-4">{selectedSop.title}</h2>
                 <button
-                    onClick={() => setSelectedSop(null)} // 點擊 X 關閉
+                    onClick={() => setSelectedSop(null)}
                     className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
                 >
                     <X className="w-6 h-6" />
                 </button>
             </div>
 
-            {/* 內文區域 (可捲動) */}
+            {/* 內文區域 */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
                 <div className="max-w-2xl mx-auto space-y-4 pb-20">
                     {/* 分類標籤 */}
@@ -226,11 +239,35 @@ export default function QuickLookup() {
                         )}
                     </div>
 
-                    {/* 完整內文 */}
+                    {/* ✨ 3. 完整內文渲染 (含高亮與定位) */}
                     <article className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        {/* whitespace-pre-wrap 確保你的 Word 換行會被保留 */}
                         <div className="whitespace-pre-wrap leading-8 text-slate-700 font-medium text-[15px]">
-                            {selectedSop.content}
+                            {searchTerm ? (
+                                selectedSop.content.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) => {
+                                    const isMatch = part.toLowerCase() === searchTerm.toLowerCase();
+                                    
+                                    // 判斷這是不是第一個出現的關鍵字 (用來綁定 ref)
+                                    // 簡單邏輯：我們可以使用一個 flag 或者根據 index 判斷
+                                    // 這裡使用更直覺的方式：如果是符合的字串，且是第一次渲染到符合的字串，Ref 就會被賦值
+                                    // 但在 map 中比較難做 "第一次" 的狀態判定而不影響 Pure render
+                                    // 不過因為 split 的順序是固定的，我們可以透過 indexOf 判斷
+                                    const parts = selectedSop.content.split(new RegExp(`(${searchTerm})`, 'gi'));
+                                    const firstMatchIndex = parts.findIndex(p => p.toLowerCase() === searchTerm.toLowerCase());
+                                    
+                                    return isMatch ? (
+                                        <span 
+                                            key={i} 
+                                            // 只將 Ref 綁定在第一個出現的關鍵字上
+                                            ref={i === firstMatchIndex ? firstMatchRef : null}
+                                            className="bg-yellow-300 text-slate-900 font-bold px-1 rounded mx-0.5 inline-block shadow-sm animate-pulse" // ✨ 黃底 + 脈衝動畫
+                                        >
+                                            {part}
+                                        </span>
+                                    ) : part;
+                                })
+                            ) : (
+                                selectedSop.content
+                            )}
                         </div>
                     </article>
                 </div>

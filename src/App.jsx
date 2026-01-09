@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useState } from 'react';
 import { 
-  User, Stethoscope, ClipboardCheck, Calendar, Menu, Sun, BookOpen, Zap, Search
+  User, ClipboardCheck, Calendar, Menu, Sun, BookOpen, Zap, Search
 } from 'lucide-react';
 
 // 引入各個功能模組
@@ -11,6 +11,8 @@ import PassportSection from './components/PassportSection';
 
 // ⚠️ 管理員工具 (保留引入，但透過開關控制顯示)
 import AdminUploader from './components/AdminUploader';
+// ✨ 引入新元件
+import SOPManager from './components/SOPManager'; 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home'); 
@@ -20,7 +22,7 @@ export default function App() {
   // 🔧 開發者專用開關
   // ==========================================
   // 想更新資料庫時，請將 false 改為 true
-  const showAdminTool = false; 
+  const showAdminTool = true; 
   // ==========================================
 
   return (
@@ -45,11 +47,25 @@ export default function App() {
       {/* Main Content */}
       <main className="p-6">
         
-        {/* ⚠️ 管理員上傳區塊 (隱藏式) */}
+        {/* ⚠️ 管理員上傳區塊 */}
         {showAdminTool && (
-           <div className="mb-8 border-4 border-red-500/30 bg-red-50 rounded-xl p-4 animate-pulse">
-             <p className="text-center text-red-600 font-bold text-xs mb-2">⚠️ 管理員模式開啟中：SOP 資料庫維護</p>
-             <AdminUploader />
+           <div className="mb-8 space-y-6"> {/* ✨ 增加 space-y-6 讓兩個工具分開 */}
+             
+             {/* 1. 日常維護工具 (新) */}
+             <div className="border-4 border-blue-500/20 bg-blue-50/50 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded">ADMIN</span>
+                  <p className="text-blue-800 font-bold text-sm">SOP 動態管理後台</p>
+                </div>
+                <SOPManager />
+             </div>
+
+             {/* 2. 資料庫重置工具 (舊, 保留以備不時之需) */}
+             <div className="border border-red-200 bg-red-50 rounded-xl p-4 opacity-75 hover:opacity-100 transition-opacity">
+               <p className="text-center text-red-600 font-bold text-xs mb-2">⚠️ 危險區域：資料庫重置</p>
+               <AdminUploader />
+             </div>
+
            </div>
         )}
 
@@ -77,15 +93,7 @@ export default function App() {
         {/* 2. 速查頁面 (包含雲端 SOP) */}
         {activeTab === 'lookup' && <QuickLookup />}
 
-        {/* 3. 兒科專區 (預留位置) */}
-        {activeTab === 'pediatric' && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <Stethoscope className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-sm font-bold">兒科專區建置中...</p>
-          </div>
-        )}
-
-        {/* 4. 學習護照 */}
+        {/* 3. 學習護照 (已移除兒科區塊，直接接續護照) */}
         {activeTab === 'passport' && <PassportSection />}
       </main>
 
@@ -97,10 +105,6 @@ export default function App() {
         
         <button onClick={() => setActiveTab('lookup')} className={`p-4 rounded-full transition-all ${activeTab === 'lookup' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
           <Search className="w-5 h-5" />
-        </button>
-
-        <button onClick={() => setActiveTab('pediatric')} className={`p-4 rounded-full transition-all ${activeTab === 'pediatric' ? 'bg-teal-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
-          <Stethoscope className="w-5 h-5" />
         </button>
         
         <button onClick={() => setActiveTab('passport')} className={`p-4 rounded-full transition-all ${activeTab === 'passport' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
