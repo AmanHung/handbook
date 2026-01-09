@@ -1,132 +1,121 @@
 // src/App.jsx
-import React, { useState } from 'react';
-import { 
-  User, ClipboardCheck, Calendar, Menu, Sun, BookOpen, Zap, Search
-} from 'lucide-react';
-
-// 引入各個功能模組
-import ShiftNavigator from './components/ShiftNavigator'; 
-import QuickLookup from './components/QuickLookup'; 
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import SOPManager from './components/SOPManager';
+import QuickLookup from './components/QuickLookup';
+import ShiftNavigator from './components/ShiftNavigator';
 import PassportSection from './components/PassportSection';
+import AdminPage from './components/AdminPage'; 
 
-// ⚠️ 管理員工具 (保留引入，但透過開關控制顯示)
-import AdminUploader from './components/AdminUploader';
-// ✨ 引入新元件
-import SOPManager from './components/SOPManager'; 
+// 引入資料
+import { SOP_SEED_DATA as sopSeed } from './data/sopSeed';
+import { SHIFTS_DATA as shifts } from './data/shiftData';
+import { PASSPORT_CATEGORIES as trainingModules } from './data/trainingData';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('home'); 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+import './App.css';
 
-  // ==========================================
-  // 🔧 開發者專用開關
-  // ==========================================
-  // 想更新資料庫時，請將 false 改為 true
-  const showAdminTool = true; 
-  // ==========================================
+function App() {
+  const [sops, setSops] = useState([]);
+  const [activeTab, setActiveTab] = useState('lookup');
+
+  // 初始化載入資料
+  useEffect(() => {
+    setSops(sopSeed);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-24 max-w-md mx-auto shadow-2xl relative">
-      
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-            <Calendar className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="font-black text-lg text-slate-800 leading-none">新人手冊</h1>
-            <p className="text-[10px] text-slate-400 uppercase font-bold">Fengyuan Pharmacy</p>
-          </div>
-        </div>
-        <button onClick={() => setSidebarOpen(true)} className="p-2 text-slate-400 hover:text-slate-600">
-          <Menu className="w-6 h-6" />
-        </button>
-      </header>
+    // === 修正重點：加入 basename 設定 ===
+    // import.meta.env.BASE_URL 會自動讀取 vite.config.js 中的 base 設定 ('/handbook/')
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <div className="min-h-screen bg-gray-50">
+        <Routes>
+          {/* ==============================
+              首頁路由 
+             ============================== */}
+          <Route path="/" element={
+            <div className="container mx-auto px-4 py-8 max-w-4xl">
+              <header className="mb-8 text-center">
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                  💊 藥局新人手冊系統
+                </h1>
+                <p className="text-gray-600">
+                  快速查詢 SOP · 班別指引 · 學習護照
+                </p>
+              </header>
 
-      {/* Main Content */}
-      <main className="p-6">
-        
-        {/* ⚠️ 管理員上傳區塊 */}
-        {showAdminTool && (
-           <div className="mb-8 space-y-6"> {/* ✨ 增加 space-y-6 讓兩個工具分開 */}
-             
-             {/* 1. 日常維護工具 (新) */}
-             <div className="border-4 border-blue-500/20 bg-blue-50/50 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded">ADMIN</span>
-                  <p className="text-blue-800 font-bold text-sm">SOP 動態管理後台</p>
-                </div>
-                <SOPManager />
-             </div>
-
-             {/* 2. 資料庫重置工具 (舊, 保留以備不時之需) */}
-             <div className="border border-red-200 bg-red-50 rounded-xl p-4 opacity-75 hover:opacity-100 transition-opacity">
-               <p className="text-center text-red-600 font-bold text-xs mb-2">⚠️ 危險區域：資料庫重置</p>
-               <AdminUploader />
-             </div>
-
-           </div>
-        )}
-
-        {/* 1. 首頁 (Home) */}
-        {activeTab === 'home' && (
-           <div className="space-y-6 pb-12">
-              {/* 歡迎區塊 */}
-              <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden">
-                <div className="relative z-10">
-                  <h1 className="text-2xl font-bold mb-1">早安，豐藥新人</h1>
-                  <p className="text-blue-100 text-xs mb-6 font-medium">今日進度：第 1 週</p>
-                  <div className="h-2.5 bg-blue-900/30 rounded-full overflow-hidden mb-2">
-                    <div className="h-full bg-white w-1/4 rounded-full"></div>
-                  </div>
-                  <span className="text-[10px] text-white font-black">25% TRAINING DONE</span>
-                </div>
-                <Sun className="absolute -right-4 -bottom-4 opacity-10 w-32 h-32" />
+              {/* 導航切換按鈕 */}
+              <div className="flex justify-center space-x-2 mb-8 bg-white p-2 rounded-lg shadow-sm w-fit mx-auto">
+                <button
+                  onClick={() => setActiveTab('lookup')}
+                  className={`px-4 py-2 rounded-md transition-colors ${
+                    activeTab === 'lookup'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  🔍 SOP 查詢
+                </button>
+                <button
+                  onClick={() => setActiveTab('shift')}
+                  className={`px-4 py-2 rounded-md transition-colors ${
+                    activeTab === 'shift'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  🏥 班別指引
+                </button>
+                <button
+                  onClick={() => setActiveTab('passport')}
+                  className={`px-4 py-2 rounded-md transition-colors ${
+                    activeTab === 'passport'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  📘 學習護照
+                </button>
               </div>
 
-              {/* 班表模組 */}
-              <ShiftNavigator /> 
-           </div>
-        )}
-        
-        {/* 2. 速查頁面 (包含雲端 SOP) */}
-        {activeTab === 'lookup' && <QuickLookup />}
+              {/* 主要內容區塊 */}
+              <main className="bg-white rounded-xl shadow-lg p-6">
+                {activeTab === 'lookup' && (
+                  <QuickLookup sops={sops} />
+                )}
 
-        {/* 3. 學習護照 (已移除兒科區塊，直接接續護照) */}
-        {activeTab === 'passport' && <PassportSection />}
-      </main>
+                {activeTab === 'shift' && (
+                  <ShiftNavigator shifts={shifts} />
+                )}
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border flex justify-around items-center p-2 z-50">
-        <button onClick={() => setActiveTab('home')} className={`p-4 rounded-full transition-all ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
-          <User className="w-5 h-5" />
-        </button>
-        
-        <button onClick={() => setActiveTab('lookup')} className={`p-4 rounded-full transition-all ${activeTab === 'lookup' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
-          <Search className="w-5 h-5" />
-        </button>
-        
-        <button onClick={() => setActiveTab('passport')} className={`p-4 rounded-full transition-all ${activeTab === 'passport' ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'text-slate-400'}`}>
-          <ClipboardCheck className="w-5 h-5" />
-        </button>
-      </nav>
-      
-      {/* Sidebar Overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)}>
-          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-8" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-10">
-              <span className="font-black text-slate-400 text-[10px] tracking-widest uppercase">Profile</span>
-              <button onClick={() => setSidebarOpen(false)}><Menu className="w-6 h-6 text-slate-300" /></button>
+                {activeTab === 'passport' && (
+                  <PassportSection modules={trainingModules} />
+                )}
+              </main>
+
+              {/* 頁尾與管理員入口 */}
+              <footer className="mt-12 py-6 text-center border-t border-gray-200">
+                <p className="text-gray-400 text-sm mb-2">
+                  © 2024 藥劑部教學組 | 致力於更好的藥事服務
+                </p>
+                <Link 
+                  to="/admin" 
+                  className="text-xs text-gray-300 hover:text-gray-500 transition-colors"
+                >
+                  管理員登入 🔐
+                </Link>
+              </footer>
             </div>
-            <div className="space-y-4 opacity-40">
-              <div className="flex items-center gap-4 text-sm font-bold p-3"><BookOpen className="w-4 h-4" /> SOP 手冊</div>
-              <div className="flex items-center gap-4 text-sm font-bold p-3"><Zap className="w-4 h-4" /> HIS 系統碼</div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          } />
+
+          {/* ==============================
+              後台路由 (需要密碼驗證)
+             ============================== */}
+          <Route path="/admin" element={<AdminPage />} />
+          
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 }
+
+export default App;
