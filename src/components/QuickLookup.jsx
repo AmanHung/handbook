@@ -17,7 +17,7 @@ const COLOR_PALETTE = [
   { bg: 'bg-slate-100', text: 'text-slate-700' },
 ];
 
-// ✨ 輔助函式：處理正則表達式特殊字元 (例如 +, ?, ()) 避免搜尋報錯或失效
+// 輔助函式：處理正則表達式特殊字元
 function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 }
@@ -80,7 +80,7 @@ export default function QuickLookup() {
     if (selectedSop && searchTerm && firstMatchRef.current) {
       setTimeout(() => {
         firstMatchRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 300); // 稍微延長一點時間確保 render 完成
+      }, 300);
     }
   }, [selectedSop, searchTerm]);
 
@@ -163,8 +163,8 @@ export default function QuickLookup() {
   );
 
   return (
-    <div className="space-y-6 pb-24">
-      {/* 上方功能區 */}
+    <div className="space-y-4 pb-24">
+      {/* 區塊 1: 搜尋與常用關鍵字 */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-5">
         {/* 搜尋框 */}
         <div>
@@ -186,7 +186,7 @@ export default function QuickLookup() {
             </div>
         </div>
 
-        {/* 常用關鍵字 */}
+        {/* 常用關鍵字 (保留在搜尋框內，因為跟輸入有關) */}
         {activeTab === 'qa' && config.quickKeywords && config.quickKeywords.length > 0 && (
             <div className="flex flex-wrap gap-2">
                 <span className="text-xs text-slate-400 font-bold flex items-center gap-1 self-center"><Tag className="w-4 h-4"/> 常用:</span>
@@ -201,42 +201,9 @@ export default function QuickLookup() {
                 ))}
             </div>
         )}
-
-        {/* 分類篩選 */}
-        {activeTab === 'qa' && (
-            <div className="flex gap-2 overflow-x-auto pb-3 pt-1 scrollbar-hide">
-            <button
-                onClick={() => setSelectedCategory('全部')}
-                className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
-                    selectedCategory === '全部'
-                    ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-105'
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                }`}
-            >
-                全部顯示
-            </button>
-            {config.categories.map(cat => {
-                const colorStyle = getCategoryColor(cat);
-                const isSelected = selectedCategory === cat;
-                return (
-                    <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
-                            isSelected
-                            ? `${colorStyle.bg} ${colorStyle.text} border-transparent shadow-md transform scale-105`
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                        }`}
-                    >
-                        {cat}
-                    </button>
-                )
-            })}
-            </div>
-        )}
       </div>
 
-      {/* 分頁切換 */}
+      {/* 區塊 2: 分頁切換 (SOP 手冊 / 常用分機) */}
       <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
          <button onClick={() => setActiveTab('qa')} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black transition-all ${activeTab === 'qa' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
           <BookOpen className="w-5 h-5" /> SOP 手冊
@@ -246,7 +213,40 @@ export default function QuickLookup() {
         </button>
       </div>
 
-      {/* 內容顯示區 */}
+      {/* 區塊 3: 分類篩選 (移到分頁切換下方 + 自動換行 flex-wrap) */}
+      {activeTab === 'qa' && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            onClick={() => setSelectedCategory('全部')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+              selectedCategory === '全部'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-105'
+                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            全部顯示
+          </button>
+          {config.categories.map(cat => {
+            const colorStyle = getCategoryColor(cat);
+            const isSelected = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+                  isSelected
+                    ? `${colorStyle.bg} ${colorStyle.text} border-transparent shadow-md transform scale-105`
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {cat}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 區塊 4: 內容顯示區 */}
       {activeTab === 'qa' ? (
           <div className="space-y-4">
             {loading ? (
@@ -340,22 +340,15 @@ export default function QuickLookup() {
   );
 }
 
-// ✨ 獨立的高亮文字元件 (解決正則特殊符號問題)
+// 獨立的高亮文字元件
 const HighlightText = ({ content, searchTerm, firstMatchRef = null }) => {
     if (!searchTerm || !searchTerm.trim()) return content;
 
-    // 將搜尋字串切割並去除空白
     const terms = searchTerm.toLowerCase().trim().split(/\s+/).filter(t => t);
     if (terms.length === 0) return content;
 
-    // 建立正則表達式：(term1|term2|term3)
-    // 使用 escapeRegExp 確保特殊符號 (如 +, ?, ()) 被視為普通文字
     const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
-    
-    // 切割內容
     const parts = content.split(pattern);
-
-    // 找出第一個符合的索引，用於 Ref 定位
     const firstMatchIndex = parts.findIndex(p => terms.includes(p.toLowerCase()));
 
     return (
