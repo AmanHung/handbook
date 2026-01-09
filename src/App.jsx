@@ -1,14 +1,20 @@
 // src/App.jsx
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import SOPManager from './components/SOPManager';
+
+// 引入 Firebase 相關功能
+import { db } from './firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+
+// 引入元件
+import SOPManager from './components/SOPManager'; // 雖然這裡沒直接用，但 AdminPage 會用到
 import QuickLookup from './components/QuickLookup';
 import ShiftNavigator from './components/ShiftNavigator';
 import PassportSection from './components/PassportSection';
 import AdminPage from './components/AdminPage'; 
 
-// 引入資料
-import { SOP_SEED_DATA as sopSeed } from './data/sopSeed';
+// 引入靜態資料 (SOP 資料改由 Firebase 讀取，這裡不再需要 sopSeed)
+// import { SOP_SEED_DATA as sopSeed } from './data/sopSeed'; // 註解掉或移除
 import { SHIFTS_DATA as shifts } from './data/shiftData';
 import { PASSPORT_CATEGORIES as trainingModules } from './data/trainingData';
 
@@ -17,15 +23,42 @@ import './App.css';
 function App() {
   const [sops, setSops] = useState([]);
   const [activeTab, setActiveTab] = useState('lookup');
+  const [loading, setLoading] = useState(true); // 增加載入狀態
 
-  // 初始化載入資料
+  // === 關鍵修改：從 Firebase 即時讀取資料 ===
   useEffect(() => {
-    setSops(sopSeed);
+    // 建立查詢：讀取 'sop_articles' 集合，並依照 'createdAt' 排序 (選用)
+    // 如果沒有 createdAt 欄位，可以只用 collection(db, 'sop_articles')
+    const q = query(collection(db, 'sop_articles')); // 簡易版，先不強制排序以免報錯
+
+    // 開啟監聽器 (Real-time listener)
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const sopsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // 在前端做簡單排序 (新的在上面)
+      // 假設資料有 createdAt (Timestamp)，如果沒有則不影響
+      sopsData.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+
+      setSops(sopsData);
+      setLoading(false);
+    }, (error) => {
+      console.error("讀取資料庫失敗:", error);
+      setLoading(false);
+    });
+
+    // 元件卸載時，關閉監聽，避免記憶體洩漏
+    return () => unsubscribe();
   }, []);
 
   return (
-    // === 修正重點：加入 basename 設定 ===
-    // import.meta.env.BASE_URL 會自動讀取 vite.config.js 中的 base 設定 ('/handbook/')
+    // 保持原本的 basename 設定
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <div className="min-h-screen bg-gray-50">
         <Routes>
@@ -80,7 +113,21 @@ function App() {
               {/* 主要內容區塊 */}
               <main className="bg-white rounded-xl shadow-lg p-6">
                 {activeTab === 'lookup' && (
-                  <QuickLookup sops={sops} />
+                  <>
+                    {/* 顯示載入中或沒有資料的提示 */}
+                    {loading ? (
+                      <div className="text-center py-10 text-gray-500">
+                        資料載入中... ☁️
+                      </div>
+                    ) : sops.length === 0 ? (
+                      <div className="text-center py-10 text-gray-400">
+                        <p>目前資料庫是空的 📭</p>
+                        <p className="text-sm mt-2">請點擊下方「管理員登入」去新增第一筆 SOP 吧！</p>
+                      </div>
+                    ) : (
+                      <QuickLookup sops={sops} />
+                    )}
+                  </>
                 )}
 
                 {activeTab === 'shift' && (
