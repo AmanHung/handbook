@@ -10,7 +10,7 @@ const AdminPage = () => {
   // 簡易密碼驗證 (實務上建議配合後端驗證，目前先做前端簡易擋板)
   const handleLogin = () => {
     // 預設密碼設為 'admin123'，你可以隨時修改
-    if (password === 'admin123') {
+    if (password === '123') {
       setIsAuthenticated(true);
     } else {
       alert('密碼錯誤，請重新輸入');

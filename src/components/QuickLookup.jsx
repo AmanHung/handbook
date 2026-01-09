@@ -1,273 +1,335 @@
 // src/components/QuickLookup.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Phone, Package, BookOpen, Loader2, X, ChevronRight } from 'lucide-react'; 
-import { PREPACK_DATA, EXTENSION_DATA } from '../data/sopData';
+import { Search, Phone, BookOpen, Loader2, X, ChevronRight, Tag } from 'lucide-react'; 
+import { EXTENSION_DATA } from '../data/sopData';
 import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+
+// 定義顏色池
+const COLOR_PALETTE = [
+  { bg: 'bg-blue-50', text: 'text-blue-700' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  { bg: 'bg-orange-50', text: 'text-orange-700' },
+  { bg: 'bg-purple-50', text: 'text-purple-700' },
+  { bg: 'bg-rose-50', text: 'text-rose-700' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-700' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-700' },
+  { bg: 'bg-slate-100', text: 'text-slate-700' },
+];
+
+// ✨ 輔助函式：處理正則表達式特殊字元 (例如 +, ?, ()) 避免搜尋報錯或失效
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+}
 
 export default function QuickLookup() {
   const [activeTab, setActiveTab] = useState('qa');
   const [searchTerm, setSearchTerm] = useState('');
-
-  // 雲端資料狀態
+  
+  // 資料與設定
   const [sopArticles, setSopArticles] = useState([]);
+  const [config, setConfig] = useState({ categories: [], quickKeywords: [] });
   const [loading, setLoading] = useState(false);
 
-  // 閱讀模式狀態
-  const [selectedSop, setSelectedSop] = useState(null);
+  // 用戶互動狀態
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  // ✨ 1. 新增：用來定位第一個關鍵字的 Ref
+  // 閱讀模式
+  const [selectedSop, setSelectedSop] = useState(null);
   const firstMatchRef = useRef(null);
 
-  // 2. 新增：當閱讀模式開啟且有搜尋關鍵字時，自動捲動到該位置
+  // 初始化
   useEffect(() => {
-    if (selectedSop && searchTerm && firstMatchRef.current) {
-      // 延遲一點點確保 DOM 渲染完畢
-      setTimeout(() => {
-        firstMatchRef.current.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center' // ✨ 將關鍵字置中於畫面
-        });
-      }, 100);
-    }
-  }, [selectedSop, searchTerm]);
-
-  // 1. 載入時抓取雲端資料 (維持原樣)
-  useEffect(() => {
-    const fetchSOPs = async () => {
+    const initData = async () => {
       setLoading(true);
       try {
-        const querySnapshot = await getDocs(collection(db, "sop_articles"));
-        const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const sopSnap = await getDocs(collection(db, "sop_articles"));
+        const docs = sopSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        const configRef = doc(db, "site_settings", "sop_config");
+        const configSnap = await getDoc(configRef);
+        let configData = { categories: [], quickKeywords: [] };
+        
+        if (configSnap.exists()) {
+          configData = configSnap.data();
+        } else {
+          const uniqueCats = [...new Set(docs.map(d => d.category))];
+          configData.categories = uniqueCats;
+        }
+
         setSopArticles(docs);
+        setConfig(configData);
+
       } catch (error) {
         console.error("讀取失敗:", error);
       }
       setLoading(false);
     };
-    fetchSOPs();
+    initData();
   }, []);
 
-  // 搜尋過濾邏輯 (維持原樣)
-  const filteredSOPs = useMemo(() => {
-    return sopArticles.filter(article => {
-      if (!searchTerm) return true;
-      const lowerTerm = searchTerm.toLowerCase();
-      return (
-        article.title.toLowerCase().includes(lowerTerm) ||
-        article.content.toLowerCase().includes(lowerTerm) ||
-        (article.keywords && article.keywords.some(k => k.toLowerCase().includes(lowerTerm)))
-      );
-    }).map(article => {
-      // 製作預覽段落
-      if (!searchTerm) {
-        return { ...article, snippet: article.content.slice(0, 50) + '...' };
+  // 搜尋互動觸發
+  useEffect(() => {
+    if (searchTerm) setHasSearched(true);
+    if (selectedCategory) setHasSearched(true);
+  }, [searchTerm, selectedCategory]);
+
+  // 自動捲動到關鍵字
+  useEffect(() => {
+    if (selectedSop && searchTerm && firstMatchRef.current) {
+      setTimeout(() => {
+        firstMatchRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300); // 稍微延長一點時間確保 render 完成
+    }
+  }, [selectedSop, searchTerm]);
+
+  const getCategoryColor = (catName) => {
+    if (!catName) return COLOR_PALETTE[7];
+    const index = catName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return COLOR_PALETTE[index % COLOR_PALETTE.length];
+  };
+
+  // 核心篩選邏輯
+  const filteredData = useMemo(() => {
+    const rawTerms = searchTerm.toLowerCase().trim().split(/\s+/).filter(t => t);
+    
+    // 1. 篩選
+    let matches = sopArticles.filter(article => {
+      if (rawTerms.length > 0) {
+        const isMatch = rawTerms.every(term => 
+          article.title.toLowerCase().includes(term) ||
+          article.content.toLowerCase().includes(term) ||
+          (article.keywords && article.keywords.some(k => k.toLowerCase().includes(term)))
+        );
+        if (!isMatch) return false;
       }
-      const contentIndex = article.content.toLowerCase().indexOf(searchTerm.toLowerCase());
+      if (selectedCategory && selectedCategory !== '全部' && article.category !== selectedCategory) {
+        return false;
+      }
+      return true;
+    });
+
+    // 2. 處理預覽
+    const processedMatches = matches.map(article => {
       let snippet = '';
-      if (contentIndex !== -1) {
-        const start = Math.max(0, contentIndex - 15);
-        const end = Math.min(article.content.length, contentIndex + 45);
-        snippet = '...' + article.content.substring(start, end) + '...';
-      } else {
+      if (rawTerms.length === 0) {
         snippet = article.content.slice(0, 60) + '...';
+      } else {
+        const mainTerm = rawTerms[0];
+        const contentIndex = article.content.toLowerCase().indexOf(mainTerm);
+        if (contentIndex !== -1) {
+          const start = Math.max(0, contentIndex - 20);
+          const end = Math.min(article.content.length, contentIndex + 60);
+          snippet = '...' + article.content.substring(start, end) + '...';
+        } else {
+          snippet = article.content.slice(0, 80) + '...';
+        }
       }
       return { ...article, snippet };
     });
-  }, [searchTerm, sopArticles]);
 
-  // (保留) 預包量邏輯 (維持原樣)
-  const groupedPrepacks = useMemo(() => {
-    const filtered = PREPACK_DATA.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.id.toLowerCase().includes(searchTerm.toLowerCase()));
-    const groups = filtered.reduce((acc, item) => {
-      const key = item.qty; if (!acc[key]) acc[key] = { qty: item.qty, bag: item.bag, items: [] }; acc[key].items.push(item); return acc;
-    }, {});
-    return Object.values(groups).sort((a, b) => (parseInt(a.qty)||999) - (parseInt(b.qty)||999));
-  }, [searchTerm]);
+    // 3. 分組
+    if (selectedCategory === '全部') {
+        const grouped = processedMatches.reduce((acc, curr) => {
+            const cat = curr.category || '未分類';
+            if (!acc[cat]) acc[cat] = [];
+            acc[cat].push(curr);
+            return acc;
+        }, {});
+        return { type: 'grouped', data: grouped };
+    }
+    return { type: 'list', data: processedMatches };
 
-  const filteredExtensions = EXTENSION_DATA.filter(item => item.area.includes(searchTerm) || item.ext.includes(searchTerm));
+  }, [searchTerm, sopArticles, selectedCategory]);
 
-  const getQtyColorStyles = (qty) => {
-      if (qty === '14') return 'bg-emerald-500 text-white border-emerald-600';
-      if (qty === '21') return 'bg-rose-500 text-white border-rose-600';
-      if (qty === '28') return 'bg-yellow-400 text-yellow-900 border-yellow-500';
-      return 'bg-indigo-500 text-white border-indigo-600';
-  };
+  const ExtensionList = () => (
+    <div className="space-y-4">
+        {EXTENSION_DATA.filter(item => item.area.includes(searchTerm) || item.ext.includes(searchTerm)).map(item => (
+            <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-100 flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <Phone className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-slate-800 text-lg">{item.area}</h3>
+                        {item.note && <p className="text-sm text-slate-500">{item.note}</p>}
+                    </div>
+                </div>
+                <span className="text-xl font-black text-emerald-600 tracking-wider">{item.ext}</span>
+            </div>
+        ))}
+    </div>
+  );
 
   return (
-    <div className="space-y-4 pb-20">
-      {/* 搜尋框 */}
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-        <h2 className="text-xl font-black text-slate-800 mb-1">SOP 速查工具</h2>
-        <div className="relative mt-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder={activeTab === 'qa' ? "搜尋 SOP 資料庫..." : "搜尋..."}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-          />
+    <div className="space-y-6 pb-24">
+      {/* 上方功能區 */}
+      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-5">
+        {/* 搜尋框 */}
+        <div>
+            <h2 className="text-2xl font-black text-slate-800 mb-2 pl-1">SOP 速查工具</h2>
+            <div className="relative mt-2">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+                type="text"
+                placeholder="輸入關鍵字搜尋..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-4 rounded-2xl bg-slate-50 border border-slate-200 text-base font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+            />
+            {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="w-5 h-5" />
+                </button>
+            )}
+            </div>
         </div>
-      </div>
 
-      {/* 分頁按鈕 */}
-      <div className="flex bg-slate-200/50 p-1 rounded-2xl">
-         <button onClick={() => setActiveTab('qa')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'qa' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
-          <BookOpen className="w-4 h-4" /> SOP手冊
-        </button>
-        <button onClick={() => setActiveTab('prepack')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'prepack' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-          <Package className="w-4 h-4" /> 預包量表
-        </button>
-        <button onClick={() => setActiveTab('extension')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'extension' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
-          <Phone className="w-4 h-4" /> 常用分機
-        </button>
-      </div>
+        {/* 常用關鍵字 */}
+        {activeTab === 'qa' && config.quickKeywords && config.quickKeywords.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+                <span className="text-xs text-slate-400 font-bold flex items-center gap-1 self-center"><Tag className="w-4 h-4"/> 常用:</span>
+                {config.quickKeywords.map(k => (
+                    <button 
+                        key={k}
+                        onClick={() => setSearchTerm(k)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-bold transition-colors"
+                    >
+                        {k}
+                    </button>
+                ))}
+            </div>
+        )}
 
-      {/* 列表內容 */}
-      <div className="space-y-4">
+        {/* 分類篩選 */}
         {activeTab === 'qa' && (
-          <div className="space-y-3">
-            {loading ? (
-              <div className="flex justify-center py-10 text-slate-400"><Loader2 className="animate-spin mr-2" /> 資料讀取中...</div>
-            ) : filteredSOPs.length > 0 ? (
-              filteredSOPs.map(item => (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedSop(item)} 
-                  className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-blue-200 transition-all cursor-pointer active:scale-95 group"
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold whitespace-nowrap">{item.category}</span>
-                        <h3 className="text-sm font-bold text-slate-800 truncate">{item.title}</h3>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
-                  </div>
+            <div className="flex gap-2 overflow-x-auto pb-3 pt-1 scrollbar-hide">
+            <button
+                onClick={() => setSelectedCategory('全部')}
+                className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+                    selectedCategory === '全部'
+                    ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-105'
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                }`}
+            >
+                全部顯示
+            </button>
+            {config.categories.map(cat => {
+                const colorStyle = getCategoryColor(cat);
+                const isSelected = selectedCategory === cat;
+                return (
+                    <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+                            isSelected
+                            ? `${colorStyle.bg} ${colorStyle.text} border-transparent shadow-md transform scale-105`
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                        {cat}
+                    </button>
+                )
+            })}
+            </div>
+        )}
+      </div>
 
-                  <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed whitespace-pre-wrap line-clamp-2">
-                     {/* 搜尋關鍵字高亮 (列表預覽用) */}
-                     {searchTerm ? (
-                        <span>
-                          {item.snippet.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) =>
-                            part.toLowerCase() === searchTerm.toLowerCase()
-                              ? <span key={i} className="bg-yellow-200 font-bold text-slate-900">{part}</span>
-                              : part
-                          )}
-                        </span>
-                     ) : item.snippet}
+      {/* 分頁切換 */}
+      <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
+         <button onClick={() => setActiveTab('qa')} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black transition-all ${activeTab === 'qa' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+          <BookOpen className="w-5 h-5" /> SOP 手冊
+        </button>
+        <button onClick={() => setActiveTab('extension')} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black transition-all ${activeTab === 'extension' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+          <Phone className="w-5 h-5" /> 常用分機
+        </button>
+      </div>
+
+      {/* 內容顯示區 */}
+      {activeTab === 'qa' ? (
+          <div className="space-y-4">
+            {loading ? (
+               <div className="flex justify-center py-12 text-slate-400 text-lg font-bold"><Loader2 className="animate-spin mr-3 w-6 h-6" /> 資料讀取中...</div>
+            ) : !hasSearched ? (
+               <div className="text-center py-16 px-4 opacity-60">
+                  <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                      <Search className="w-10 h-10"/>
                   </div>
-                </div>
-              ))
+                  <p className="text-slate-600 font-bold text-lg">請點選上方分類或輸入關鍵字</p>
+                  <p className="text-sm text-slate-400 mt-2">系統將篩選出您需要的 SOP</p>
+               </div>
+            ) : filteredData.type === 'grouped' ? (
+                Object.keys(filteredData.data).length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 text-base font-bold">沒有符合的資料</div>
+                ) : (
+                    Object.entries(filteredData.data).map(([catName, articles]) => {
+                        const colorStyle = getCategoryColor(catName);
+                        return (
+                            <div key={catName} className="space-y-3">
+                                <div className={`px-4 py-2 rounded-lg inline-block text-sm font-black ${colorStyle.bg} ${colorStyle.text}`}>
+                                    {catName}
+                                </div>
+                                <div className="space-y-4">
+                                    {articles.map(article => (
+                                        <SopCard 
+                                            key={article.id} 
+                                            item={article} 
+                                            searchTerm={searchTerm} 
+                                            colorStyle={colorStyle}
+                                            onClick={() => setSelectedSop(article)} 
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })
+                )
             ) : (
-               <div className="text-center py-8 text-slate-400 text-xs">找不到相關 SOP</div>
+                filteredData.data.length > 0 ? (
+                    <div className="space-y-4">
+                        {filteredData.data.map(item => (
+                             <SopCard 
+                                key={item.id} 
+                                item={item} 
+                                searchTerm={searchTerm} 
+                                colorStyle={getCategoryColor(item.category)}
+                                onClick={() => setSelectedSop(item)} 
+                             />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-12 text-slate-400">
+                        <p className="text-lg font-bold">找不到符合條件的 SOP 📭</p>
+                    </div>
+                )
             )}
           </div>
-        )}
-
-        {/* ... 預包量與分機表渲染 (維持不變) ... */}
-        {activeTab === 'prepack' && (
-             groupedPrepacks.length > 0 ? groupedPrepacks.map(group => (
-                 <div key={group.qty} className="flex rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-white">
-                <div className={`w-24 flex-shrink-0 flex flex-col items-center justify-center p-2 text-center ${getQtyColorStyles(group.qty)}`}>
-                  <span className="text-3xl font-black leading-none">{group.qty}</span>
-                  <span className="text-[10px] font-bold mt-1 opacity-90">{group.bag}</span>
-                </div>
-                <div className="flex-1 p-3 min-w-0">
-                  <div className="divide-y divide-slate-100">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="py-2 first:pt-0 last:pb-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-bold text-slate-800 text-sm truncate">{item.name}</h3>
-                          {item.id && <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 rounded">{item.id}</span>}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                           {item.spec && <span className="text-xs text-slate-500">{item.spec}</span>}
-                           {item.note && <span className="text-[10px] text-slate-400 border border-slate-100 px-1 rounded">{item.note}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-             )) : <div className="text-center py-8 text-slate-400">查無資料</div>
-        )}
-        {activeTab === 'extension' && (
-             filteredExtensions.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between group">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <Phone className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">{item.area}</h3>
-                    {item.note && <p className="text-[10px] text-slate-400">{item.note}</p>}
-                  </div>
-                </div>
-                <span className="text-lg font-black text-emerald-600 tracking-wider">{item.ext}</span>
-              </div>
-             ))
-        )}
-      </div>
+      ) : (
+          <ExtensionList />
+      )}
 
       {/* 閱讀模式 Modal */}
       {selectedSop && (
         <div className="fixed inset-0 z-[100] flex flex-col bg-white animate-in slide-in-from-bottom-10 duration-200">
-            {/* 標題列 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/90 backdrop-blur-md sticky top-0 z-10 shadow-sm">
-                <h2 className="font-black text-lg text-slate-800 truncate pr-4">{selectedSop.title}</h2>
-                <button
-                    onClick={() => setSelectedSop(null)}
-                    className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
-                >
-                    <X className="w-6 h-6" />
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-10 shadow-sm">
+                <h2 className="font-black text-2xl text-slate-800 truncate pr-4 leading-tight">{selectedSop.title}</h2>
+                <button onClick={() => setSelectedSop(null)} className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                    <X className="w-8 h-8" />
                 </button>
             </div>
-
-            {/* 內文區域 */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-                <div className="max-w-2xl mx-auto space-y-4 pb-20">
-                    {/* 分類標籤 */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white bg-blue-600 px-2.5 py-1 rounded-md shadow-sm shadow-blue-200">
+                <div className="max-w-3xl mx-auto space-y-6 pb-24">
+                    <div className="flex items-center gap-3">
+                        <span className={`text-sm font-bold px-3 py-1.5 rounded-lg shadow-sm ${getCategoryColor(selectedSop.category).bg} ${getCategoryColor(selectedSop.category).text}`}>
                             {selectedSop.category}
                         </span>
-                        {selectedSop.createdAt && (
-                           <span className="text-[10px] text-slate-400 font-mono">
-                             ID: {selectedSop.id.slice(0,4)}
-                           </span>
-                        )}
                     </div>
-
-                    {/* ✨ 3. 完整內文渲染 (含高亮與定位) */}
-                    <article className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="whitespace-pre-wrap leading-8 text-slate-700 font-medium text-[15px]">
-                            {searchTerm ? (
-                                selectedSop.content.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) => {
-                                    const isMatch = part.toLowerCase() === searchTerm.toLowerCase();
-                                    
-                                    // 判斷這是不是第一個出現的關鍵字 (用來綁定 ref)
-                                    // 簡單邏輯：我們可以使用一個 flag 或者根據 index 判斷
-                                    // 這裡使用更直覺的方式：如果是符合的字串，且是第一次渲染到符合的字串，Ref 就會被賦值
-                                    // 但在 map 中比較難做 "第一次" 的狀態判定而不影響 Pure render
-                                    // 不過因為 split 的順序是固定的，我們可以透過 indexOf 判斷
-                                    const parts = selectedSop.content.split(new RegExp(`(${searchTerm})`, 'gi'));
-                                    const firstMatchIndex = parts.findIndex(p => p.toLowerCase() === searchTerm.toLowerCase());
-                                    
-                                    return isMatch ? (
-                                        <span 
-                                            key={i} 
-                                            // 只將 Ref 綁定在第一個出現的關鍵字上
-                                            ref={i === firstMatchIndex ? firstMatchRef : null}
-                                            className="bg-yellow-300 text-slate-900 font-bold px-1 rounded mx-0.5 inline-block shadow-sm animate-pulse" // ✨ 黃底 + 脈衝動畫
-                                        >
-                                            {part}
-                                        </span>
-                                    ) : part;
-                                })
-                            ) : (
-                                selectedSop.content
-                            )}
+                    
+                    {/* 內文區域 - 字體加大、靠左對齊、行高增加 */}
+                    <article className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 min-h-[50vh]">
+                        <div className="whitespace-pre-wrap leading-loose text-slate-700 font-medium text-lg text-left">
+                           <HighlightText content={selectedSop.content} searchTerm={searchTerm} firstMatchRef={firstMatchRef} />
                         </div>
                     </article>
                 </div>
@@ -277,3 +339,57 @@ export default function QuickLookup() {
     </div>
   );
 }
+
+// ✨ 獨立的高亮文字元件 (解決正則特殊符號問題)
+const HighlightText = ({ content, searchTerm, firstMatchRef = null }) => {
+    if (!searchTerm || !searchTerm.trim()) return content;
+
+    // 將搜尋字串切割並去除空白
+    const terms = searchTerm.toLowerCase().trim().split(/\s+/).filter(t => t);
+    if (terms.length === 0) return content;
+
+    // 建立正則表達式：(term1|term2|term3)
+    // 使用 escapeRegExp 確保特殊符號 (如 +, ?, ()) 被視為普通文字
+    const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
+    
+    // 切割內容
+    const parts = content.split(pattern);
+
+    // 找出第一個符合的索引，用於 Ref 定位
+    const firstMatchIndex = parts.findIndex(p => terms.includes(p.toLowerCase()));
+
+    return (
+        <span>
+            {parts.map((part, i) => {
+                const isMatch = terms.includes(part.toLowerCase());
+                return isMatch ? (
+                    <span 
+                        key={i} 
+                        ref={firstMatchRef && i === firstMatchIndex ? firstMatchRef : null}
+                        className="bg-yellow-300 text-slate-900 font-bold px-1 rounded mx-0.5 inline-block shadow-sm animate-pulse"
+                    >
+                        {part}
+                    </span>
+                ) : part;
+            })}
+        </span>
+    );
+};
+
+// 獨立的 SOP 卡片 (列表用)
+const SopCard = ({ item, searchTerm, colorStyle, onClick }) => (
+    <div onClick={onClick} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-blue-300 transition-all cursor-pointer active:scale-[0.98] group">
+        <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+                <span className={`text-xs px-2.5 py-1 rounded-lg font-bold whitespace-nowrap ${colorStyle.bg} ${colorStyle.text}`}>{item.category}</span>
+                <h3 className="text-lg font-bold text-slate-800 truncate">{item.title}</h3>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+        </div>
+        
+        {/* 內文預覽 - 靠左對齊、字體加大 */}
+        <div className="text-base text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-100 leading-relaxed whitespace-pre-wrap line-clamp-3 text-left">
+            <HighlightText content={item.snippet} searchTerm={searchTerm} />
+        </div>
+    </div>
+);
