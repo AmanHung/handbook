@@ -1,15 +1,17 @@
-// src/components/AdminPage.jsx
 import { useState } from 'react';
-import SOPManager from './SOPManager'; // 引入原本的管理元件
+import SOPManager from './SOPManager';
+import VideoManager from './VideoManager'; // ✨ 引入新元件
 import { Link } from 'react-router-dom';
+import { BookText, Video } from 'lucide-react'; // 引入 icon
 
 const AdminPage = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  
+  // ✨ 新增狀態：目前管理的區塊
+  const [managementTab, setManagementTab] = useState('sop'); // 'sop' or 'video'
 
-  // 簡易密碼驗證 (實務上建議配合後端驗證，目前先做前端簡易擋板)
   const handleLogin = () => {
-    // 預設密碼設為 'admin123'，你可以隨時修改
     if (password === '123') {
       setIsAuthenticated(true);
     } else {
@@ -18,7 +20,6 @@ const AdminPage = () => {
     }
   };
 
-  // 如果尚未驗證，顯示登入畫面
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
@@ -50,18 +51,36 @@ const AdminPage = () => {
     );
   }
 
-  // 驗證通過，顯示原本的 SOPManager
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="p-4 bg-white shadow-sm mb-6 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-gray-800">藥局手冊後台管理</h1>
-        <Link to="/" className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm">
-          回首頁
+      <div className="p-4 bg-white shadow-sm mb-6 flex justify-between items-center sticky top-0 z-50">
+        <h1 className="text-lg sm:text-xl font-bold text-gray-800">藥局手冊後台</h1>
+        <Link to="/" className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-xs font-bold">
+          回前台
         </Link>
       </div>
-      {/* 這裡渲染原本的 SOP 管理介面 */}
-      <div className="container mx-auto px-4">
-        <SOPManager />
+
+      <div className="container mx-auto px-2 sm:px-4 max-w-4xl pb-10">
+        {/* ✨ 管理功能切換按鈕 */}
+        <div className="flex gap-2 mb-6 bg-slate-200 p-1 rounded-xl">
+            <button 
+                onClick={() => setManagementTab('sop')}
+                className={`flex-1 py-3 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-all ${managementTab === 'sop' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <BookText className="w-4 h-4"/> SOP 文章管理
+            </button>
+            <button 
+                onClick={() => setManagementTab('video')}
+                className={`flex-1 py-3 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-all ${managementTab === 'video' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <Video className="w-4 h-4"/> 教學影片管理
+            </button>
+        </div>
+
+        {/* 內容區塊 */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 min-h-[500px]">
+             {managementTab === 'sop' ? <SOPManager /> : <VideoManager />}
+        </div>
       </div>
     </div>
   );
