@@ -1,6 +1,6 @@
 // src/components/QuickLookup.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Phone, BookOpen, Loader2, X, ChevronRight, Tag } from 'lucide-react'; 
+import { Search, Phone, BookOpen, Loader2, X, ChevronRight, Tag, Link as LinkIcon, ExternalLink, FileText } from 'lucide-react'; 
 import { EXTENSION_DATA } from '../data/sopData';
 import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
@@ -186,7 +186,7 @@ export default function QuickLookup() {
             </div>
         </div>
 
-        {/* 常用關鍵字 (保留在搜尋框內，因為跟輸入有關) */}
+        {/* 常用關鍵字 */}
         {activeTab === 'qa' && config.quickKeywords && config.quickKeywords.length > 0 && (
             <div className="flex flex-wrap gap-2">
                 <span className="text-xs text-slate-400 font-bold flex items-center gap-1 self-center"><Tag className="w-4 h-4"/> 常用:</span>
@@ -203,7 +203,7 @@ export default function QuickLookup() {
         )}
       </div>
 
-      {/* 區塊 2: 分頁切換 (SOP 手冊 / 常用分機) */}
+      {/* 區塊 2: 分頁切換 */}
       <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
          <button onClick={() => setActiveTab('qa')} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black transition-all ${activeTab === 'qa' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
           <BookOpen className="w-5 h-5" /> SOP 手冊
@@ -213,7 +213,7 @@ export default function QuickLookup() {
         </button>
       </div>
 
-      {/* 區塊 3: 分類篩選 (移到分頁切換下方 + 自動換行 flex-wrap) */}
+      {/* 區塊 3: 分類篩選 */}
       {activeTab === 'qa' && (
         <div className="flex flex-wrap gap-2 pt-1">
           <button
@@ -320,11 +320,44 @@ export default function QuickLookup() {
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
                 <div className="max-w-3xl mx-auto space-y-6 pb-24">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <span className={`text-sm font-bold px-3 py-1.5 rounded-lg shadow-sm ${getCategoryColor(selectedSop.category).bg} ${getCategoryColor(selectedSop.category).text}`}>
                             {selectedSop.category}
                         </span>
+                        {/* 如果有關鍵字，顯示關鍵字標籤 */}
+                        {selectedSop.keywords && selectedSop.keywords.map(k => (
+                             <span key={k} className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-1 rounded">#{k}</span>
+                        ))}
                     </div>
+
+                    {/* 連結/附件區塊 */}
+                    {selectedSop.links && selectedSop.links.length > 0 && (
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4">
+                            <h4 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2">
+                                <LinkIcon className="w-4 h-4"/> 相關附件/連結
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {selectedSop.links.map((link, idx) => (
+                                    <a 
+                                        key={idx}
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-3 bg-white p-3 rounded-xl border border-blue-100 hover:border-blue-300 hover:shadow-md transition-all group"
+                                    >
+                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                            <FileText className="w-5 h-5"/>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-slate-700 text-sm truncate">{link.name}</div>
+                                            <div className="text-[10px] text-slate-400 truncate">{link.url}</div>
+                                        </div>
+                                        <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-blue-400"/>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     
                     {/* 內文區域 - 字體加大、靠左對齊、行高增加 */}
                     <article className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 min-h-[50vh]">
@@ -371,9 +404,16 @@ const HighlightText = ({ content, searchTerm, firstMatchRef = null }) => {
 
 // 獨立的 SOP 卡片 (列表用)
 const SopCard = ({ item, searchTerm, colorStyle, onClick }) => (
-    <div onClick={onClick} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-blue-300 transition-all cursor-pointer active:scale-[0.98] group">
+    <div onClick={onClick} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-blue-300 transition-all cursor-pointer active:scale-[0.98] group relative overflow-hidden">
+        {/* 如果有連結，顯示小圖示 */}
+        {item.links && item.links.length > 0 && (
+            <div className="absolute top-0 right-0 bg-blue-100 text-blue-600 px-3 py-1 rounded-bl-xl">
+                <LinkIcon className="w-3.5 h-3.5" />
+            </div>
+        )}
+
         <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-1 min-w-0 mr-4">
                 <span className={`text-xs px-2.5 py-1 rounded-lg font-bold whitespace-nowrap ${colorStyle.bg} ${colorStyle.text}`}>{item.category}</span>
                 <h3 className="text-lg font-bold text-slate-800 truncate">{item.title}</h3>
             </div>

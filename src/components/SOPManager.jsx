@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Edit, Trash2, Plus, Save, X, Loader2, Settings, List } from 'lucide-react';
+import { Edit, Trash2, Plus, Save, X, Loader2, Settings, List, Link as LinkIcon, ExternalLink } from 'lucide-react';
 
 export default function SOPManager() {
   const [activeTab, setActiveTab] = useState('list'); // 'list' or 'settings'
@@ -50,17 +50,41 @@ export default function SOPManager() {
   // 2. 開啟 SOP 編輯/新增視窗
   const openEditor = (sop = null) => {
     if (sop) {
-      setCurrentSop({ ...sop, keywordsString: sop.keywords ? sop.keywords.join(', ') : '' });
+      setCurrentSop({ 
+        ...sop, 
+        keywordsString: sop.keywords ? sop.keywords.join(', ') : '',
+        links: sop.links || [] // 確保有 links 陣列
+      });
     } else {
       // 使用動態分類的第一個作為預設
       setCurrentSop({ 
         title: '', 
         category: config.categories[0] || '未分類', 
         content: '', 
-        keywordsString: '' 
+        keywordsString: '',
+        links: [] // 初始化空連結陣列
       });
     }
     setIsEditing(true);
+  };
+
+  // 管理連結的函式
+  const addLink = () => {
+    setCurrentSop({
+      ...currentSop,
+      links: [...currentSop.links, { name: '', url: '' }]
+    });
+  };
+
+  const updateLink = (index, field, value) => {
+    const newLinks = [...currentSop.links];
+    newLinks[index][field] = value;
+    setCurrentSop({ ...currentSop, links: newLinks });
+  };
+
+  const removeLink = (index) => {
+    const newLinks = currentSop.links.filter((_, i) => i !== index);
+    setCurrentSop({ ...currentSop, links: newLinks });
   };
 
   // 3. 儲存 SOP
@@ -68,11 +92,15 @@ export default function SOPManager() {
     if (!currentSop.title || !currentSop.content) return alert("標題與內容為必填！");
     setLoading(true);
     try {
+      // 過濾掉沒填完整的連結
+      const validLinks = currentSop.links.filter(l => l.name && l.url);
+
       const dataToSave = {
         title: currentSop.title,
         category: currentSop.category,
         content: currentSop.content,
         keywords: currentSop.keywordsString.split(/[,，]/).map(k => k.trim()).filter(k => k),
+        links: validLinks, // 儲存連結
         updatedAt: new Date()
       };
 
@@ -177,6 +205,7 @@ export default function SOPManager() {
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 rounded">{sop.category}</span>
                       <h4 className="font-bold text-slate-800 text-sm truncate">{sop.title}</h4>
+                      {sop.links && sop.links.length > 0 && <LinkIcon className="w-3 h-3 text-blue-400" />}
                     </div>
                   </div>
                   <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -198,7 +227,7 @@ export default function SOPManager() {
       {/* 編輯器 Modal */}
       {isEditing && currentSop && (
         <div className="fixed inset-0 z-[150] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-black text-slate-800">{currentSop.id ? '編輯 SOP' : '新增 SOP'}</h3>
               <button onClick={() => setIsEditing(false)}><X className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button>
@@ -223,7 +252,6 @@ export default function SOPManager() {
                       onChange={e => setCurrentSop({...currentSop, category: e.target.value})}
                       className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
                    >
-                     {/* 動態讀取分類設定 */}
                      {config.categories.map(c => <option key={c} value={c}>{c}</option>)}
                    </select>
                 </div>
@@ -236,6 +264,44 @@ export default function SOPManager() {
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                   />
                 </div>
+              </div>
+
+              {/* 連結管理區塊 */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                        <LinkIcon className="w-3 h-3"/> 相關附件連結 (Google Drive)
+                    </label>
+                    <button onClick={addLink} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold hover:bg-blue-200">
+                        + 新增連結
+                    </button>
+                </div>
+                
+                {currentSop.links && currentSop.links.length > 0 ? (
+                    <div className="space-y-2">
+                        {currentSop.links.map((link, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                                <input 
+                                    placeholder="連結名稱 (例: 申請表)"
+                                    value={link.name}
+                                    onChange={e => updateLink(idx, 'name', e.target.value)}
+                                    className="w-1/3 border border-slate-300 rounded p-1.5 text-xs"
+                                />
+                                <input 
+                                    placeholder="https://..."
+                                    value={link.url}
+                                    onChange={e => updateLink(idx, 'url', e.target.value)}
+                                    className="flex-1 border border-slate-300 rounded p-1.5 text-xs"
+                                />
+                                <button onClick={() => removeLink(idx)} className="text-red-400 hover:text-red-600">
+                                    <X className="w-4 h-4"/>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-xs text-slate-400 text-center py-2">尚未新增連結，可貼上 Google Drive 網址供下載。</p>
+                )}
               </div>
 
               <div>
