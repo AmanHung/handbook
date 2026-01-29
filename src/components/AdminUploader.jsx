@@ -29,10 +29,12 @@ const AdminUploader = () => {
     
     data.createdAt = new Date().toISOString();
     
-    // SOP 文章：不再強制區分 type，而是視為混合內容
-    // 預設 type 為 mixed，方便未來擴充
+    // 不再強制區分 type，視為混合內容 (mixed)
     if (collectionName === 'sop_articles') {
         data.type = 'mixed'; 
+        // 移除空白的欄位，保持資料整潔
+        if (!data.link) delete data.link;
+        if (!data.content) delete data.content;
     }
 
     try {
@@ -67,7 +69,7 @@ const AdminUploader = () => {
           batch.set(docRef, { 
               ...item, 
               type: 'mixed', 
-              content: item.content || "尚無詳細內容", 
+              content: item.content || "", 
               createdAt: new Date().toISOString() 
           });
           count++;
@@ -165,7 +167,7 @@ const AdminUploader = () => {
                 <input name="link" className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" placeholder="https://..." />
             </div>
 
-            {/* 詳細內容欄位 (選填，若有填寫則前台點擊會彈出視窗) */}
+            {/* 詳細內容欄位 (選填) */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">詳細內容文字 <span className="text-gray-400 text-xs font-normal">(選填，若填寫則點擊彈窗顯示)</span></label>
                 <textarea 
