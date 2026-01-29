@@ -5,28 +5,45 @@ import {
   Phone, 
   ExternalLink,
   BookOpen,
-  Tag
+  Tag,
+  X,
+  Link as LinkIcon
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { EXTENSION_DATA } from '../data/sopData';
+import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 
 const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sops, setSops] = useState([]);
+  // 預設先顯示本地資料
+  const [sops, setSops] = useState(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
   const [loading, setLoading] = useState(true);
+  
+  // 用於顯示文字型 SOP 的彈出視窗狀態
+  const [selectedSop, setSelectedSop] = useState(null);
 
   // 讀取 Firebase SOP 資料
   useEffect(() => {
     const q = query(collection(db, 'sop_articles'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sopList = [];
+      const firebaseData = [];
       snapshot.forEach((doc) => {
-        sopList.push({ id: doc.id, ...doc.data() });
+        firebaseData.push({ id: doc.id, ...doc.data(), source: 'cloud' });
       });
-      setSops(sopList);
+
+      if (firebaseData.length > 0) {
+        setSops(firebaseData);
+      } else {
+        // 若雲端無資料，維持顯示本地資料，不需做任何事
+        console.log("Firebase 尚無 SOP 資料，顯示預設值");
+      }
+      
+      setLoading(false);
+    }, (error) => {
+      console.error("讀取失敗，維持本地模式:", error);
       setLoading(false);
     });
+    
     return () => unsubscribe();
   }, []);
 
@@ -42,7 +59,6 @@ const QuickLookup = () => {
     sop.category?.includes(searchTerm)
   );
 
-  // 判斷是否有搜尋結果
   const hasResults = filteredExtensions.length > 0 || filteredSops.length > 0;
 
   return (
@@ -76,7 +92,7 @@ const QuickLookup = () => {
       ) : (
         <div className="space-y-8">
           
-          {/* 1. SOP 文件列表 (優先顯示) */}
+          {/* 1. SOP 文件列表 */}
           {(searchTerm === '' || filteredSops.length > 0) && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
@@ -84,16 +100,24 @@ const QuickLookup = () => {
               </h3>
               
               {loading ? (
-                <p className="text-gray-500">載入中...</p>
+                <p className="text-gray-500">同步資料中...</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredSops.map((sop) => (
-                    <a
+                    <div
                       key={sop.id}
-                      href={sop.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group block bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all relative"
+                      onClick={() => {
+                        // 邏輯：有內文 -> 開彈窗；沒內文但有連結 -> 直接開連結
+                        if (sop.content && sop.content.trim() !== '') {
+                          setSelectedSop(sop);
+                        } else if (sop.link && sop.link !== '#') {
+                          window.open(sop.link, '_blank');
+                        } else {
+                          // 兩者皆無 (或是預設空資料)
+                          alert("此項目暫無詳細內容或連結");
+                        }
+                      }}
+                      className="group block bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all relative cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className={`p-2 rounded-lg ${
@@ -103,22 +127,33 @@ const QuickLookup = () => {
                         }`}>
                           <FileText className="w-5 h-5" />
                         </div>
-                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-indigo-500" />
+                        {/* 根據是否有內文顯示不同圖示 */}
+                        {sop.content ? (
+                           <BookOpen className="w-4 h-4 text-gray-300 group-hover:text-indigo-500" />
+                        ) : (
+                           <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-indigo-500" />
+                        )}
                       </div>
                       <h4 className="font-bold text-gray-800 group-hover:text-indigo-600 line-clamp-2 mb-2">
                         {sop.title}
                       </h4>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-xs text-gray-500">
-                        <Tag className="w-3 h-3" /> {sop.category || '未分類'}
-                      </span>
-                    </a>
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-xs text-gray-500">
+                            <Tag className="w-3 h-3" /> {sop.category || '未分類'}
+                        </span>
+                        {/* 如果同時有連結，顯示小圖示提示 */}
+                        {sop.link && sop.link !== '#' && (
+                            <LinkIcon className="w-3 h-3 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* 3. 常用分機查詢 */}
+          {/* 2. 常用分機查詢 */}
           {(searchTerm === '' || filteredExtensions.length > 0) && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-green-500 pl-3">
@@ -136,6 +171,57 @@ const QuickLookup = () => {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* SOP 閱讀彈窗 (Modal) */}
+      {selectedSop && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedSop(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-fade-in" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-bold text-gray-800">{selectedSop.title}</h3>
+              <button 
+                onClick={() => setSelectedSop(null)}
+                className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
+              {selectedSop.content || "暫無詳細文字內容。"}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+                <span className="text-xs text-gray-400 flex items-center">
+                    分類：{selectedSop.category}
+                </span>
+                
+                <div className="flex gap-2">
+                    {/* 如果有連結，顯示前往按鈕 */}
+                    {selectedSop.link && selectedSop.link !== '#' && (
+                        <a 
+                            href={selectedSop.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors flex items-center gap-1"
+                        >
+                            <ExternalLink className="w-4 h-4" /> 開啟附件連結
+                        </a>
+                    )}
+                    
+                    <button 
+                        onClick={() => setSelectedSop(null)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors"
+                    >
+                        關閉
+                    </button>
+                </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
