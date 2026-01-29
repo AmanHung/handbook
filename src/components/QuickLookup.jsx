@@ -7,25 +7,24 @@ import {
   BookOpen,
   Link as LinkIcon,
   X,
-  Tag
+  Tag,
+  Paperclip
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 
-// 預設常用關鍵字 (當 Firebase 沒有設定時使用)
+// 預設常用關鍵字
 const DEFAULT_KEYWORDS = ['門診', '住院', '行政', '臨床', '管制藥', '盤點', '急診'];
 
 const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('sop'); // 控制分頁: 'sop' | 'extension'
+  const [activeTab, setActiveTab] = useState('sop'); 
   
-  // 資料狀態
   const [sops, setSops] = useState(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
   const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS);
   const [loading, setLoading] = useState(true);
   
-  // UI 狀態
   const [selectedSop, setSelectedSop] = useState(null);
 
   // 1. 讀取 Firebase SOP 資料
@@ -34,7 +33,7 @@ const QuickLookup = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firebaseData = [];
       snapshot.forEach((doc) => {
-        firebaseData.push({ id: doc.id, ...doc.data(), source: 'cloud' });
+        firebaseData.push({ id: doc.id, ...doc.data() });
       });
 
       if (firebaseData.length > 0) {
@@ -49,32 +48,38 @@ const QuickLookup = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. 讀取常用關鍵字 (從 site_settings/quickKeywords)
+  // 2. 讀取常用關鍵字 (修正路徑)
   useEffect(() => {
-    const fetchKeywords = async () => {
+    const fetchSettings = async () => {
       try {
-        const docRef = doc(db, "site_settings", "quickKeywords");
+        // 路徑修正：site_settings > sop_config
+        const docRef = doc(db, "site_settings", "sop_config");
         const docSnap = await getDoc(docRef);
 
-        if (docSnap.exists() && docSnap.data().keywords) {
-          setKeywords(docSnap.data().keywords);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.quickKeywords && Array.isArray(data.quickKeywords)) {
+            setKeywords(data.quickKeywords);
+          }
         }
       } catch (e) {
         console.error("讀取關鍵字失敗，使用預設值:", e);
       }
     };
-    fetchKeywords();
+    fetchSettings();
   }, []);
 
-  // 取得分類對應的顏色樣式
+  // 取得分類對應的顏色樣式 (支援動態分類)
   const getCategoryStyle = (category) => {
-    switch (category) {
-      case '門診': return 'bg-blue-500 text-white';
-      case '住院': return 'bg-emerald-500 text-white';
-      case '行政': return 'bg-slate-500 text-white';
-      case '臨床': return 'bg-rose-500 text-white';
-      default: return 'bg-indigo-500 text-white';
-    }
+    const map = {
+      '門診': 'bg-blue-500 text-white',
+      '住院': 'bg-emerald-500 text-white',
+      '行政': 'bg-slate-500 text-white',
+      '臨床': 'bg-rose-500 text-white',
+      '急診': 'bg-orange-500 text-white',
+      '教學': 'bg-purple-500 text-white',
+    };
+    return map[category] || 'bg-indigo-500 text-white'; // 預設顏色
   };
 
   // 搜尋與排序邏輯
@@ -183,7 +188,6 @@ const QuickLookup = () => {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
                     }}
-                    // 修正：加入 text-left 強制內容靠左對齊
                     className="group relative bg-white p-5 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
                   >
                     {/* 左上角分類標籤 */}
@@ -192,7 +196,7 @@ const QuickLookup = () => {
                     </div>
 
                     <div className="mt-6 flex items-start justify-between">
-                      <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 leading-snug">
+                      <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 leading-snug line-clamp-2">
                         {sop.title}
                       </h4>
                       
@@ -202,14 +206,11 @@ const QuickLookup = () => {
                       </div>
                     </div>
 
-                    {/* 底部資訊列 */}
-                    <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
-                      <span className="flex items-center gap-1">
-                        {sop.source === 'cloud' ? '雲端同步' : '預設資料'}
-                      </span>
+                    {/* 底部資訊列 (移除來源顯示，強調附件) */}
+                    <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
                       {sop.link && sop.link !== '#' && (
-                        <span className="flex items-center gap-1 text-indigo-400">
-                          <LinkIcon className="w-3 h-3" /> 含附件
+                        <span className="flex items-center gap-1 text-indigo-500 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
+                          <Paperclip className="w-3 h-3" /> 包含附件
                         </span>
                       )}
                     </div>
@@ -247,7 +248,6 @@ const QuickLookup = () => {
       {selectedSop && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedSop(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-fade-in text-left" onClick={e => e.stopPropagation()}>
-            {/* Modal Header */}
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-bold text-gray-800">{selectedSop.title}</h3>
               <button 
@@ -258,32 +258,31 @@ const QuickLookup = () => {
               </button>
             </div>
             
-            {/* Modal Content */}
             <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
               {selectedSop.content || "暫無詳細文字內容。"}
             </div>
 
-            {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
                 <span className={`text-xs px-2 py-1 rounded text-white ${getCategoryStyle(selectedSop.category)}`}>
                     {selectedSop.category}
                 </span>
                 
                 <div className="flex gap-2">
+                    {/* 下載連結按鈕 */}
                     {selectedSop.link && selectedSop.link !== '#' && (
                         <a 
                             href={selectedSop.link} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors flex items-center gap-1"
+                            className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-sm hover:bg-indigo-100 transition-colors flex items-center gap-1 font-medium"
                         >
-                            <ExternalLink className="w-4 h-4" /> 開啟附件連結
+                            <ExternalLink className="w-4 h-4" /> 下載/開啟附件
                         </a>
                     )}
                     
                     <button 
                         onClick={() => setSelectedSop(null)}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors"
+                        className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition-colors"
                     >
                         關閉
                     </button>
