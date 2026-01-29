@@ -12,7 +12,8 @@ import {
   ChevronDown,
   ChevronRight,
   AlertCircle,
-  Users // 新增圖示
+  Users,
+  ShieldAlert // 新增圖示
 } from 'lucide-react';
 import { 
   Radar, 
@@ -58,20 +59,13 @@ const PassportSection = ({ user, userRole }) => {
   });
 
   // 1. 初始化邏輯：決定「目標學生 (Target User)」是誰
-  // 如果是學生，目標就是自己；如果是老師，目標是選中的學生(若沒選則為null)
   const targetUser = userRole === 'student' ? user : selectedStudent;
-  const isViewingSelf = targetUser?.uid === user?.uid;
-  
-  // 判斷目前的操作模式：是「學員填寫」還是「教師評核」
-  // 如果我是學生 -> 永遠是 false (學員模式)
-  // 如果我是老師 -> 永遠是 true (教師模式)
   const isTeacherMode = userRole === 'teacher';
 
   // 2. 教師功能：抓取所有學生名單
   useEffect(() => {
     if (userRole === 'teacher') {
       const fetchStudents = async () => {
-        // 抓取 role 為 student 的使用者
         const q = query(collection(db, 'users'), where('role', '==', 'student'));
         const querySnapshot = await getDocs(q);
         const students = [];
@@ -84,7 +78,7 @@ const PassportSection = ({ user, userRole }) => {
     }
   }, [userRole]);
 
-  // 3. 監聽 Firebase 資料 (根據 targetUser)
+  // 3. 監聽 Firebase 資料
   useEffect(() => {
     if (!targetUser) {
       setRecords({});
@@ -126,7 +120,6 @@ const PassportSection = ({ user, userRole }) => {
       };
     });
 
-    // 計算總進度
     const totalItems = trainingCategories.reduce((acc, cat) => acc + cat.items.length, 0);
     const completedItems = Object.values(records).filter(r => r.status === 'completed').length;
     const progress = Math.round((completedItems / totalItems) * 100);
@@ -136,6 +129,46 @@ const PassportSection = ({ user, userRole }) => {
 
   const stats = calculateStats();
 
+  // ★ 安全性驗證測試函式 (Security Test)
+  const runSecurityTest = async () => {
+    // 隨機找一個項目進行測試 (例如第一個類別的第一個項目)
+    const testItem = trainingCategories[0].items[0];
+    const recordRef = doc(db, 'users', user.uid, 'learning_records', testItem.id);
+
+    // 提示使用者即將進行的操作
+    const confirmTest = window.confirm(
+      `【權限攻擊模擬】\n\n` +
+      `目前身分：${userRole === 'student' ? 'PGY 學員' : '指導藥師'}\n` +
+      `測試目標：嘗試強制修改 [${testItem.title}] 的「教師評分」為 5 分。\n\n` +
+      `預期結果：\n` +
+      `- 如果你是學員：應該失敗 (顯示 Permission Denied)\n` +
+      `- 如果你是藥師：應該成功\n\n` +
+      `要開始測試嗎？`
+    );
+
+    if (!confirmTest) return;
+
+    try {
+      // 嘗試寫入違規資料
+      await setDoc(recordRef, {
+        itemId: testItem.id,
+        itemTitle: testItem.title,
+        teacherRating: 5,        // <--- 攻擊點：學員不該能寫入此欄位
+        teacherComment: "駭客強制修改!!", // <--- 攻擊點
+        status: 'completed',
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+
+      alert("❌ 寫入成功！\n\n注意：資料庫接受了這次修改。\n如果你現在是「學員」身分，代表權限規則【沒有】生效！");
+    } catch (error) {
+      if (error.code === 'permission-denied') {
+        alert("✅ 權限防護成功！\n\nFirebase 成功攔截了違規寫入請求。\n錯誤代碼: permission-denied");
+      } else {
+        alert("⚠️ 發生其他錯誤:\n" + error.message);
+      }
+    }
+  };
+
   // 5. 處理評核提交
   const handleSubmitEvaluation = async (e) => {
     e.preventDefault();
@@ -143,7 +176,6 @@ const PassportSection = ({ user, userRole }) => {
 
     const recordRef = doc(db, 'users', targetUser.uid, 'learning_records', selectedItem.id);
     
-    // 準備要更新的資料
     let updateData = {
       itemId: selectedItem.id,
       itemTitle: selectedItem.title,
@@ -152,17 +184,15 @@ const PassportSection = ({ user, userRole }) => {
     };
 
     if (isTeacherMode) {
-      // 教師提交
       updateData = {
         ...updateData,
         teacherRating: Number(formData.teacherRating),
         teacherComment: formData.teacherComment,
-        status: 'completed', // 教師評完視為完成
-        teacherId: user.uid, // 紀錄評核者
+        status: 'completed',
+        teacherId: user.uid,
         teacherName: user.displayName || '指導藥師'
       };
     } else {
-      // 學生提交
       updateData = {
         ...updateData,
         studentRating: Number(formData.studentRating),
@@ -173,10 +203,10 @@ const PassportSection = ({ user, userRole }) => {
 
     try {
       await setDoc(recordRef, updateData, { merge: true });
-      setSelectedItem(null); // 關閉 Modal
+      setSelectedItem(null);
     } catch (error) {
       console.error("Error updating document: ", error);
-      alert("儲存失敗");
+      alert("儲存失敗: " + error.message);
     }
   };
 
@@ -286,13 +316,26 @@ const PassportSection = ({ user, userRole }) => {
           </p>
         </div>
 
-        {/* 角色狀態顯示 */}
-        <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-lg border border-gray-200">
-          <span className="text-sm font-medium text-gray-600">當前身分：</span>
-          <span className={`px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 ${isTeacherMode ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
-            {isTeacherMode ? <UserCheck className="w-4 h-4" /> : <User className="w-4 h-4" />}
-            {isTeacherMode ? '指導藥師' : 'PGY 學員'}
-          </span>
+        <div className="flex gap-2">
+            {/* 只有在學生模式下顯示攻擊測試按鈕 */}
+            {!isTeacherMode && (
+                <button
+                    onClick={runSecurityTest}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-md text-sm font-medium hover:bg-red-100 flex items-center gap-1"
+                    title="點擊測試資料庫權限規則是否生效"
+                >
+                    <ShieldAlert className="w-4 h-4" />
+                    權限攻擊測試
+                </button>
+            )}
+
+            <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-lg border border-gray-200">
+            <span className="text-sm font-medium text-gray-600">當前身分：</span>
+            <span className={`px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 ${isTeacherMode ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                {isTeacherMode ? <UserCheck className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                {isTeacherMode ? '指導藥師' : 'PGY 學員'}
+            </span>
+            </div>
         </div>
       </div>
 
