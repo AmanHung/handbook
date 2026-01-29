@@ -1,7 +1,44 @@
 // src/data/sopData.jsx
 
-// 1. 預包量資料 (資料來源：新進藥師 門診 操作細項手冊-1140702.doc)
-// 欄位: id(藥品代碼), name(藥名), spec(規格/備註), qty(預包量), bag(袋號/顏色), note(其他說明)
+// ==========================================
+// 1. SOP 文章/連結列表 (這是給 SOPManager 和 AdminUploader 復原用的預設資料)
+// ⚠️ 這是後台「匯入預設 SOP」功能需要的變數
+// ==========================================
+export const sopData = [
+  {
+    id: 1,
+    title: "門診處方調劑作業規範",
+    category: "門診",
+    link: "#", 
+    type: "pdf"
+  },
+  {
+    id: 2,
+    title: "住院單一劑量(UD)作業手冊",
+    category: "住院",
+    link: "#",
+    type: "pdf"
+  },
+  {
+    id: 3,
+    title: "管制藥品管理與盤點標準流程",
+    category: "行政",
+    link: "#",
+    type: "pdf"
+  },
+  {
+    id: 4,
+    title: "高警訊藥品 (High Alert) 清單與處置",
+    category: "臨床",
+    link: "#",
+    type: "pdf"
+  }
+];
+
+// ==========================================
+// 2. 預包量資料 (給 QuickLookup 速查用)
+// 資料來源：新進藥師 門診 操作細項手冊-1140702.doc
+// ==========================================
 export const PREPACK_DATA = [
   { 
     id: 'ACEO25', 
@@ -35,7 +72,6 @@ export const PREPACK_DATA = [
     bag: '黃色', 
     note: '' 
   },
-  // 以下為文件中提到但未列出明確數量的藥品，先建立項目方便日後補齊
   { 
     id: 'PANO55', 
     name: 'Lactam', 
@@ -102,8 +138,9 @@ export const PREPACK_DATA = [
   }
 ];
 
-// 2. 常用分機資料 (維持原樣，若文件中有新分機可再補充)
-// 欄位: id(編號), area(地點), ext(分機), note(備註)
+// ==========================================
+// 3. 常用分機資料 (給 QuickLookup 速查用)
+// ==========================================
 export const EXTENSION_DATA = [
   { id: 1, area: '門診藥局 (前台)', ext: '1151', note: '' },
   { id: 2, area: '諮詢櫃台', ext: '1152', note: '' },
