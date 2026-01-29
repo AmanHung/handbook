@@ -3,16 +3,14 @@ import {
   Upload, 
   FileText, 
   Video, 
-  Calendar, 
   Database, 
   RefreshCw,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Link as LinkIcon
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
-
-// 這裡的 import 必須與 sopData.jsx 和 shiftData.jsx 裡的 export 對應
 import { sopData } from '../data/sopData'; 
 import { shiftData } from '../data/shiftData';
 
@@ -20,7 +18,7 @@ const AdminUploader = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
 
-  // 通用上傳函式 (單筆)
+  // 通用上傳函式
   const handleUpload = async (e, collectionName) => {
     e.preventDefault();
     setLoading(true);
@@ -29,22 +27,27 @@ const AdminUploader = () => {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     
-    // 自動加入時間戳記
     data.createdAt = new Date().toISOString();
+    
+    // SOP 文章：不再強制區分 type，而是視為混合內容
+    // 預設 type 為 mixed，方便未來擴充
+    if (collectionName === 'sop_articles') {
+        data.type = 'mixed'; 
+    }
 
     try {
       await addDoc(collection(db, collectionName), data);
-      setStatus({ type: 'success', message: '上傳成功！' });
+      setStatus({ type: 'success', message: '發布成功！' });
       e.target.reset();
     } catch (error) {
       console.error("Error adding document: ", error);
-      setStatus({ type: 'error', message: `上傳失敗: ${error.message}` });
+      setStatus({ type: 'error', message: `發布失敗: ${error.message}` });
     } finally {
       setLoading(false);
     }
   };
 
-  // ★ 一鍵復原資料功能
+  // 一鍵復原資料功能
   const handleRestoreData = async (type) => {
     const confirmRestore = window.confirm(
       `確定要將本地的 [${type}] 預設資料寫入資料庫嗎？`
@@ -60,15 +63,18 @@ const AdminUploader = () => {
       if (type === 'SOP') {
         const sourceData = sopData || []; 
         sourceData.forEach((item) => {
-          // 寫入到 sop_articles 集合
           const docRef = doc(collection(db, "sop_articles")); 
-          batch.set(docRef, { ...item, type: 'pdf', createdAt: new Date().toISOString() });
+          batch.set(docRef, { 
+              ...item, 
+              type: 'mixed', 
+              content: item.content || "尚無詳細內容", 
+              createdAt: new Date().toISOString() 
+          });
           count++;
         });
       } else if (type === 'Shift') {
         const sourceData = shiftData || [];
         sourceData.forEach((item) => {
-          // 寫入到 shifts 集合
           const docRef = doc(collection(db, "shifts"));
           batch.set(docRef, { ...item, createdAt: new Date().toISOString() });
           count++;
@@ -104,7 +110,7 @@ const AdminUploader = () => {
           資料庫初始化 / 救援
         </h3>
         <p className="text-sm text-orange-600 mb-4">
-          如果前台顯示空白，請使用此功能將預設資料寫入正確的集合 (sop_articles)。
+          如果前台顯示空白，請使用此功能將預設資料寫入正確的集合。
         </p>
         <div className="flex gap-4">
           <button
@@ -127,21 +133,21 @@ const AdminUploader = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* 區域 2: 上傳新的 SOP */}
+        {/* 區域 2: 上傳新的 SOP (混合模式：連結 + 內文) */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4 text-indigo-600">
             <FileText className="w-5 h-5" />
-            <h3 className="font-bold">新增 SOP 文件</h3>
+            <h3 className="font-bold">發布 SOP 公告</h3>
           </div>
           
-          {/* 上傳目標：sop_articles */}
           <form onSubmit={(e) => handleUpload(e, 'sop_articles')} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">文件標題</label>
-              <input name="title" required className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" placeholder="例如：藥品盤點規範" />
+              <label className="block text-sm font-medium text-gray-700 mb-2">標題 <span className="text-red-500">*</span></label>
+              <input name="title" required className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" placeholder="例如：門診退藥作業流程" />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">類別</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">分類</label>
               <select name="category" className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2">
                 <option value="門診">門診組</option>
                 <option value="住院">住院組</option>
@@ -149,13 +155,30 @@ const AdminUploader = () => {
                 <option value="臨床">臨床組</option>
               </select>
             </div>
+
+            {/* 檔案連結欄位 (選填) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">檔案連結 (URL)</label>
-              <input name="link" required className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" placeholder="請貼上 Google Drive 或 PDF 連結" />
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <LinkIcon className="w-4 h-4 text-gray-400" />
+                    檔案連結 (Google Drive / PDF) <span className="text-gray-400 text-xs font-normal">(選填)</span>
+                </label>
+                <input name="link" className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" placeholder="https://..." />
             </div>
+
+            {/* 詳細內容欄位 (選填，若有填寫則前台點擊會彈出視窗) */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">詳細內容文字 <span className="text-gray-400 text-xs font-normal">(選填，若填寫則點擊彈窗顯示)</span></label>
+                <textarea 
+                    name="content" 
+                    rows="6" 
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" 
+                    placeholder="請在此直接輸入 SOP 的文字內容..." 
+                />
+            </div>
+
             <button type="submit" disabled={loading} className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex justify-center items-center gap-2">
               <Upload className="w-4 h-4" />
-              {loading ? '上傳中...' : '確認上傳'}
+              {loading ? '發布中...' : '確認發布'}
             </button>
           </form>
         </div>
@@ -167,7 +190,6 @@ const AdminUploader = () => {
             <h3 className="font-bold">新增教學影片</h3>
           </div>
           
-          {/* 上傳目標：training_videos */}
           <form onSubmit={(e) => handleUpload(e, 'training_videos')} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">影片標題</label>
