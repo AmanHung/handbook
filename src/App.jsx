@@ -49,6 +49,8 @@ function App() {
         errorMessage = "登入已取消";
       } else if (error.code === 'auth/cancelled-popup-request') {
         errorMessage = "登入視窗被重複開啟";
+      } else if (error.code === 'auth/operation-not-allowed') {
+        errorMessage = "登入失敗：Google 登入功能尚未啟用。請前往 Firebase Console > Authentication > Sign-in method 啟用 Google 提供者。";
       }
       
       alert(`${errorMessage}\n\n詳細原因: ${error.message}`);
