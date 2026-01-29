@@ -15,7 +15,7 @@ import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 
 const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  // 預設先顯示本地資料
+  // 預設先顯示本地資料，避免畫面空白
   const [sops, setSops] = useState(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
   const [loading, setLoading] = useState(true);
   
@@ -31,16 +31,19 @@ const QuickLookup = () => {
         firebaseData.push({ id: doc.id, ...doc.data(), source: 'cloud' });
       });
 
+      // 關鍵修正：只要 Firebase 有回傳陣列（即使是空陣列），我們就更新狀態
+      // 如果 Firebase 有資料，就顯示 Firebase 的
       if (firebaseData.length > 0) {
         setSops(firebaseData);
       } else {
-        // 若雲端無資料，維持顯示本地資料，不需做任何事
-        console.log("Firebase 尚無 SOP 資料，顯示預設值");
+        // 如果 Firebase 真的完全沒資料，為了不讓畫面空白，我們維持顯示本地預設資料
+        // 但如果您希望 Firebase 為空就顯示空白，可以把這裡改成 setSops([])
+        console.log("Firebase 回傳資料數: 0，維持顯示本地預設資料");
       }
       
       setLoading(false);
     }, (error) => {
-      console.error("讀取失敗，維持本地模式:", error);
+      console.error("Firebase 讀取失敗，維持本地模式:", error);
       setLoading(false);
     });
     
@@ -55,10 +58,11 @@ const QuickLookup = () => {
   );
 
   const filteredSops = sops.filter(sop => 
-    sop.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    sop.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     sop.category?.includes(searchTerm)
   );
 
+  // 判斷是否有搜尋結果
   const hasResults = filteredExtensions.length > 0 || filteredSops.length > 0;
 
   return (
@@ -92,8 +96,8 @@ const QuickLookup = () => {
       ) : (
         <div className="space-y-8">
           
-          {/* 1. SOP 文件列表 */}
-          {(searchTerm === '' || filteredSops.length > 0) && (
+          {/* 1. SOP 文件列表 (優先顯示) */}
+          {filteredSops.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                 <BookOpen className="w-5 h-5 text-indigo-500" /> SOP 標準作業程序
@@ -104,17 +108,19 @@ const QuickLookup = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredSops.map((sop) => (
+                    // 根據 SOP 類型決定點擊行為
                     <div
                       key={sop.id}
                       onClick={() => {
-                        // 邏輯：有內文 -> 開彈窗；沒內文但有連結 -> 直接開連結
+                        // 邏輯修正：只要有內容 (content)，就優先開 Modal
+                        // 否則如果只有連結，就直接開連結
                         if (sop.content && sop.content.trim() !== '') {
                           setSelectedSop(sop);
                         } else if (sop.link && sop.link !== '#') {
                           window.open(sop.link, '_blank');
                         } else {
-                          // 兩者皆無 (或是預設空資料)
-                          alert("此項目暫無詳細內容或連結");
+                          // 如果只有標題，沒有內容也沒有連結
+                          alert("此 SOP 僅有標題，暫無詳細內容。");
                         }
                       }}
                       className="group block bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all relative cursor-pointer"
@@ -154,7 +160,7 @@ const QuickLookup = () => {
           )}
 
           {/* 2. 常用分機查詢 */}
-          {(searchTerm === '' || filteredExtensions.length > 0) && (
+          {filteredExtensions.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-green-500 pl-3">
                 <Phone className="w-5 h-5 text-green-500" /> 常用分機
