@@ -35,10 +35,23 @@ function App() {
     try {
       const provider = new GoogleAuthProvider()
       const result = await signInWithPopup(auth, provider)
+      console.log("登入成功，用戶資訊：", result.user);
       // 登入後會觸發 onAuthStateChanged，邏輯統一在那邊處理
     } catch (error) {
-      console.error("Login failed:", error)
-      alert("登入失敗，請稍後再試")
+      console.error("登入詳細錯誤:", error);
+      console.error("錯誤代碼:", error.code);
+      console.error("錯誤訊息:", error.message);
+      
+      let errorMessage = "登入失敗，請稍後再試";
+      if (error.code === 'auth/unauthorized-domain') {
+        errorMessage = "登入失敗：目前的網域未獲授權。請在 Firebase Console > Authentication > Settings > Authorized domains 中新增目前的網域。";
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "登入已取消";
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        errorMessage = "登入視窗被重複開啟";
+      }
+      
+      alert(`${errorMessage}\n\n詳細原因: ${error.message}`);
     }
   }
 
