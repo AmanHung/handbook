@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
-// 加入 .js 副檔名以確保路徑解析正確
-import { db } from '../firebase.js';
+import { db } from '../firebase';
 
 // 此元件同時處理 SOP 與 Video 的新增/編輯
 const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
@@ -35,7 +34,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         description: editData.description || ''
       });
     } else {
-      // 重置為預設值
       setFormData({
         title: '',
         category: '',
@@ -55,7 +53,8 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setAvailableKeywords(data.keywords || []);
+          // 注意：這裡是讀取 quickKeywords
+          setAvailableKeywords(data.quickKeywords || []);
           setAvailableCategories(data.categories || []);
         }
       } catch (error) {
@@ -85,7 +84,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
     setLoading(true);
 
     try {
-      // 驗證
       if (!formData.title || !formData.category) {
         alert('請填寫標題與分類');
         setLoading(false);
@@ -97,7 +95,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         return;
       }
 
-      // 準備寫入資料庫的物件
       const docData = {
         title: formData.title,
         category: formData.category,
@@ -112,20 +109,18 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         docData.url = formData.url;
       }
 
-      const collectionName = resourceType === 'sop' ? 'sops' : 'videos';
+      // 修正：使用正確的集合名稱
+      const collectionName = resourceType === 'sop' ? 'sop_articles' : 'training_videos';
 
       if (editData) {
-        // --- 更新模式 ---
         await updateDoc(doc(db, collectionName, editData.id), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 更新成功！`);
       } else {
-        // --- 新增模式 ---
-        docData.createdAt = serverTimestamp(); // 新增時才加創建時間
+        docData.createdAt = serverTimestamp();
         await addDoc(collection(db, collectionName), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 新增成功！`);
       }
 
-      // 重置表單
       setFormData({
         title: '',
         category: '',
@@ -135,7 +130,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         description: ''
       });
       
-      // 觸發回調
       if (onSuccess) onSuccess();
 
     } catch (error) {
@@ -174,7 +168,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* 資源類型選擇 (僅在新增模式下可選，編輯模式鎖定) */}
+        {/* 資源類型選擇 */}
         <div>
           <label className="block text-gray-700 font-bold mb-2">資源類型</label>
           <div className="flex space-x-4">
@@ -247,17 +241,13 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
                   <option value="未分類">未分類 (請至參數設定新增)</option>
                 )}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-              </div>
             </div>
           </div>
         </div>
 
-        {/* 條件欄位：Content vs URL */}
         {resourceType === 'sop' ? (
           <div>
-            <label className="block text-gray-700 font-bold mb-2">SOP 內容 (支援 Markdown)</label>
+            <label className="block text-gray-700 font-bold mb-2">SOP 內容</label>
             <textarea
               name="content"
               value={formData.content}
@@ -269,7 +259,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
           </div>
         ) : (
           <div>
-            <label className="block text-gray-700 font-bold mb-2">影片連結 (YouTube/Google Drive)</label>
+            <label className="block text-gray-700 font-bold mb-2">影片連結</label>
             <input
               type="url"
               name="url"
@@ -282,7 +272,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
           </div>
         )}
 
-        {/* 關鍵字多選 */}
         <div>
           <label className="block text-gray-700 font-bold mb-2">關鍵字 (多選)</label>
           <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
@@ -308,7 +297,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         </div>
 
         <div>
-          <label className="block text-gray-700 font-bold mb-2">簡短描述 (選填)</label>
+          <label className="block text-gray-700 font-bold mb-2">簡短描述</label>
           <input
             type="text"
             name="description"
@@ -322,11 +311,11 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-3 rounded-lg font-bold text-lg text-white transition-transform transform active:scale-95 ${
+          className={`w-full py-3 rounded-lg font-bold text-lg text-white shadow-lg ${
             resourceType === 'sop' 
-              ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' 
-              : 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
-          } shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`}
+              ? 'bg-blue-600 hover:bg-blue-700' 
+              : 'bg-purple-600 hover:bg-purple-700'
+          }`}
         >
           {loading ? '處理中...' : editData ? '確認更新' : '確認上傳'}
         </button>
