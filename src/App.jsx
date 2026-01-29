@@ -5,15 +5,15 @@ import {
   signOut, 
   onAuthStateChanged 
 } from 'firebase/auth'
-import { auth, db } from './firebase' // 引入 db
-import { doc, getDoc, setDoc } from 'firebase/firestore' // 引入 firestore 方法
+import { auth, db } from './firebase'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { 
   BookOpen, 
   LogOut, 
   User as UserIcon,
   Menu,
   X,
-  Shield // 新增 Shield 圖示代表管理員/教師
+  Shield
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
@@ -25,7 +25,7 @@ import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
-  const [userRole, setUserRole] = useState('student') // 新增角色狀態: 'student' | 'teacher'
+  const [userRole, setUserRole] = useState('student')
   const [activeTab, setActiveTab] = useState('lookup')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -35,25 +35,14 @@ function App() {
     try {
       const provider = new GoogleAuthProvider()
       const result = await signInWithPopup(auth, provider)
-      console.log("登入成功，用戶資訊：", result.user);
-      // 登入後會觸發 onAuthStateChanged，邏輯統一在那邊處理
+      console.log("登入成功:", result.user.email);
     } catch (error) {
-      console.error("登入詳細錯誤:", error);
-      console.error("錯誤代碼:", error.code);
-      console.error("錯誤訊息:", error.message);
-      
-      let errorMessage = "登入失敗，請稍後再試";
-      if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = "登入失敗：目前的網域未獲授權。請在 Firebase Console > Authentication > Settings > Authorized domains 中新增目前的網域。";
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = "登入已取消";
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        errorMessage = "登入視窗被重複開啟";
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = "登入失敗：Google 登入功能尚未啟用。請前往 Firebase Console > Authentication > Sign-in method 啟用 Google 提供者。";
+      console.error("登入錯誤:", error);
+      let errorMessage = "登入失敗";
+      if (error.code === 'auth/operation-not-allowed') {
+        errorMessage = "請至 Firebase Console 啟用 Google 登入功能";
       }
-      
-      alert(`${errorMessage}\n\n詳細原因: ${error.message}`);
+      alert(`${errorMessage}\n${error.message}`);
     }
   }
 
@@ -76,17 +65,13 @@ function App() {
       if (currentUser) {
         setUser(currentUser)
         
-        // 同步使用者資料到 Firestore
         const userRef = doc(db, 'users', currentUser.uid)
         try {
           const userSnap = await getDoc(userRef)
           
           if (userSnap.exists()) {
-            // 如果使用者已存在，讀取他的角色
-            const userData = userSnap.data()
-            setUserRole(userData.role || 'student')
+            setUserRole(userSnap.data().role || 'student')
           } else {
-            // 如果是新使用者，建立基本資料，預設為 student
             await setDoc(userRef, {
               email: currentUser.email,
               displayName: currentUser.displayName,
@@ -108,20 +93,6 @@ function App() {
 
     return () => unsubscribe()
   }, [])
-
-  // 開發測試用：切換角色的隱藏功能
-  const toggleRole = async () => {
-    if (!user) return
-    const newRole = userRole === 'student' ? 'teacher' : 'student'
-    setUserRole(newRole)
-    // 同步更新到資料庫 (方便測試，實際產品不應該這樣隨意切換)
-    try {
-      await setDoc(doc(db, 'users', user.uid), { role: newRole }, { merge: true })
-      alert(`已切換身分為：${newRole === 'teacher' ? '指導藥師' : '學員'}`)
-    } catch (e) {
-      console.error(e)
-    }
-  }
 
   if (loading) {
     return (
@@ -163,7 +134,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
       <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-indigo-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -177,15 +147,15 @@ function App() {
               </div>
             </div>
 
-            {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-1">
               {[
                 { id: 'lookup', label: 'SOP 速查', icon: BookOpen },
-                { id: 'video', label: '影音教學', icon: BookOpen }, // 可以換個 icon
-                { id: 'shift', label: '排班表', icon: BookOpen },   // 可以換個 icon
+                { id: 'video', label: '影音教學', icon: BookOpen },
+                { id: 'shift', label: '排班表', icon: BookOpen },
                 { id: 'sop-manage', label: 'SOP 管理', icon: BookOpen },
                 { id: 'passport', label: '學習護照', icon: UserIcon },
-                { id: 'admin', label: '後台管理', icon: Shield },
+                // 只有老師看得到後台管理
+                ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
                   key={item.id}
@@ -201,13 +171,9 @@ function App() {
               ))}
             </div>
 
-            {/* User Profile & Mobile Menu Button */}
             <div className="flex items-center gap-4">
-              <div 
-                className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200 cursor-pointer"
-                onClick={toggleRole} 
-                title="點擊切換角色 (測試用)"
-              >
+              {/* 移除 onClick 事件，只保留顯示功能 */}
+              <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200">
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-700">{user.displayName}</p>
                   <p className={`text-xs ${userRole === 'teacher' ? 'text-emerald-600 font-bold' : 'text-gray-500'}`}>
@@ -239,7 +205,6 @@ function App() {
           </div>
         </div>
 
-        {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden border-t border-gray-100 bg-white">
             <div className="px-2 pt-2 pb-3 space-y-1">
@@ -249,7 +214,7 @@ function App() {
                 { id: 'shift', label: '排班表' },
                 { id: 'sop-manage', label: 'SOP 管理' },
                 { id: 'passport', label: '學習護照' },
-                { id: 'admin', label: '後台管理' },
+                ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理' }] : []),
               ].map(item => (
                 <button
                   key={item.id}
@@ -267,7 +232,7 @@ function App() {
                 </button>
               ))}
               <div className="border-t border-gray-100 mt-2 pt-2">
-                <div className="flex items-center px-3 py-2 gap-3" onClick={toggleRole}>
+                <div className="flex items-center px-3 py-2 gap-3">
                   <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full" />
                   <div>
                     <p className="font-medium text-gray-700">{user.displayName}</p>
@@ -286,7 +251,6 @@ function App() {
         )}
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
@@ -295,10 +259,11 @@ function App() {
         {activeTab === 'passport' && (
           <PassportSection 
             user={user} 
-            userRole={userRole} // 傳遞目前使用者角色
+            userRole={userRole}
           />
         )}
-        {activeTab === 'admin' && <AdminPage user={user} />}
+        {/* 只有老師能進入 AdminPage */}
+        {activeTab === 'admin' && userRole === 'teacher' && <AdminPage user={user} />}
       </main>
     </div>
   )
