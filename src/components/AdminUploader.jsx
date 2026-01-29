@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
+
+// 這裡的 import 必須與 sopData.jsx 和 shiftData.jsx 裡的 export 對應
 import { sopData } from '../data/sopData'; 
 import { shiftData } from '../data/shiftData';
 
@@ -58,7 +60,7 @@ const AdminUploader = () => {
       if (type === 'SOP') {
         const sourceData = sopData || []; 
         sourceData.forEach((item) => {
-          // ★★★ 關鍵修正：復原到 'sop_articles' ★★★
+          // 寫入到 sop_articles 集合
           const docRef = doc(collection(db, "sop_articles")); 
           batch.set(docRef, { ...item, type: 'pdf', createdAt: new Date().toISOString() });
           count++;
@@ -66,6 +68,7 @@ const AdminUploader = () => {
       } else if (type === 'Shift') {
         const sourceData = shiftData || [];
         sourceData.forEach((item) => {
+          // 寫入到 shifts 集合
           const docRef = doc(collection(db, "shifts"));
           batch.set(docRef, { ...item, createdAt: new Date().toISOString() });
           count++;
@@ -131,7 +134,7 @@ const AdminUploader = () => {
             <h3 className="font-bold">新增 SOP 文件</h3>
           </div>
           
-          {/* ★★★ 關鍵修正：上傳目標改為 'sop_articles' ★★★ */}
+          {/* 上傳目標：sop_articles */}
           <form onSubmit={(e) => handleUpload(e, 'sop_articles')} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">文件標題</label>
@@ -164,7 +167,7 @@ const AdminUploader = () => {
             <h3 className="font-bold">新增教學影片</h3>
           </div>
           
-          {/* ★★★ 關鍵修正：上傳目標改為 'training_videos' ★★★ */}
+          {/* 上傳目標：training_videos */}
           <form onSubmit={(e) => handleUpload(e, 'training_videos')} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">影片標題</label>
