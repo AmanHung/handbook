@@ -1,123 +1,140 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Shield, Users, FileText, Search, UserCheck, UserX, Trash2, Video, Database
+  Shield, Users, FileText, Search, UserCheck, UserX, Trash2, Video, Database, Settings, Plus, Edit, X, Save
 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, onSnapshot, query, getDoc, setDoc } from 'firebase/firestore';
 import AdminUploader from './AdminUploader';
 
 const AdminPage = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('users'); // users | upload | resources
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('resources'); // 'users' | 'resources' | 'settings'
   
   // 資源管理狀態
-  const [resources, setResources] = useState({ sops: [], videos: [] });
+  const [resourceType, setResourceType] = useState('sop'); // 'sop' | 'video'
+  const [resources, setResources] = useState([]);
+  const [isEditing, setIsEditing] = useState(false); // 是否正在編輯/新增
+  const [editItem, setEditItem] = useState(null); // 正在編輯的項目 (null = 新增)
 
-  // 1. 讀取使用者
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, 'users'));
-      const userList = [];
-      querySnapshot.forEach((doc) => {
-        userList.push({ uid: doc.id, ...doc.data() });
-      });
-      setUsers(userList);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      alert("讀取使用者清單失敗，請確認權限。");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 設定管理狀態
+  const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
+  const [newKeyword, setNewKeyword] = useState('');
+  const [newCategory, setNewCategory] = useState('');
 
-  // 2. 讀取資源 (SOP + Videos)
+  // 使用者管理狀態
+  const [users, setUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // 1. 監聽資源列表 (SOP / Video)
   useEffect(() => {
     if (activeTab === 'resources') {
-      const unsubSOP = onSnapshot(query(collection(db, 'sop_articles')), (snap) => {
-        setResources(prev => ({
-          ...prev,
-          sops: snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }));
+      const collectionName = resourceType === 'sop' ? 'sop_articles' : 'training_videos';
+      const q = query(collection(db, collectionName));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // 簡單排序：依照建立時間 (若有)
+        list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setResources(list);
       });
+      return () => unsubscribe();
+    }
+  }, [activeTab, resourceType]);
 
-      const unsubVideo = onSnapshot(query(collection(db, 'training_videos')), (snap) => {
-        setResources(prev => ({
-          ...prev,
-          videos: snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }));
-      });
+  // 2. 讀取設定 (Settings Tab)
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      const fetchSettings = async () => {
+        try {
+          const docRef = doc(db, "site_settings", "sop_config");
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setSettings(docSnap.data());
+          }
+        } catch (e) {
+          console.error("讀取設定失敗", e);
+        }
+      };
+      fetchSettings();
+    }
+  }, [activeTab]);
 
-      return () => { unsubSOP(); unsubVideo(); };
-    } else if (activeTab === 'users') {
+  // 3. 讀取使用者 (Users Tab)
+  useEffect(() => {
+    if (activeTab === 'users') {
+      const fetchUsers = async () => {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        const userList = [];
+        querySnapshot.forEach((doc) => {
+          userList.push({ uid: doc.id, ...doc.data() });
+        });
+        setUsers(userList);
+      };
       fetchUsers();
     }
   }, [activeTab]);
 
-  // 修改使用者權限
-  const handleRoleChange = async (targetUser, newRole) => {
-    if (targetUser.uid === user.uid) {
-      alert("安全機制：您不能修改自己的管理員權限。");
-      return;
-    }
-    const confirmMsg = `確定要將 ${targetUser.displayName} 修改為「${newRole === 'teacher' ? '指導藥師' : 'PGY 學員'}」嗎？`;
-    if (!window.confirm(confirmMsg)) return;
+  // --- 操作邏輯 ---
 
+  // 刪除資源
+  const handleDeleteResource = async (id, title) => {
+    if (!window.confirm(`確定要刪除「${title}」嗎？無法復原。`)) return;
     try {
-      await updateDoc(doc(db, 'users', targetUser.uid), { role: newRole });
-      setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole } : u));
-      alert("權限更新成功！");
-    } catch (error) {
-      console.error("Error updating role:", error);
-      alert("更新失敗：" + error.message);
-    }
-  };
-
-  // 刪除資源 (SOP/Video)
-  const handleDeleteResource = async (collectionName, id, title) => {
-    if (!window.confirm(`確定要刪除「${title}」嗎？此動作無法復原。`)) return;
-    try {
+      const collectionName = resourceType === 'sop' ? 'sop_articles' : 'training_videos';
       await deleteDoc(doc(db, collectionName, id));
-      alert("刪除成功！");
-    } catch (error) {
-      console.error("Delete error:", error);
-      alert("刪除失敗：" + error.message);
+    } catch (e) {
+      alert("刪除失敗: " + e.message);
     }
   };
 
-  // 篩選使用者
-  const filteredUsers = users.filter(u => 
-    u.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 儲存設定 (關鍵字/分類)
+  const saveSettings = async (newSettings) => {
+    try {
+      await setDoc(doc(db, "site_settings", "sop_config"), newSettings, { merge: true });
+      setSettings(newSettings);
+    } catch (e) {
+      alert("儲存失敗: " + e.message);
+    }
+  };
+
+  const addSettingItem = (key, value, setter) => {
+    if (!value.trim()) return;
+    const currentList = settings[key] || [];
+    if (!currentList.includes(value.trim())) {
+      saveSettings({ ...settings, [key]: [...currentList, value.trim()] });
+    }
+    setter('');
+  };
+
+  const removeSettingItem = (key, itemToRemove) => {
+    const currentList = settings[key] || [];
+    saveSettings({ ...settings, [key]: currentList.filter(i => i !== itemToRemove) });
+  };
+
+  // 修改權限
+  const handleRoleChange = async (targetUser, newRole) => {
+    if (window.confirm(`確定修改權限？`)) {
+        await updateDoc(doc(db, 'users', targetUser.uid), { role: newRole });
+        setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole } : u));
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Admin Header */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Shield className="w-6 h-6 text-indigo-600" />
-            後台管理系統
-          </h2>
-          <p className="text-gray-500 text-sm mt-1">管理權限、SOP 與教學資源</p>
-        </div>
-
+      {/* Header Tabs */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-wrap justify-between items-center gap-4">
+        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <Shield className="w-6 h-6 text-indigo-600" /> 後台管理
+        </h2>
         <div className="flex bg-gray-100 p-1 rounded-lg">
           {[
-            { id: 'users', label: '人員權限', icon: Users },
-            { id: 'resources', label: '資源管理', icon: Database }, // 新增分頁
-            { id: 'upload', label: '新增上傳', icon: FileText },
+            { id: 'users', label: '人員', icon: Users },
+            { id: 'resources', label: '資源管理', icon: Database },
+            { id: 'settings', label: '參數設定', icon: Settings },
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setIsEditing(false); }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                activeTab === tab.id 
-                  ? 'bg-white text-indigo-600 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
+                activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <tab.icon className="w-4 h-4" /> {tab.label}
@@ -126,135 +143,187 @@ const AdminPage = ({ user }) => {
         </div>
       </div>
 
-      {/* Tab 1: Users */}
+      {/* Content: 資源管理 (SOP/Video) */}
+      {activeTab === 'resources' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 左側列表 */}
+          <div className={`lg:col-span-${isEditing ? '2' : '3'} space-y-4 transition-all`}>
+            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+              <div className="flex gap-2">
+                <button 
+                    onClick={() => { setResourceType('sop'); setIsEditing(false); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${resourceType === 'sop' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-200 text-gray-600'}`}
+                >
+                    SOP 文件
+                </button>
+                <button 
+                    onClick={() => { setResourceType('video'); setIsEditing(false); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${resourceType === 'video' ? 'bg-pink-50 border-pink-200 text-pink-700' : 'bg-white border-gray-200 text-gray-600'}`}
+                >
+                    教學影片
+                </button>
+              </div>
+              <button 
+                onClick={() => { setIsEditing(true); setEditItem(null); }}
+                className="flex items-center gap-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> 新增
+              </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+                    {resources.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400">目前尚無資料</div>
+                    ) : resources.map(res => (
+                        <div key={res.id} className="p-4 flex items-center justify-between hover:bg-gray-50 group">
+                            <div className="flex-1 min-w-0 mr-4">
+                                <h4 className="font-bold text-gray-800 truncate">{res.title}</h4>
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                                    {resourceType === 'sop' && <span className="bg-gray-100 px-2 py-0.5 rounded">{res.category || '未分類'}</span>}
+                                    <span>{new Date(res.createdAt).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={() => { setIsEditing(true); setEditItem(res); }}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="編輯"
+                                >
+                                    <Edit className="w-4 h-4" />
+                                </button>
+                                <button 
+                                    onClick={() => handleDeleteResource(res.id, res.title)}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded" title="刪除"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+          </div>
+
+          {/* 右側編輯器 (當 isEditing 為 true 時顯示) */}
+          {isEditing && (
+            <div className="lg:col-span-1 animate-fade-in-right">
+                <AdminUploader 
+                    type={resourceType}
+                    editData={editItem}
+                    onSuccess={() => setIsEditing(false)}
+                    onCancel={() => setIsEditing(false)}
+                />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Content: 參數設定 (Settings) */}
+      {activeTab === 'settings' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 關鍵字設定 */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Search className="w-5 h-5 text-indigo-600" /> 常用搜尋關鍵字
+                </h3>
+                <div className="flex gap-2 mb-4">
+                    <input 
+                        value={newKeyword}
+                        onChange={e => setNewKeyword(e.target.value)}
+                        placeholder="輸入關鍵字..."
+                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    />
+                    <button 
+                        onClick={() => addSettingItem('quickKeywords', newKeyword, setNewKeyword)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm"
+                    >
+                        新增
+                    </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {(settings.quickKeywords || []).map(kw => (
+                        <span key={kw} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-1">
+                            {kw}
+                            <button onClick={() => removeSettingItem('quickKeywords', kw)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            {/* SOP 分類設定 */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-emerald-600" /> SOP 分類標籤
+                </h3>
+                <div className="flex gap-2 mb-4">
+                    <input 
+                        value={newCategory}
+                        onChange={e => setNewCategory(e.target.value)}
+                        placeholder="輸入新分類..."
+                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    />
+                    <button 
+                        onClick={() => addSettingItem('categories', newCategory, setNewCategory)}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm"
+                    >
+                        新增
+                    </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {(settings.categories || []).map(cat => (
+                        <span key={cat} className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-emerald-100">
+                            {cat}
+                            <button onClick={() => removeSettingItem('categories', cat)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                        </span>
+                    ))}
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Content: 人員管理 (Users) */}
       {activeTab === 'users' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="搜尋姓名或 Email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
+            <div className="p-4 border-b border-gray-100 bg-gray-50">
+                <input
+                    type="text"
+                    placeholder="搜尋人員..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                />
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 text-gray-500 text-sm">
-                  <th className="p-4">使用者</th>
-                  <th className="p-4">身分</th>
-                  <th className="p-4 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredUsers.map((u) => (
-                  <tr key={u.uid} className="hover:bg-gray-50">
-                    <td className="p-4 flex items-center gap-3">
-                      <img src={u.photoURL} alt="" className="w-10 h-10 rounded-full bg-gray-200" />
-                      <div>
-                        <div className="font-medium text-gray-800">{u.displayName}</div>
-                        <div className="text-xs text-gray-500">{u.email}</div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        u.role === 'teacher' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
-                      }`}>
-                        {u.role === 'teacher' ? '指導藥師' : 'PGY 學員'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      {u.uid !== user.uid && (
-                        <button
-                          onClick={() => handleRoleChange(u, u.role === 'teacher' ? 'student' : 'teacher')}
-                          className={`text-sm font-medium flex items-center gap-1 ml-auto px-3 py-1.5 rounded-md transition-colors ${
-                            u.role === 'teacher' 
-                              ? 'text-red-600 hover:bg-red-50' 
-                              : 'text-emerald-600 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {u.role === 'teacher' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                          {u.role === 'teacher' ? '降級' : '升級'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                        <tr><th className="p-4">人員</th><th className="p-4">身分</th><th className="p-4 text-right">操作</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {users.filter(u => u.displayName?.includes(searchTerm) || u.email?.includes(searchTerm)).map(u => (
+                            <tr key={u.uid}>
+                                <td className="p-4 flex items-center gap-3">
+                                    <img src={u.photoURL} className="w-8 h-8 rounded-full bg-gray-200" />
+                                    <div><div className="font-bold">{u.displayName}</div><div className="text-gray-500 text-xs">{u.email}</div></div>
+                                </td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-1 rounded text-xs ${u.role === 'teacher' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100'}`}>
+                                        {u.role === 'teacher' ? '指導藥師' : '學員'}
+                                    </span>
+                                </td>
+                                <td className="p-4 text-right">
+                                    {u.uid !== user.uid && (
+                                        <button onClick={() => handleRoleChange(u, u.role === 'teacher' ? 'student' : 'teacher')} className="text-blue-600 hover:underline">
+                                            變更權限
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
       )}
-
-      {/* Tab 2: Resources Management (New!) */}
-      {activeTab === 'resources' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* SOP List */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex justify-between items-center">
-              <h3 className="font-bold text-indigo-800 flex items-center gap-2">
-                <FileText className="w-5 h-5" /> SOP 文件列表
-              </h3>
-              <span className="text-xs bg-white px-2 py-1 rounded-full text-indigo-600 font-bold">{resources.sops.length}</span>
-            </div>
-            <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-              {resources.sops.length === 0 ? (
-                <div className="p-8 text-center text-gray-400">暫無資料</div>
-              ) : resources.sops.map(sop => (
-                <div key={sop.id} className="p-4 flex items-start justify-between hover:bg-gray-50 group">
-                  <div>
-                    <p className="font-medium text-gray-800 line-clamp-1">{sop.title}</p>
-                    <p className="text-xs text-gray-500 mt-1">分類: {sop.category}</p>
-                  </div>
-                  <button 
-                    onClick={() => handleDeleteResource('sop_articles', sop.id, sop.title)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                    title="刪除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Video List */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 bg-pink-50 border-b border-pink-100 flex justify-between items-center">
-              <h3 className="font-bold text-pink-800 flex items-center gap-2">
-                <Video className="w-5 h-5" /> 教學影片列表
-              </h3>
-              <span className="text-xs bg-white px-2 py-1 rounded-full text-pink-600 font-bold">{resources.videos.length}</span>
-            </div>
-            <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-              {resources.videos.length === 0 ? (
-                <div className="p-8 text-center text-gray-400">暫無資料</div>
-              ) : resources.videos.map(vid => (
-                <div key={vid.id} className="p-4 flex items-start justify-between hover:bg-gray-50 group">
-                  <div>
-                    <p className="font-medium text-gray-800 line-clamp-1">{vid.title}</p>
-                    <a href={vid.url} target="_blank" className="text-xs text-pink-500 hover:underline mt-1 block truncate max-w-[200px]">{vid.url}</a>
-                  </div>
-                  <button 
-                    onClick={() => handleDeleteResource('training_videos', vid.id, vid.title)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                    title="刪除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Upload */}
-      {activeTab === 'upload' && <AdminUploader />}
     </div>
   );
 };
