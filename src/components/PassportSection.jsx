@@ -174,6 +174,7 @@ const PassportSection = ({ user, userRole }) => {
 
     const recordRef = doc(db, 'users', targetUser.uid, 'learning_records', selectedItem.id);
     
+    // 準備要更新的資料
     let updateData = {
       itemId: selectedItem.id,
       itemTitle: selectedItem.title,
@@ -182,15 +183,17 @@ const PassportSection = ({ user, userRole }) => {
     };
 
     if (isTeacherMode) {
+      // 教師提交
       updateData = {
         ...updateData,
         teacherRating: Number(formData.teacherRating),
         teacherComment: formData.teacherComment,
-        status: 'completed',
-        teacherId: user.uid,
+        status: 'completed', // 教師評完視為完成
+        teacherId: user.uid, // 紀錄評核者
         teacherName: user.displayName || '指導藥師'
       };
     } else {
+      // 學生提交
       updateData = {
         ...updateData,
         studentRating: Number(formData.studentRating),
@@ -201,10 +204,17 @@ const PassportSection = ({ user, userRole }) => {
 
     try {
       await setDoc(recordRef, updateData, { merge: true });
-      setSelectedItem(null);
+      setSelectedItem(null); // 關閉 Modal
     } catch (error) {
       console.error("Error updating document: ", error);
-      alert("儲存失敗: " + error.message);
+      
+      // 優化錯誤顯示
+      let errorMsg = "儲存失敗";
+      if (error.code === 'permission-denied') {
+        errorMsg = "權限不足：您無法執行此操作。\n(如果是初次填寫，請確認後端規則已更新以支援新建立文件)";
+      }
+      
+      alert(`${errorMsg}\n\n詳細錯誤代碼: ${error.code}`);
     }
   };
 
