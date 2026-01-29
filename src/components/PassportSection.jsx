@@ -13,7 +13,7 @@ import {
   ChevronRight,
   AlertCircle,
   Users,
-  ShieldAlert // 新增圖示
+  ShieldAlert
 } from 'lucide-react';
 import { 
   Radar, 
@@ -62,11 +62,12 @@ const PassportSection = ({ user, userRole }) => {
   const targetUser = userRole === 'student' ? user : selectedStudent;
   const isTeacherMode = userRole === 'teacher';
 
-  // 2. 教師功能：抓取所有學生名單
+  // 2. 教師功能：抓取使用者名單 (修改為抓取所有用戶，方便單人測試)
   useEffect(() => {
     if (userRole === 'teacher') {
       const fetchStudents = async () => {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'));
+        //原本是 where('role', '==', 'student')，為了測試方便，改成抓所有使用者
+        const q = query(collection(db, 'users')); 
         const querySnapshot = await getDocs(q);
         const students = [];
         querySnapshot.forEach((doc) => {
@@ -131,11 +132,9 @@ const PassportSection = ({ user, userRole }) => {
 
   // ★ 安全性驗證測試函式 (Security Test)
   const runSecurityTest = async () => {
-    // 隨機找一個項目進行測試 (例如第一個類別的第一個項目)
     const testItem = trainingCategories[0].items[0];
     const recordRef = doc(db, 'users', user.uid, 'learning_records', testItem.id);
 
-    // 提示使用者即將進行的操作
     const confirmTest = window.confirm(
       `【權限攻擊模擬】\n\n` +
       `目前身分：${userRole === 'student' ? 'PGY 學員' : '指導藥師'}\n` +
@@ -149,17 +148,16 @@ const PassportSection = ({ user, userRole }) => {
     if (!confirmTest) return;
 
     try {
-      // 嘗試寫入違規資料
       await setDoc(recordRef, {
         itemId: testItem.id,
         itemTitle: testItem.title,
-        teacherRating: 5,        // <--- 攻擊點：學員不該能寫入此欄位
-        teacherComment: "駭客強制修改!!", // <--- 攻擊點
+        teacherRating: 5,
+        teacherComment: "駭客強制修改!!",
         status: 'completed',
         lastUpdated: new Date().toISOString()
       }, { merge: true });
 
-      alert("❌ 寫入成功！\n\n注意：資料庫接受了這次修改。\n如果你現在是「學員」身分，代表權限規則【沒有】生效！");
+      alert("❌ 寫入成功！\n\n如果你現在是「藥師」，這是正常的。\n如果你是「學員」，代表權限規則可能未正確發布。");
     } catch (error) {
       if (error.code === 'permission-denied') {
         alert("✅ 權限防護成功！\n\nFirebase 成功攔截了違規寫入請求。\n錯誤代碼: permission-denied");
@@ -277,6 +275,8 @@ const PassportSection = ({ user, userRole }) => {
                   <div>
                     <h3 className="font-bold text-gray-800 group-hover:text-indigo-600">{student.displayName || student.email}</h3>
                     <p className="text-sm text-gray-500">點擊查看進度</p>
+                    {/* 標示是否為當前使用者 */}
+                    {student.uid === user.uid && <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">我自己</span>}
                   </div>
                 </button>
               ))
@@ -317,7 +317,6 @@ const PassportSection = ({ user, userRole }) => {
         </div>
 
         <div className="flex gap-2">
-            {/* 只有在學生模式下顯示攻擊測試按鈕 */}
             {!isTeacherMode && (
                 <button
                     onClick={runSecurityTest}
