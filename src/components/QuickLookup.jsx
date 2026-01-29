@@ -5,9 +5,8 @@ import {
   Phone, 
   ExternalLink,
   BookOpen,
-  Tag,
-  X,
-  Link as LinkIcon
+  Link as LinkIcon,
+  X
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
@@ -15,7 +14,7 @@ import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 
 const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  // 預設先顯示本地資料，避免畫面空白
+  // 預設先顯示本地資料
   const [sops, setSops] = useState(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
   const [loading, setLoading] = useState(true);
   
@@ -31,42 +30,49 @@ const QuickLookup = () => {
         firebaseData.push({ id: doc.id, ...doc.data(), source: 'cloud' });
       });
 
-      // 關鍵修正：只要 Firebase 有回傳陣列（即使是空陣列），我們就更新狀態
-      // 如果 Firebase 有資料，就顯示 Firebase 的
       if (firebaseData.length > 0) {
         setSops(firebaseData);
       } else {
-        // 如果 Firebase 真的完全沒資料，為了不讓畫面空白，我們維持顯示本地預設資料
-        // 但如果您希望 Firebase 為空就顯示空白，可以把這裡改成 setSops([])
-        console.log("Firebase 回傳資料數: 0，維持顯示本地預設資料");
+        console.log("Firebase 尚無 SOP 資料，顯示預設值");
       }
       
       setLoading(false);
     }, (error) => {
-      console.error("Firebase 讀取失敗，維持本地模式:", error);
+      console.error("讀取失敗，維持本地模式:", error);
       setLoading(false);
     });
     
     return () => unsubscribe();
   }, []);
 
-  // 搜尋過濾邏輯
+  // 取得分類對應的顏色樣式
+  const getCategoryStyle = (category) => {
+    switch (category) {
+      case '門診': return 'bg-blue-500 text-white';
+      case '住院': return 'bg-emerald-500 text-white';
+      case '行政': return 'bg-slate-500 text-white';
+      case '臨床': return 'bg-rose-500 text-white';
+      default: return 'bg-indigo-500 text-white';
+    }
+  };
+
+  // 搜尋與排序邏輯
   const filteredExtensions = EXTENSION_DATA.filter(item => 
     item.area.includes(searchTerm) || 
     item.ext.includes(searchTerm) ||
     item.note.includes(searchTerm)
   );
 
-  const filteredSops = sops.filter(sop => 
-    sop.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sop.category?.includes(searchTerm)
-  );
-
-  // 判斷是否有搜尋結果
-  const hasResults = filteredExtensions.length > 0 || filteredSops.length > 0;
+  const filteredSops = sops
+    .filter(sop => 
+      sop.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      sop.category?.includes(searchTerm)
+    )
+    // 依分類排序 (localeCompare 支援中文排序)
+    .sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* 搜尋區塊 */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -88,97 +94,104 @@ const QuickLookup = () => {
         </p>
       </div>
 
-      {/* 搜尋結果區塊 */}
-      {!hasResults && searchTerm !== '' ? (
-        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
-          查無相關資料，請嘗試其他關鍵字。
-        </div>
-      ) : (
-        <div className="space-y-8">
+      {/* 內容區塊：左右分欄佈局 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        {/* 左欄：SOP 文件列表 */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b-2 border-indigo-100 pb-2">
+            <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-indigo-500" /> SOP 標準作業程序
+            </h3>
+            <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full font-bold">
+              {filteredSops.length} 份
+            </span>
+          </div>
           
-          {/* 1. SOP 文件列表 (優先顯示) */}
-          {filteredSops.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
-                <BookOpen className="w-5 h-5 text-indigo-500" /> SOP 標準作業程序
-              </h3>
-              
-              {loading ? (
-                <p className="text-gray-500">同步資料中...</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredSops.map((sop) => (
-                    // 根據 SOP 類型決定點擊行為
-                    <div
-                      key={sop.id}
-                      onClick={() => {
-                        // 邏輯修正：只要有內容 (content)，就優先開 Modal
-                        // 否則如果只有連結，就直接開連結
-                        if (sop.content && sop.content.trim() !== '') {
-                          setSelectedSop(sop);
-                        } else if (sop.link && sop.link !== '#') {
-                          window.open(sop.link, '_blank');
-                        } else {
-                          // 如果只有標題，沒有內容也沒有連結
-                          alert("此 SOP 僅有標題，暫無詳細內容。");
-                        }
-                      }}
-                      className="group block bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all relative cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className={`p-2 rounded-lg ${
-                          sop.category === '門診' ? 'bg-blue-50 text-blue-600' :
-                          sop.category === '住院' ? 'bg-green-50 text-green-600' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          <FileText className="w-5 h-5" />
-                        </div>
-                        {/* 根據是否有內文顯示不同圖示 */}
-                        {sop.content ? (
-                           <BookOpen className="w-4 h-4 text-gray-300 group-hover:text-indigo-500" />
-                        ) : (
-                           <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-indigo-500" />
-                        )}
-                      </div>
-                      <h4 className="font-bold text-gray-800 group-hover:text-indigo-600 line-clamp-2 mb-2">
-                        {sop.title}
-                      </h4>
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-xs text-gray-500">
-                            <Tag className="w-3 h-3" /> {sop.category || '未分類'}
-                        </span>
-                        {/* 如果同時有連結，顯示小圖示提示 */}
-                        {sop.link && sop.link !== '#' && (
-                            <LinkIcon className="w-3 h-3 text-gray-400" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {loading ? (
+            <p className="text-gray-500 text-center py-4">資料同步中...</p>
+          ) : filteredSops.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              無符合文件
             </div>
-          )}
-
-          {/* 2. 常用分機查詢 */}
-          {filteredExtensions.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2 border-l-4 border-green-500 pl-3">
-                <Phone className="w-5 h-5 text-green-500" /> 常用分機
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {filteredExtensions.map((item, idx) => (
-                  <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center text-center hover:border-green-400 transition-colors">
-                    <span className="text-gray-500 text-xs mb-1">{item.area}</span>
-                    <span className="text-xl font-mono font-bold text-green-700">{item.ext}</span>
-                    {item.note && <span className="text-xs text-gray-400 mt-1">{item.note}</span>}
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {filteredSops.map((sop) => (
+                <div
+                  key={sop.id}
+                  onClick={() => {
+                    if (sop.content && sop.content.trim() !== '') {
+                      setSelectedSop(sop);
+                    } else if (sop.link && sop.link !== '#') {
+                      window.open(sop.link, '_blank');
+                    } else {
+                      alert("此 SOP 僅有標題，暫無詳細內容。");
+                    }
+                  }}
+                  className="group relative bg-white p-5 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+                >
+                  {/* 左上角分類標籤 */}
+                  <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
+                    {sop.category || '未分類'}
                   </div>
-                ))}
-              </div>
+
+                  <div className="mt-4 flex items-start justify-between">
+                    <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 leading-snug">
+                      {sop.title}
+                    </h4>
+                    
+                    {/* 狀態圖示 */}
+                    <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-indigo-500">
+                      {sop.content ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                    </div>
+                  </div>
+
+                  {/* 底部資訊列 */}
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      {sop.source === 'cloud' ? '雲端同步' : '預設資料'}
+                    </span>
+                    {sop.link && sop.link !== '#' && (
+                      <span className="flex items-center gap-1 text-indigo-400">
+                        <LinkIcon className="w-3 h-3" /> 含附件
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-
         </div>
-      )}
+
+        {/* 右欄：常用分機 */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b-2 border-green-100 pb-2">
+            <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2">
+              <Phone className="w-5 h-5 text-green-500" /> 常用分機表
+            </h3>
+            <span className="text-xs bg-green-50 text-green-600 px-2 py-1 rounded-full font-bold">
+              {filteredExtensions.length} 筆
+            </span>
+          </div>
+
+          {filteredExtensions.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              無符合分機
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+              {filteredExtensions.map((item, idx) => (
+                <div key={idx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
+                  <span className="text-gray-500 text-xs mb-1 font-medium">{item.area}</span>
+                  <span className="text-xl font-mono font-bold text-green-700 tracking-wider">{item.ext}</span>
+                  {item.note && <span className="text-[10px] text-gray-400 mt-1 bg-gray-50 px-1 rounded inline-block mx-auto">{item.note}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
 
       {/* SOP 閱讀彈窗 (Modal) */}
       {selectedSop && (
@@ -202,12 +215,11 @@ const QuickLookup = () => {
 
             {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                <span className="text-xs text-gray-400 flex items-center">
-                    分類：{selectedSop.category}
+                <span className={`text-xs px-2 py-1 rounded text-white ${getCategoryStyle(selectedSop.category)}`}>
+                    {selectedSop.category}
                 </span>
                 
                 <div className="flex gap-2">
-                    {/* 如果有連結，顯示前往按鈕 */}
                     {selectedSop.link && selectedSop.link !== '#' && (
                         <a 
                             href={selectedSop.link} 
