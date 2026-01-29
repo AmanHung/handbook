@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+// 這裡使用具名匯入，並取別名為 localSopData
 import { sopData as localSopData } from '../data/sopData';
 
 const SOPManager = () => {
@@ -24,7 +25,7 @@ const SOPManager = () => {
   useEffect(() => {
     setLoading(true);
     
-    // ★★★ 關鍵修正：集合名稱改為 'sop_articles' ★★★
+    // 指向正確的集合名稱 'sop_articles'
     const q = query(collection(db, 'sop_articles'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -33,27 +34,28 @@ const SOPManager = () => {
         firebaseData.push({ id: doc.id, ...doc.data(), source: 'cloud' });
       });
 
-      // 合併資料：優先顯示 Firebase 雲端資料
-      const combinedData = [
-        ...firebaseData, 
-        // 為了避免重複，如果雲端已經有資料，建議可以註解掉下面這行本地資料
-        // ...localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id || Math.random()}` }))
-      ];
-      
-      // 如果雲端完全沒資料，才顯示本地備份 (或是你可以選擇總是顯示)
-      if (firebaseData.length === 0) {
-         const localWithSource = localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id || Math.random()}` }));
+      // 如果雲端有資料，優先顯示雲端資料
+      // 如果雲端完全沒資料，才顯示本地備份 (避免空白)
+      if (firebaseData.length === 0 && localSopData && localSopData.length > 0) {
+         const localWithSource = localSopData.map(item => ({ 
+           ...item, 
+           source: 'local', 
+           id: `local_${item.id || Math.random()}` 
+         }));
          setSops(localWithSource);
       } else {
-         setSops(combinedData);
+         setSops(firebaseData);
       }
 
       setLoading(false);
       setError(null);
     }, (err) => {
       console.error("讀取 SOP 失敗:", err);
-      setError("無法讀取雲端資料 (sop_articles)，僅顯示預設內容。請檢查 Firebase 規則。");
-      setSops(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
+      setError("無法讀取雲端資料 (sop_articles)，已切換為離線模式。");
+      // 發生錯誤時，回退到本地資料
+      if (localSopData) {
+        setSops(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
+      }
       setLoading(false);
     });
 
@@ -125,7 +127,7 @@ const SOPManager = () => {
       {loading && sops.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-gray-400">
           <RefreshCw className="w-8 h-8 animate-spin mb-2" />
-          <p>正在載入資料庫 (sop_articles)...</p>
+          <p>正在載入資料庫...</p>
         </div>
       ) : filteredSops.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-100 text-gray-500">
