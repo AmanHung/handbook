@@ -1,5 +1,5 @@
-// src/firebase.js
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 // ⚠️ 請將下方的物件替換為你在 Firebase Console 複製的內容
@@ -14,5 +14,9 @@ const firebaseConfig = {
 
 // 初始化 Firebase
 const app = initializeApp(firebaseConfig);
-// 初始化資料庫並匯出
+
+// 重點：必須將 auth 和 db 匯出，這樣 App.jsx 才能使用
+export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+export default app;
