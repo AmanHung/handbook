@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase.js';
 
-// 修正重點：新增接收 settings prop
+// 修正重點：新增接收 settings prop，並處理 attachmentUrl
 const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { quickKeywords: [], categories: [] } }) => {
   const [loading, setLoading] = useState(false);
   const [resourceType, setResourceType] = useState('sop'); 
@@ -12,6 +12,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
     category: '',
     content: '',
     url: '',
+    attachmentUrl: '', // 新增附件欄位
     keywords: [],
     description: ''
   });
@@ -29,6 +30,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         category: editData.category || '',
         content: editData.content || '',
         url: editData.url || '',
+        attachmentUrl: editData.attachmentUrl || '', // 載入附件連結
         keywords: editData.keywords || [],
         description: editData.description || ''
       });
@@ -38,6 +40,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         category: '',
         content: '',
         url: '',
+        attachmentUrl: '',
         keywords: [],
         description: ''
       });
@@ -85,6 +88,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
 
       if (resourceType === 'sop') {
         docData.content = formData.content;
+        docData.attachmentUrl = formData.attachmentUrl; // 儲存附件連結
       } else {
         docData.url = formData.url;
       }
@@ -105,6 +109,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         category: '',
         content: '',
         url: '',
+        attachmentUrl: '',
         keywords: [],
         description: ''
       });
@@ -224,19 +229,38 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
           </div>
         </div>
 
-        {resourceType === 'sop' ? (
-          <div>
-            <label className="block text-gray-700 font-bold mb-2">SOP 內容</label>
-            <textarea
-              name="content"
-              value={formData.content}
-              onChange={handleChange}
-              rows="6"
-              placeholder="請輸入SOP詳細步驟..."
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-            ></textarea>
-          </div>
-        ) : (
+        {/* SOP 專屬欄位：內容與附件 */}
+        {resourceType === 'sop' && (
+          <>
+            <div>
+              <label className="block text-gray-700 font-bold mb-2">SOP 內容摘要</label>
+              <textarea
+                name="content"
+                value={formData.content}
+                onChange={handleChange}
+                rows="5"
+                placeholder="請輸入SOP詳細步驟..."
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+              ></textarea>
+            </div>
+            <div>
+              <label className="block text-gray-700 font-bold mb-2">
+                SOP 附件連結 <span className="text-gray-400 font-normal text-sm">(選填)</span>
+              </label>
+              <input
+                type="url"
+                name="attachmentUrl"
+                value={formData.attachmentUrl}
+                onChange={handleChange}
+                placeholder="例如：Google Drive 連結、PDF 網址..."
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-gray-600"
+              />
+            </div>
+          </>
+        )}
+
+        {/* 影片專屬欄位 */}
+        {resourceType === 'video' && (
           <div>
             <label className="block text-gray-700 font-bold mb-2">影片連結</label>
             <input
