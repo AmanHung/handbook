@@ -147,53 +147,58 @@ const AdminPage = ({ user }) => {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen p-6">
-      <div className="max-w-6xl mx-auto space-y-8">
+    // 修正：手機版 p-0 (滿版)，電腦版 p-6
+    <div className="bg-gray-50 min-h-screen p-0 md:p-6">
+      <div className="max-w-6xl mx-auto space-y-4 md:space-y-8">
         
         {/* Header */}
-        <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm">
+        {/* 修正：手機版無圓角、p-4、增加 border-b 以區隔內容 */}
+        <div className="flex justify-between items-center bg-white p-4 md:p-6 md:rounded-lg shadow-sm border-b md:border-0 border-gray-100">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">藥局後台管理系統</h1>
-            <p className="text-gray-500 text-sm mt-1">
-              目前資料庫狀態：{sops.length} 份 SOP, {videos.length} 部影片, {usersList.length} 位用戶
+            <h1 className="text-xl md:text-2xl font-bold text-gray-800">後台管理</h1>
+            <p className="text-gray-500 text-xs md:text-sm mt-1">
+              狀態：{sops.length} SOP, {videos.length} 影片, {usersList.length} 用戶
             </p>
           </div>
           <div className="space-x-2">
-            <button onClick={() => setActiveTab('resources')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>資源管理</button>
-            <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>參數與人員</button>
+            <button onClick={() => setActiveTab('resources')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>資源</button>
+            <button onClick={() => setActiveTab('settings')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>參數</button>
           </div>
         </div>
 
-        {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold">{error}</div>}
+        {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold mx-4 md:mx-0">{error}</div>}
 
         {/* TAB 1: 資源管理 */}
         {activeTab === 'resources' && (
-          <div className="space-y-8">
+          <div className="space-y-4 md:space-y-8">
+            {/* 上傳元件的外層容器樣式由 AdminUploader 內部控制，建議也需檢查 AdminUploader 是否有強制 Padding */}
             <AdminUploader 
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
               onSuccess={() => setEditingItem(null)}
               settings={settings}
             />
+            
             {/* ... SOP List ... */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-               <div className="px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
-                <h3 className="font-bold text-blue-800">SOP 文件 ({sops.length})</h3>
+            {/* 修正：手機版無圓角，電腦版有圓角 */}
+            <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
+               <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
+                <h3 className="font-bold text-blue-800 text-sm md:text-base">SOP 文件 ({sops.length})</h3>
                </div>
                <div className="overflow-x-auto max-h-96">
-                 <table className="w-full text-left text-sm">
+                 <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
                    <thead className="bg-gray-50 sticky top-0">
-                     <tr><th className="px-6 py-3">標題</th><th className="px-6 py-3">分類</th><th className="px-6 py-3">附件</th><th className="px-6 py-3 text-right">操作</th></tr>
+                     <tr><th className="px-4 md:px-6 py-3">標題</th><th className="px-4 md:px-6 py-3">分類</th><th className="px-4 md:px-6 py-3">附件</th><th className="px-4 md:px-6 py-3 text-right">操作</th></tr>
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                      {sops.map(s => (
                        <tr key={s.id} className="hover:bg-gray-50">
-                         <td className="px-6 py-4">{s.title}</td>
-                         <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">{s.category}</span></td>
-                         <td className="px-6 py-4">{s.attachmentUrl ? <a href={s.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 flex items-center gap-1"><Paperclip className="w-3 h-3"/>連結</a> : '-'}</td>
-                         <td className="px-6 py-4 text-right space-x-2">
-                           <button onClick={() => handleEditResource(s, 'sop')} className="text-indigo-600 font-medium">編輯</button>
-                           <button onClick={() => handleDeleteResource('sop_articles', s.id)} className="text-red-600 font-medium">刪除</button>
+                         <td className="px-4 md:px-6 py-4">{s.title}</td>
+                         <td className="px-4 md:px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">{s.category}</span></td>
+                         <td className="px-4 md:px-6 py-4">{s.attachmentUrl ? <a href={s.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 flex items-center gap-1"><Paperclip className="w-3 h-3"/>連結</a> : '-'}</td>
+                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                           <button onClick={() => handleEditResource(s, 'sop')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
+                           <button onClick={() => handleDeleteResource('sop_articles', s.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
                          </td>
                        </tr>
                      ))}
@@ -203,23 +208,23 @@ const AdminPage = ({ user }) => {
             </div>
             
             {/* ... Video List ... */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-               <div className="px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
-                <h3 className="font-bold text-purple-800">教學影片 ({videos.length})</h3>
+            <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
+               <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
+                <h3 className="font-bold text-purple-800 text-sm md:text-base">教學影片 ({videos.length})</h3>
                </div>
                <div className="overflow-x-auto max-h-96">
-                 <table className="w-full text-left text-sm">
+                 <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
                    <thead className="bg-gray-50 sticky top-0">
-                     <tr><th className="px-6 py-3">標題</th><th className="px-6 py-3">分類</th><th className="px-6 py-3 text-right">操作</th></tr>
+                     <tr><th className="px-4 md:px-6 py-3">標題</th><th className="px-4 md:px-6 py-3">分類</th><th className="px-4 md:px-6 py-3 text-right">操作</th></tr>
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                      {videos.map(v => (
                        <tr key={v.id} className="hover:bg-gray-50">
-                         <td className="px-6 py-4">{v.title}</td>
-                         <td className="px-6 py-4"><span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{v.category}</span></td>
-                         <td className="px-6 py-4 text-right space-x-2">
-                           <button onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium">編輯</button>
-                           <button onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium">刪除</button>
+                         <td className="px-4 md:px-6 py-4">{v.title}</td>
+                         <td className="px-4 md:px-6 py-4"><span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{v.category}</span></td>
+                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                           <button onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
+                           <button onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
                          </td>
                        </tr>
                      ))}
@@ -232,34 +237,36 @@ const AdminPage = ({ user }) => {
 
         {/* TAB 2: 參數與人員 */}
         {activeTab === 'settings' && (
-          <div className="space-y-8">
-            {/* 關鍵字與分類設定 (保持不變) */}
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
+          <div className="space-y-4 md:space-y-8">
+            <div className="grid md:grid-cols-2 gap-4 md:gap-8">
+              {/* 常用關鍵字 */}
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm">
+                <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
                 <div className="flex gap-2 mb-6">
-                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg"/>
-                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg">新增</button>
+                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg text-sm"/>
+                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap">新增</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {settings.quickKeywords?.map((kw, idx) => (
-                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center">
+                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs md:text-sm flex items-center">
                       {kw}<button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
+
+              {/* 分類標籤 */}
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm">
+                <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
                 <div className="flex gap-2 mb-6">
-                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg"/>
-                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg">新增</button>
+                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg text-sm"/>
+                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap">新增</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {settings.categories?.map((cat, idx) => (
-                    <div key={idx} className="flex justify-between bg-blue-50 px-4 py-2 rounded-lg">
+                    <div key={idx} className="flex justify-between bg-blue-50 px-3 py-2 rounded-lg text-sm">
                       <span className="text-blue-800">{cat}</span>
-                      <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600 text-sm">刪除</button>
+                      <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600">刪除</button>
                     </div>
                   ))}
                 </div>
@@ -267,18 +274,18 @@ const AdminPage = ({ user }) => {
             </div>
 
             {/* 人員權限管理 */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border-t md:border border-gray-200">
+              <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" /> 人員資料與權限管理
               </h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
                   <thead className="bg-gray-50 text-gray-600 uppercase border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-3">使用者</th>
-                      <th className="px-6 py-3">到職日期</th>
-                      <th className="px-6 py-3">身分權限</th>
-                      <th className="px-6 py-3 text-right">管理</th>
+                      <th className="px-4 md:px-6 py-3">使用者</th>
+                      <th className="px-4 md:px-6 py-3">到職日期</th>
+                      <th className="px-4 md:px-6 py-3">身分權限</th>
+                      <th className="px-4 md:px-6 py-3 text-right">管理</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -288,7 +295,7 @@ const AdminPage = ({ user }) => {
                       
                       return (
                         <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/50' : ''}`}>
-                          <td className="px-6 py-4">
+                          <td className="px-4 md:px-6 py-4">
                             <div className="flex items-center gap-2 font-medium text-gray-900">
                               <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
                               {u.displayName || '未命名'}
@@ -296,10 +303,10 @@ const AdminPage = ({ user }) => {
                             </div>
                             <div className="text-xs text-gray-400 mt-1">{u.email}</div>
                           </td>
-                          <td className="px-6 py-4 text-gray-600 font-mono">
+                          <td className="px-4 md:px-6 py-4 text-gray-600 font-mono">
                             {u.arrivalDate || '-'}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 md:px-6 py-4">
                             {isSuperAdmin ? (
                               <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-bold border border-purple-200">
                                 系統管理員
@@ -314,12 +321,12 @@ const AdminPage = ({ user }) => {
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-4 md:px-6 py-4 text-right">
                              <button 
                                onClick={() => openEditUser(u)}
                                className="px-3 py-1 bg-gray-100 hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-medium border border-gray-200 flex items-center gap-1 ml-auto"
                              >
-                               <Edit className="w-3 h-3" /> 編輯/變更
+                               <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
                              </button>
                           </td>
                         </tr>
