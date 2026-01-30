@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../firebase.js';
 
 // 此元件同時處理 SOP 與 Video 的新增/編輯
 const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
