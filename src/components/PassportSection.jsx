@@ -18,7 +18,8 @@ import {
   User,
   Save,
   X,
-  List, // 統一使用 List 圖示
+  List,
+  FileText, // 方案 A: 使用文件圖示
   Circle
 } from 'lucide-react';
 
@@ -162,12 +163,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         `}
       >
         <div className="flex-1">
-          {/* 修正：統一文字與圖示樣式 */}
           <p className={`text-sm flex items-start gap-2 ${isMainItem ? 'font-bold text-gray-700' : 'font-medium text-gray-800'}`}>
             <span className="mt-1">
               {isMainItem ? (
-                // 統一使用 List 圖示，顏色與標題列的圖示相同 (text-gray-500)
-                <List className="w-4 h-4 text-gray-500" />
+                // 方案 A: 使用 FileText (文件) 圖示
+                <FileText className="w-4 h-4 text-gray-500" />
               ) : (
                 <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />
               )}
@@ -223,7 +223,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
     return groupOrder.map((mainTitle, idx) => {
       const subItems = groups[mainTitle];
-      
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
       
       if (isGroup) {
@@ -241,8 +240,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         );
       } else {
-        // 獨立大項：移除邊框，樣式與標題列對齊 (但可點擊)
-        // 透過 isMainItem=true 來控制 icon 與 font
+        // 獨立大項：移除邊框，樣式與標題列對齊
         return (
            <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
              {renderItemRow(subItems[0], true)}
