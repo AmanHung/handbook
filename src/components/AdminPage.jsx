@@ -7,19 +7,13 @@ import {
   arrayUnion, 
   arrayRemove, 
   deleteDoc,
-  setDoc,
-  writeBatch,
-  serverTimestamp
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
 
-// 引入原始靜態資料 (用於初始化/匯入)
-import { sopData } from '../data/sopData.jsx'; 
-import { trainingData } from '../data/trainingData.jsx';
-
 const AdminPage = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('resources'); // resources | settings | migration
+  const [activeTab, setActiveTab] = useState('resources'); // resources | settings
   
   // 資料狀態
   const [sops, setSops] = useState([]);
@@ -119,70 +113,6 @@ const AdminPage = ({ user }) => {
     }
   };
 
-  // --- 資料匯入功能 ---
-  const handleImportDefaults = async () => {
-    if (!window.confirm('確定要將靜態檔案資料匯入 Firebase 嗎？\n這將會新增多筆資料到資料庫中。')) return;
-    
-    const batch = writeBatch(db);
-    let count = 0;
-
-    try {
-      // 1. 匯入 SOPs
-      const sopsToImport = Array.isArray(sopData) ? sopData : []; 
-      sopsToImport.forEach(item => {
-        const docRef = doc(collection(db, 'sop_articles'));
-        batch.set(docRef, {
-          title: item.title || '未命名 SOP',
-          category: item.category || '未分類',
-          content: item.content || '',
-          keywords: item.keywords || [],
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp()
-        });
-        count++;
-      });
-
-      // 2. 匯入 Videos
-      const videoList = [];
-      if (Array.isArray(trainingData)) {
-        trainingData.forEach(catGroup => {
-          if (catGroup.videos && Array.isArray(catGroup.videos)) {
-            catGroup.videos.forEach(v => {
-              videoList.push({
-                ...v,
-                category: catGroup.category || '一般教學'
-              });
-            });
-          }
-        });
-      }
-      
-      videoList.forEach(item => {
-        const docRef = doc(collection(db, 'training_videos'));
-        batch.set(docRef, {
-          title: item.title || '未命名影片',
-          url: item.url || '',
-          category: item.category || '一般教學',
-          description: item.description || '',
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp()
-        });
-        count++;
-      });
-
-      if (count > 0) {
-        await batch.commit();
-        alert(`成功匯入 ${count} 筆資料！`);
-      } else {
-        alert('未找到可匯入的資料，請檢查 src/data/ 檔案結構。');
-      }
-
-    } catch (error) {
-      console.error("Import error:", error);
-      alert('匯入失敗：' + error.message);
-    }
-  };
-
   return (
     <div className="bg-gray-50 min-h-screen p-6">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -222,29 +152,9 @@ const AdminPage = ({ user }) => {
           </div>
         )}
 
-        {/* 提示：如果資料庫是空的 */}
-        {(sops.length === 0 && videos.length === 0 && !error) && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-sm flex justify-between items-center">
-            <div className="flex">
-              <div className="ml-3">
-                <p className="text-sm text-yellow-700">
-                  資料庫目前沒有內容。若您是第一次使用，請點擊右側按鈕匯入預設資料。
-                </p>
-              </div>
-            </div>
-            <button 
-              onClick={handleImportDefaults}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors"
-            >
-              一鍵匯入預設資料
-            </button>
-          </div>
-        )}
-
         {/* --- TAB 1: 資源管理 --- */}
         {activeTab === 'resources' && (
           <div className="space-y-8">
-            {/* 修正重點：將 settings 傳入子元件，確保同步 */}
             <AdminUploader 
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
@@ -288,6 +198,13 @@ const AdminPage = ({ user }) => {
                         </td>
                       </tr>
                     ))}
+                    {sops.length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                          目前沒有 SOP 資料，請使用上方表單新增。
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -323,6 +240,13 @@ const AdminPage = ({ user }) => {
                         </td>
                       </tr>
                     ))}
+                    {videos.length === 0 && (
+                      <tr>
+                        <td colSpan="3" className="px-6 py-8 text-center text-gray-500">
+                          目前沒有影片資料，請使用上方表單新增。
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
