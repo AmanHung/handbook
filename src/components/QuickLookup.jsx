@@ -98,11 +98,12 @@ const QuickLookup = () => {
     .sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
   return (
-    <div className="space-y-6">
-      {/* 修正：手機版 p-4 (16px) */}
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <Search className="w-6 h-6 text-orange-500" />
+    <div className="space-y-0 sm:space-y-6"> {/* 手機版無間距 */}
+      
+      {/* 修正：手機版無圓角無邊框，p-4 */}
+      <div className="bg-white p-4 md:p-6 md:rounded-xl md:shadow-sm md:border border-gray-100">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <Search className="w-5 h-5 md:w-6 md:h-6 text-orange-500" />
           關鍵字查詢
         </h2>
         <div className="relative mb-4">
@@ -112,7 +113,7 @@ const QuickLookup = () => {
             placeholder="請輸入關鍵字：分機、SOP 名稱..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-lg shadow-inner"
+            className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-base md:text-lg shadow-inner bg-gray-50 md:bg-white"
           />
         </div>
         
@@ -138,12 +139,13 @@ const QuickLookup = () => {
         </div>
       </div>
 
-      <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-2 pt-2">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 bg-white md:rounded-t-xl px-0 md:px-2 pt-2 sticky top-16 z-40 shadow-sm md:shadow-none">
         <button
           onClick={() => setActiveTab('sop')}
-          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative top-[1px] rounded-t-lg ${
+          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative top-[1px] md:rounded-t-lg ${
             activeTab === 'sop' 
-              ? 'text-orange-600 bg-orange-50 border-x border-t border-orange-100' 
+              ? 'text-orange-600 bg-orange-50 border-b-2 border-orange-500 md:border-b-0 md:border-x md:border-t md:border-orange-100' 
               : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
@@ -151,9 +153,9 @@ const QuickLookup = () => {
         </button>
         <button
           onClick={() => setActiveTab('extension')}
-          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative top-[1px] rounded-t-lg ${
+          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative top-[1px] md:rounded-t-lg ${
             activeTab === 'extension' 
-              ? 'text-green-600 bg-green-50 border-x border-t border-green-100' 
+              ? 'text-green-600 bg-green-50 border-b-2 border-green-500 md:border-b-0 md:border-x md:border-t md:border-green-100' 
               : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
@@ -161,17 +163,19 @@ const QuickLookup = () => {
         </button>
       </div>
 
-      <div className="min-h-[300px]">
+      {/* Content Area */}
+      <div className="min-h-[300px] bg-gray-50 p-2 md:bg-transparent md:p-0">
         {activeTab === 'sop' && (
           <div className="space-y-4 animate-fade-in">
             {loading ? (
               <p className="text-gray-500 text-center py-4">資料同步中...</p>
             ) : filteredSops.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">
                 無符合文件
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+              // 修正：手機版 gap-2
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
                 {filteredSops.map((sop) => (
                   <div
                     key={sop.id}
@@ -184,8 +188,8 @@ const QuickLookup = () => {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
                     }}
-                    // 修正：手機版 p-4
-                    className="group relative bg-white p-4 md:p-5 rounded-xl border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
+                    // 修正：手機版無邊框，陰影更小
+                    className="group relative bg-white p-4 md:p-5 rounded-lg md:rounded-xl shadow-sm md:border border-gray-100 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
                   >
                     <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
                       {sop.category || '未分類'}
@@ -217,14 +221,13 @@ const QuickLookup = () => {
         {activeTab === 'extension' && (
           <div className="space-y-4 animate-fade-in">
             {filteredExtensions.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">
                 無符合分機
               </div>
             ) : (
-              // 修正：手機版 gap-2
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
                 {filteredExtensions.map((item, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
+                  <div key={idx} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
                     <span className="text-gray-500 text-xs mb-1 font-medium">{item.area}</span>
                     <span className="text-xl font-mono font-bold text-green-700 tracking-wider">{item.ext}</span>
                     {item.note && <span className="text-[10px] text-gray-400 mt-1 bg-gray-50 px-1 rounded inline-block mx-auto">{item.note}</span>}
