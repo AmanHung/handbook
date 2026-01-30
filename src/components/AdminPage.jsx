@@ -7,11 +7,19 @@ import {
   arrayUnion, 
   arrayRemove, 
   deleteDoc,
-  setDoc
+  setDoc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
-import { Link, Paperclip, ExternalLink, Users, Shield, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Paperclip, ExternalLink, Users, Shield, ShieldAlert, CheckCircle, Crown } from 'lucide-react';
+
+// --- 設定超級管理員 Email ---
+// 請在此處填入您的 Email，這些帳號將擁有最高權限且無法被降級
+const SUPER_ADMIN_EMAILS = [
+  'amanhung0419@gmail.com', // 請確認這是否為您的 Email，若不同請修改
+  'admin@example.com'       // 您可以新增多個管理員
+];
 
 const AdminPage = ({ user }) => {
   const [activeTab, setActiveTab] = useState('resources'); // resources | settings
@@ -19,7 +27,7 @@ const AdminPage = ({ user }) => {
   // 資料狀態
   const [sops, setSops] = useState([]);
   const [videos, setVideos] = useState([]);
-  const [usersList, setUsersList] = useState([]); // 新增：用戶列表
+  const [usersList, setUsersList] = useState([]); 
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
   // 錯誤狀態
@@ -32,31 +40,25 @@ const AdminPage = ({ user }) => {
   const [newKeyword, setNewKeyword] = useState('');
   const [newCategory, setNewCategory] = useState('');
 
-  // 1. 監聽 SOP 資料 (集合: sop_articles)
+  // 1. 監聽 SOP 資料
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'sop_articles'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSops(list);
-      setError(null);
-    }, (err) => {
-      console.error("SOP 讀取錯誤:", err);
-      setError(`無法讀取 SOP 資料: ${err.message} (請檢查 Firebase 權限)`);
-    });
+    }, (err) => console.error("SOP 讀取錯誤:", err));
     return () => unsubscribe();
   }, []);
 
-  // 2. 監聽 Video 資料 (集合: training_videos)
+  // 2. 監聽 Video 資料
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'training_videos'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setVideos(list);
-    }, (err) => {
-      console.error("影片讀取錯誤:", err);
-    });
+    }, (err) => console.error("影片讀取錯誤:", err));
     return () => unsubscribe();
   }, []);
 
-  // 3. 監聽 設定檔 (site_settings/sop_config)
+  // 3. 監聽 設定檔
   useEffect(() => {
     const docRef = doc(db, 'site_settings', 'sop_config');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -65,19 +67,15 @@ const AdminPage = ({ user }) => {
       } else {
         setDoc(docRef, { quickKeywords: [], categories: [] });
       }
-    }, (err) => {
-      console.error("設定檔讀取錯誤:", err);
     });
     return () => unsubscribe();
   }, []);
 
-  // 4. 新增：監聽 用戶列表 (users) - 僅在切換到設定頁籤時運作或常駐
+  // 4. 監聽 用戶列表
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsersList(list);
-    }, (err) => {
-      console.error("用戶列表讀取錯誤:", err);
     });
     return () => unsubscribe();
   }, []);
@@ -87,11 +85,8 @@ const AdminPage = ({ user }) => {
     if (window.confirm('確定要刪除此項目嗎？此動作無法復原。')) {
       try {
         await deleteDoc(doc(db, collectionName, id));
-        if (editingItem && editingItem.id === id) {
-          setEditingItem(null);
-        }
+        if (editingItem && editingItem.id === id) setEditingItem(null);
       } catch (error) {
-        console.error("Error removing document: ", error);
         alert('刪除失敗');
       }
     }
@@ -103,7 +98,7 @@ const AdminPage = ({ user }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 處理參數設定更新 (關鍵字/分類)
+  // 處理參數設定更新
   const updateSettingArray = async (field, action, value) => {
     if (!value.trim()) return;
     const docRef = doc(db, 'site_settings', 'sop_config');
@@ -120,17 +115,23 @@ const AdminPage = ({ user }) => {
         }
       }
     } catch (error) {
-      console.error(`Error updating ${field}:`, error);
       alert('更新設定失敗: ' + error.message);
     }
   };
 
-  // 新增：切換用戶身分
-  const toggleUserRole = async (targetUserId, currentRole) => {
+  // 切換用戶身分
+  const toggleUserRole = async (targetUserId, currentRole, targetEmail) => {
+    // 保護機制：超級管理員不能被降級
+    if (SUPER_ADMIN_EMAILS.includes(targetEmail)) {
+      alert("此帳號為超級管理員，無法變更權限。");
+      return;
+    }
+
     const newRole = currentRole === 'teacher' ? 'student' : 'teacher';
     const roleName = newRole === 'teacher' ? '指導藥師' : 'PGY 學員';
     
-    if (window.confirm(`確定要將此用戶身分更改為「${roleName}」嗎？`)) {
+    // 再次確認
+    if (window.confirm(`確定要將此用戶身分更改為「${roleName}」嗎？\n(更改後可隨時再次調整)`)) {
       try {
         await updateDoc(doc(db, 'users', targetUserId), { role: newRole });
       } catch (error) {
@@ -226,18 +227,10 @@ const AdminPage = ({ user }) => {
                         </td>
                         <td className="px-6 py-4">
                           {sop.attachmentUrl ? (
-                            <a 
-                              href={sop.attachmentUrl} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="text-blue-500 hover:text-blue-700 flex items-center gap-1"
-                              title="開啟附件"
-                            >
+                            <a href={sop.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 flex items-center gap-1">
                               <Paperclip className="w-4 h-4" /> 連結
                             </a>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
+                          ) : '-'}
                         </td>
                         <td className="px-6 py-4 text-gray-400 text-xs">
                           {sop.updatedAt?.seconds ? new Date(sop.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
@@ -248,13 +241,6 @@ const AdminPage = ({ user }) => {
                         </td>
                       </tr>
                     ))}
-                    {sops.length === 0 && (
-                      <tr>
-                        <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
-                          目前沒有 SOP 資料，請使用上方表單新增。
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -295,13 +281,6 @@ const AdminPage = ({ user }) => {
                         </td>
                       </tr>
                     ))}
-                    {videos.length === 0 && (
-                      <tr>
-                        <td colSpan="3" className="px-6 py-8 text-center text-gray-500">
-                          目前沒有影片資料，請使用上方表單新增。
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -375,9 +354,10 @@ const AdminPage = ({ user }) => {
                     {usersList.map((u) => {
                       const isTeacher = u.role === 'teacher';
                       const isSelf = u.id === user?.uid;
+                      const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(u.email);
                       
                       return (
-                        <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/50' : ''}`}>
                           <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-2">
                             <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
                             {u.displayName || '未命名用戶'}
@@ -385,7 +365,11 @@ const AdminPage = ({ user }) => {
                           </td>
                           <td className="px-6 py-4 text-gray-500">{u.email}</td>
                           <td className="px-6 py-4">
-                            {isTeacher ? (
+                            {isSuperAdmin ? (
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-bold border border-purple-200">
+                                <Crown className="w-3 h-3" /> 系統管理員
+                              </span>
+                            ) : isTeacher ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-bold">
                                 <Shield className="w-3 h-3" /> 指導藥師
                               </span>
@@ -400,17 +384,17 @@ const AdminPage = ({ user }) => {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <button
-                              onClick={() => toggleUserRole(u.id, u.role)}
-                              disabled={isSelf} // 防止自己降級自己
+                              onClick={() => toggleUserRole(u.id, u.role, u.email)}
+                              disabled={isSuperAdmin} // 超級管理員永遠不能被更改
                               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                                isSelf 
-                                  ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                isSuperAdmin
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
                                   : isTeacher
-                                    ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
-                                    : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+                                    ? 'bg-white text-red-600 hover:bg-red-50 border border-red-200 shadow-sm'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
                               }`}
                             >
-                              {isTeacher ? '降級為學員' : '升級為藥師'}
+                              {isSuperAdmin ? '不可變更' : isTeacher ? '降級為學員' : '升級為藥師'}
                             </button>
                           </td>
                         </tr>
@@ -421,11 +405,9 @@ const AdminPage = ({ user }) => {
               </div>
               <p className="mt-4 text-xs text-gray-400 flex items-center gap-1">
                 <ShieldAlert className="w-3 h-3" /> 
-                注意：只有「指導藥師」身分可以進入後台管理系統。請謹慎設定。
+                注意：請小心操作。設為「指導藥師」的用戶將可存取此後台頁面。
               </p>
             </div>
-            {/* --- 結束 人員權限管理 --- */}
-
           </div>
         )}
       </div>
