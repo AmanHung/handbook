@@ -17,16 +17,16 @@ import {
   Loader2,
   User,
   Save,
-  X
+  X,
+  List // 新增 icon
 } from 'lucide-react';
 
 // ============================================================================
-// ★★★ 已自動填入您的 Google Apps Script 網址 ★★★
+// ★★★ Google Apps Script 網址 ★★★
 // ============================================================================
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
-const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接收 userProfile
-  // 狀態管理
+const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
@@ -36,7 +36,6 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
   const [expandedGroups, setExpandedGroups] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // 評核 Modal 狀態
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -58,48 +57,33 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
     }
   }, [userRole]);
 
-  // 讀取護照資料 (從 GAS)
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
-    
-    // 檢查網址是否已設定
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
-      setErrorMsg("尚未設定 Google Apps Script 網址，請通知管理員修正程式碼。");
+      setErrorMsg("尚未設定 Google Apps Script 網址。");
       return;
     }
-
     if (!email) return;
 
     setLoading(true);
     try {
       const response = await fetch(`${GAS_API_URL}?type=getData&studentEmail=${email}`);
-      
-      // 檢查回應狀態
-      if (!response.ok) {
-        throw new Error(`伺服器回應錯誤: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`伺服器回應錯誤: ${response.status}`);
       const data = await response.json();
-      
-      if (data.status === 'error') {
-        throw new Error(data.message || "讀取資料發生錯誤");
-      }
+      if (data.status === 'error') throw new Error(data.message || "讀取資料發生錯誤");
 
       setPassportData(data);
-      
-      // 預設展開第一個類別
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
       }
     } catch (error) {
       console.error("讀取失敗:", error);
-      setErrorMsg("無法讀取護照資料。請確認：1.網路連線正常 2.Apps Script 部署權限已設為「所有人」");
+      setErrorMsg("無法讀取護照資料，請確認網路或權限設定。");
     }
     setLoading(false);
   };
 
-  // 當選擇的學生改變時，重新抓取資料
   useEffect(() => {
     fetchPassportData(selectedStudentEmail);
   }, [selectedStudentEmail]);
@@ -117,13 +101,9 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
     return acc;
   }, {});
 
-  // 開啟評核視窗
   const openEvaluateModal = (item) => {
     if (userRole !== 'teacher') return;
-    
-    // 預設日期為今天
     const today = new Date().toISOString().split('T')[0];
-    
     setCurrentEval({
       itemId: item.id,
       itemName: item.sub_item || item.title, 
@@ -134,13 +114,9 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
     setIsModalOpen(true);
   };
 
-  // 送出評核 (寫入 Google Sheet)
   const handleSubmitEval = async () => {
     setSubmitting(true);
-    
-    // --- 修正重點：優先使用 userProfile 中的姓名 ---
     const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
-
     const payload = {
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
@@ -151,20 +127,14 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
     };
 
     try {
-      // 使用 text/plain 以避免 CORS 預檢請求失敗 (Google Apps Script 特性)
       await fetch(GAS_API_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8', 
-        },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      
-      // 更新成功後，重新讀取資料以顯示最新狀態
       await fetchPassportData(selectedStudentEmail);
       setIsModalOpen(false);
       alert("評核已儲存！");
-      
     } catch (error) {
       console.error(error);
       alert("儲存失敗，請檢查網路或權限設定");
@@ -176,11 +146,99 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  // --- 新增：處理分層顯示的輔助元件 ---
+  const renderItemRow = (item) => {
+    const record = passportData.records[item.id] || {};
+    const status = record.status; 
+    
+    return (
+      <div key={item.id} className="p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0">
+        <div className="flex-1">
+          <p className="text-sm text-gray-800 font-medium flex items-start gap-2">
+            <span className="mt-1"><div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div></span>
+            {item.sub_item || item.title}
+          </p>
+          {record.teacher && (
+            <p className="text-xs text-green-600 mt-1 ml-3.5 flex items-center gap-1">
+              <UserCheck className="w-3 h-3" />
+              {record.teacher} ({new Date(record.date).toLocaleDateString()})
+              {record.note && <span className="text-gray-400"> - {record.note}</span>}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-3.5 sm:ml-0">
+          {status === 'pass' && (
+            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1 whitespace-nowrap">
+              <CheckCircle2 className="w-3 h-3" /> 合格
+            </span>
+          )}
+          {status === 'improve' && (
+            <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1 whitespace-nowrap">
+              <AlertCircle className="w-3 h-3" /> 再加強
+            </span>
+          )}
+          
+          {userRole === 'teacher' && (
+            <button
+              onClick={() => openEvaluateModal(item)}
+              className="px-3 py-1 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-md text-xs font-bold transition-colors whitespace-nowrap"
+            >
+              {status ? '重評' : '評核'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // --- 新增：分組邏輯 (大分類 -> 小細項) ---
+  const renderGroupContent = (items) => {
+    // 1. 將項目依據 Item_Name (大分類) 分組
+    const groups = {};
+    const groupOrder = []; // 保持順序
+
+    items.forEach(item => {
+      if (!groups[item.title]) {
+        groups[item.title] = [];
+        groupOrder.push(item.title);
+      }
+      groups[item.title].push(item);
+    });
+
+    return groupOrder.map((mainTitle, idx) => {
+      const subItems = groups[mainTitle];
+      
+      // 判斷：如果有 sub_item 或是該大分類下有多個項目，則顯示為「標題 + 列表」
+      // 否則顯示為「單一項目」
+      const hasSubItems = subItems.some(i => i.sub_item);
+      
+      if (hasSubItems || subItems.length > 1) {
+        return (
+          <div key={idx} className="mb-4 last:mb-0">
+            {/* 大分類標題 */}
+            <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 text-sm flex items-center gap-2">
+              <List className="w-4 h-4 text-gray-500" />
+              {mainTitle}
+            </div>
+            {/* 子項目列表 */}
+            <div className="bg-white border-l-4 border-gray-100 ml-0">
+              {subItems.map(item => renderItemRow(item))}
+            </div>
+          </div>
+        );
+      } else {
+        // 單一項目 (沒有細項)
+        return renderItemRow(subItems[0]);
+      }
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-6 md:rounded-xl shadow-sm border border-gray-100">
         
-        {/* Header Area */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-lg">
@@ -194,7 +252,6 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
             </div>
           </div>
 
-          {/* Teacher: Student Selector */}
           {userRole === 'teacher' && (
             <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
               <User className="w-4 h-4 text-gray-400" />
@@ -220,7 +277,6 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
             </div>
           )}
           
-          {/* Student: Show Name */}
           {userRole !== 'teacher' && (
             <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold">
               學員：{userProfile?.displayName || user.displayName}
@@ -228,7 +284,6 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
           )}
         </div>
 
-        {/* 錯誤訊息提示 */}
         {errorMsg && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 rounded text-red-700 text-sm font-bold flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
@@ -236,7 +291,6 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
           </div>
         )}
 
-        {/* Loading State */}
         {loading ? (
           <div className="text-center py-12 text-gray-400 flex flex-col items-center">
             <Loader2 className="w-8 h-8 animate-spin mb-2" />
@@ -246,7 +300,7 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
           <div className="space-y-3">
             {Object.values(groupedItems).map((group) => {
               const isExpanded = expandedGroups[group.id];
-              // 計算該組別完成項目數
+              // 簡單進度計算
               const groupItems = group.items || [];
               const completedCount = groupItems.filter(item => passportData.records[item.id]?.status === 'pass').length;
               const totalCount = groupItems.length;
@@ -268,53 +322,9 @@ const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接�
                   </button>
 
                   {isExpanded && (
-                    <div className="bg-white divide-y divide-gray-100">
-                      {groupItems.map((item) => {
-                        const record = passportData.records[item.id] || {};
-                        const status = record.status; 
-                        
-                        return (
-                          <div key={item.id} className="p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50">
-                            <div className="flex-1">
-                              <p className="text-sm text-gray-800 font-medium">
-                                {item.sub_item || item.title}
-                              </p>
-                              {/* 顯示評核資訊 */}
-                              {record.teacher && (
-                                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                  <UserCheck className="w-3 h-3" />
-                                  {record.teacher} ({new Date(record.date).toLocaleDateString()})
-                                  {record.note && <span className="text-gray-400"> - {record.note}</span>}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* 操作按鈕區 */}
-                            <div className="flex items-center gap-2">
-                              {status === 'pass' && (
-                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3" /> 合格
-                                </span>
-                              )}
-                              {status === 'improve' && (
-                                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" /> 再加強
-                                </span>
-                              )}
-                              
-                              {/* 老師評核按鈕 */}
-                              {userRole === 'teacher' && (
-                                <button
-                                  onClick={() => openEvaluateModal(item)}
-                                  className="px-3 py-1 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-md text-xs font-bold transition-colors"
-                                >
-                                  {status ? '重新評核' : '評核'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="bg-white py-2">
+                      {/* 使用新的分層渲染函式 */}
+                      {renderGroupContent(groupItems)}
                     </div>
                   )}
                 </div>
