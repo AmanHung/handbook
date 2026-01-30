@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase.js';
+// 新增引入 icon
+import { Search, FileText, Paperclip, ExternalLink } from 'lucide-react';
 
 const SOPManager = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +41,9 @@ const SOPManager = () => {
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-        <span className="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3">📄</span>
+        <span className="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3">
+          <FileText className="w-6 h-6" />
+        </span>
         SOP 標準作業程序速查
       </h2>
 
@@ -48,14 +52,16 @@ const SOPManager = () => {
           <input
             type="text"
             placeholder="搜尋 SOP (標題、內容或關鍵字)..."
-            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <span className="absolute left-3 top-3.5 text-gray-400">🔍</span>
+          <span className="absolute left-3 top-3.5 text-gray-400">
+            <Search className="w-5 h-5" />
+          </span>
         </div>
         
-        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
+        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
           {categories.map(cat => (
             <button
               key={cat}
@@ -73,13 +79,14 @@ const SOPManager = () => {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500 flex flex-col items-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
           資料載入中...
         </div>
       ) : filteredSOPs.length > 0 ? (
         <div className="grid gap-4">
           {filteredSOPs.map(sop => (
-            <div key={sop.id} className="border border-gray-100 rounded-xl p-5 hover:shadow-md transition-shadow bg-white group">
+            <div key={sop.id} className="border border-gray-100 rounded-xl p-5 hover:shadow-md transition-shadow bg-white group flex flex-col h-full">
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -98,18 +105,34 @@ const SOPManager = () => {
                 </div>
               </div>
               
-              <div className="text-gray-600 text-sm leading-relaxed mb-4 line-clamp-3">
+              <div className="text-gray-600 text-sm leading-relaxed mb-4 line-clamp-3 whitespace-pre-line">
                 {sop.content}
               </div>
 
-              <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+              {/* 附件連結區塊 (修正重點) */}
+              {sop.attachmentUrl && (
+                <div className="mb-4">
+                  <a 
+                    href={sop.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors w-full sm:w-auto justify-center sm:justify-start"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    查看附件檔案
+                    <ExternalLink className="w-3 h-3 ml-1 opacity-50" />
+                  </a>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-3 border-t border-gray-50 mt-auto">
                 <div className="flex gap-2 flex-wrap">
                   {sop.keywords?.map((k, idx) => (
                     <span key={idx} className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">#{k}</span>
                   ))}
                 </div>
                 <button 
-                  className="text-blue-500 text-sm font-medium hover:underline"
+                  className="text-blue-500 text-sm font-medium hover:underline whitespace-nowrap ml-2"
                   onClick={() => alert(sop.content)}
                 >
                   閱讀全文
