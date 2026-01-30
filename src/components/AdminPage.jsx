@@ -17,7 +17,7 @@ import { Paperclip, ExternalLink, Users, Shield, ShieldAlert, CheckCircle, Crown
 // --- 設定超級管理員 Email ---
 // 請在此處填入您的 Email，這些帳號將擁有最高權限且無法被降級
 const SUPER_ADMIN_EMAILS = [
-  'amanhung0419@gmail.com', // 請確認這是否為您的 Email，若不同請修改
+  'obm0304@gmail.com', // 請確認這是否為您的 Email，若不同請修改
   'admin@example.com'       // 您可以新增多個管理員
 ];
 
