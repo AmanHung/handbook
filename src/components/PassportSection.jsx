@@ -20,7 +20,8 @@ import {
   X,
   List,
   FileText, // 方案 A: 使用文件圖示
-  Circle
+  Circle,
+  Clock // 新增時鐘圖示
 } from 'lucide-react';
 
 // ============================================================================
@@ -33,6 +34,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   
+  // 新增：儲存選中學員的到職日期
+  const [selectedStudentDate, setSelectedStudentDate] = useState(userProfile?.arrivalDate || '');
+
   const [passportData, setPassportData] = useState({ items: [], records: {} });
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -56,8 +60,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         }
       };
       fetchStudents();
+    } else {
+      // 如果是學生，確保到職日期同步
+      if (userProfile?.arrivalDate) {
+        setSelectedStudentDate(userProfile.arrivalDate);
+      }
     }
-  }, [userRole]);
+  }, [userRole, userProfile]);
 
   // 讀取護照資料 (從 GAS)
   const fetchPassportData = async (email) => {
@@ -166,7 +175,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           <p className={`text-sm flex items-start gap-2 ${isMainItem ? 'font-bold text-gray-700' : 'font-medium text-gray-800'}`}>
             <span className="mt-1">
               {isMainItem ? (
-                // 方案 A: 使用 FileText (文件) 圖示
                 <FileText className="w-4 h-4 text-gray-500" />
               ) : (
                 <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />
@@ -228,19 +236,16 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       if (isGroup) {
         return (
           <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-            {/* 灰色標題列 */}
             <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 text-sm flex items-center gap-2">
               <List className="w-4 h-4 text-gray-500" />
               {mainTitle}
             </div>
-            {/* 內容清單 */}
             <div className="bg-white">
               {subItems.map(item => renderItemRow(item, false))}
             </div>
           </div>
         );
       } else {
-        // 獨立大項：移除邊框，樣式與標題列對齊
         return (
            <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
              {renderItemRow(subItems[0], true)}
@@ -254,7 +259,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-6 md:rounded-xl shadow-sm border border-gray-100">
         
-        {/* Header */}
+        {/* Header 區域 */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-lg">
@@ -268,36 +273,58 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             </div>
           </div>
 
-          {userRole === 'teacher' && (
-            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
-              <User className="w-4 h-4 text-gray-400" />
-              <select 
-                value={selectedStudentEmail}
-                onChange={(e) => {
-                  setSelectedStudentEmail(e.target.value);
-                  const s = students.find(s => s.email === e.target.value);
-                  setSelectedStudentName(s?.displayName || e.target.value);
-                }}
-                className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
-              >
-                {students.length > 0 ? (
-                  students.map(s => (
-                    <option key={s.email} value={s.email}>
-                      {s.displayName || s.email}
-                    </option>
-                  ))
-                ) : (
-                  <option disabled>無符合的學員資料</option>
-                )}
-              </select>
-            </div>
-          )}
-          
-          {userRole !== 'teacher' && (
-            <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold">
-              學員：{userProfile?.displayName || user.displayName}
-            </div>
-          )}
+          {/* 右側資訊區 */}
+          <div className="flex flex-col gap-2 items-end">
+            {userRole === 'teacher' && (
+              <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                <User className="w-4 h-4 text-gray-400" />
+                <select 
+                  value={selectedStudentEmail}
+                  onChange={(e) => {
+                    const email = e.target.value;
+                    setSelectedStudentEmail(email);
+                    const s = students.find(stud => stud.email === email);
+                    setSelectedStudentName(s?.displayName || email);
+                    // 同步更新到職日期
+                    setSelectedStudentDate(s?.arrivalDate || '');
+                  }}
+                  className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
+                >
+                  {students.length > 0 ? (
+                    students.map(s => (
+                      <option key={s.email} value={s.email}>
+                        {s.displayName || s.email}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>無符合的學員資料</option>
+                  )}
+                </select>
+              </div>
+            )}
+            
+            {/* 顯示學員姓名 (若非老師模式) */}
+            {userRole !== 'teacher' && (
+              <div className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold flex items-center gap-2">
+                <User className="w-4 h-4" />
+                學員：{userProfile?.displayName || user.displayName}
+              </div>
+            )}
+
+            {/* 顯示到職日期 (所有模式皆顯示) */}
+            {selectedStudentDate && (
+              <div className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5" />
+                到職：{selectedStudentDate}
+              </div>
+            )}
+            {!selectedStudentDate && (
+              <div className="px-4 py-1.5 bg-gray-50 text-gray-400 rounded-lg text-xs font-medium flex items-center gap-2 border border-dashed border-gray-200">
+                <Calendar className="w-3.5 h-3.5" />
+                未設定到職日
+              </div>
+            )}
+          </div>
         </div>
 
         {errorMsg && (
