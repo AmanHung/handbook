@@ -19,9 +19,10 @@ import {
   Save,
   X,
   List,
-  FileText, // 方案 A: 使用文件圖示
+  FileText, 
   Circle,
-  Clock // 新增時鐘圖示
+  Clock, // 新增圖示
+  ArrowRight
 } from 'lucide-react';
 
 // ============================================================================
@@ -33,11 +34,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
-  
-  // 新增：儲存選中學員的到職日期
   const [selectedStudentDate, setSelectedStudentDate] = useState(userProfile?.arrivalDate || '');
 
-  const [passportData, setPassportData] = useState({ items: [], records: {} });
+  // 資料狀態: items(題目), records(成績), periods(訓練期間)
+  const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
+  
+  // 本地編輯狀態 (用於暫存老師修改的日期)
+  const [editPeriods, setEditPeriods] = useState({}); 
+
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
@@ -45,6 +49,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
+  
+  // 儲存期間中的狀態
+  const [savingPeriod, setSavingPeriod] = useState(null);
 
   // 初始化：如果是老師，抓取「僅限學生身分」的名單
   useEffect(() => {
@@ -61,14 +68,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       };
       fetchStudents();
     } else {
-      // 如果是學生，確保到職日期同步
       if (userProfile?.arrivalDate) {
         setSelectedStudentDate(userProfile.arrivalDate);
       }
     }
   }, [userRole, userProfile]);
 
-  // 讀取護照資料 (從 GAS)
+  // 讀取護照資料
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
@@ -85,6 +91,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       if (data.status === 'error') throw new Error(data.message || "讀取資料發生錯誤");
 
       setPassportData(data);
+      // 初始化編輯狀態
+      setEditPeriods(data.periods || {});
+
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
@@ -130,6 +139,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setSubmitting(true);
     const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
     const payload = {
+      type: 'saveEval', // 標記為評核儲存
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
       status: currentEval.status,
@@ -149,16 +159,55 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       alert("評核已儲存！");
     } catch (error) {
       console.error(error);
-      alert("儲存失敗，請檢查網路或權限設定");
+      alert("儲存失敗");
     }
     setSubmitting(false);
+  };
+
+  // 處理日期變更 (本地 State)
+  const handlePeriodChange = (catId, field, value) => {
+    setEditPeriods(prev => ({
+      ...prev,
+      [catId]: {
+        ...prev[catId],
+        [field]: value
+      }
+    }));
+  };
+
+  // 儲存訓練期間 (寫入 GAS)
+  const handleSavePeriod = async (catId) => {
+    setSavingPeriod(catId);
+    const periodData = editPeriods[catId];
+    const teacherDisplayName = userProfile?.displayName || user.displayName;
+
+    const payload = {
+      type: 'savePeriod', // 標記為期間儲存
+      studentEmail: selectedStudentEmail,
+      categoryId: catId,
+      startDate: periodData?.startDate || '',
+      endDate: periodData?.endDate || '',
+      updatedBy: teacherDisplayName
+    };
+
+    try {
+      await fetch(GAS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      // 不用 alert，顯示勾勾或重新讀取即可
+      await fetchPassportData(selectedStudentEmail);
+    } catch (error) {
+      alert("日期儲存失敗");
+    }
+    setSavingPeriod(null);
   };
 
   const toggleGroup = (groupId) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // --- 輔助元件：單一項目列 ---
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
@@ -174,11 +223,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         <div className="flex-1">
           <p className={`text-sm flex items-start gap-2 ${isMainItem ? 'font-bold text-gray-700' : 'font-medium text-gray-800'}`}>
             <span className="mt-1">
-              {isMainItem ? (
-                <FileText className="w-4 h-4 text-gray-500" />
-              ) : (
-                <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />
-              )}
+              {isMainItem ? <FileText className="w-4 h-4 text-gray-500" /> : <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />}
             </span>
             {item.sub_item || item.title}
           </p>
@@ -216,11 +261,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
-  // --- 分組渲染邏輯 ---
   const renderGroupContent = (items) => {
     const groups = {};
     const groupOrder = []; 
-
     items.forEach(item => {
       if (!groups[item.title]) {
         groups[item.title] = [];
@@ -259,7 +302,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-6 md:rounded-xl shadow-sm border border-gray-100">
         
-        {/* Header 區域 */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-lg">
@@ -268,12 +311,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <div>
               <h2 className="text-xl font-bold text-gray-800">新進人員學習護照</h2>
               <p className="text-xs text-gray-500">
-                {userRole === 'teacher' ? '請選擇學員進行考核' : '您的學習進度總覽'}
+                {userRole === 'teacher' ? '請選擇學員進行考核與安排進度' : '您的學習進度與排程'}
               </p>
             </div>
           </div>
 
-          {/* 右側資訊區 */}
           <div className="flex flex-col gap-2 items-end">
             {userRole === 'teacher' && (
               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
@@ -285,7 +327,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                     setSelectedStudentEmail(email);
                     const s = students.find(stud => stud.email === email);
                     setSelectedStudentName(s?.displayName || email);
-                    // 同步更新到職日期
                     setSelectedStudentDate(s?.arrivalDate || '');
                   }}
                   className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
@@ -303,7 +344,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               </div>
             )}
             
-            {/* 顯示學員姓名 (若非老師模式) */}
             {userRole !== 'teacher' && (
               <div className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold flex items-center gap-2">
                 <User className="w-4 h-4" />
@@ -311,14 +351,12 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               </div>
             )}
 
-            {/* 顯示到職日期 (所有模式皆顯示) */}
-            {selectedStudentDate && (
+            {selectedStudentDate ? (
               <div className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5" />
                 到職：{selectedStudentDate}
               </div>
-            )}
-            {!selectedStudentDate && (
+            ) : (
               <div className="px-4 py-1.5 bg-gray-50 text-gray-400 rounded-lg text-xs font-medium flex items-center gap-2 border border-dashed border-gray-200">
                 <Calendar className="w-3.5 h-3.5" />
                 未設定到職日
@@ -340,32 +378,97 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <p>正在同步雲端護照資料...</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {Object.values(groupedItems).map((group) => {
               const isExpanded = expandedGroups[group.id];
               const groupItems = group.items || [];
               const completedCount = groupItems.filter(item => passportData.records[item.id]?.status === 'pass').length;
               const totalCount = groupItems.length;
               const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+              
+              // 取得該組別的起訖日
+              const period = editPeriods[group.id] || { startDate: '', endDate: '' };
+              const isSaving = savingPeriod === group.id;
+              
+              // 檢查是否有變更 (用於顯示儲存按鈕)
+              const originalPeriod = passportData.periods[group.id] || { startDate: '', endDate: '' };
+              const hasChanged = period.startDate !== originalPeriod.startDate || period.endDate !== originalPeriod.endDate;
 
               return (
-                <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                  <button 
-                    onClick={() => toggleGroup(group.id)}
-                    className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-gray-700">{group.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                        {progress}%
-                      </span>
-                    </div>
-                    {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
-                  </button>
+                <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                  {/* 組別 Header */}
+                  <div className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* 左側：標題與折疊按鈕 */}
+                    <button 
+                      onClick={() => toggleGroup(group.id)}
+                      className="flex items-center gap-3 hover:text-indigo-600 transition-colors text-left flex-1"
+                    >
+                      {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
+                      <div>
+                        <span className="font-bold text-gray-700 block sm:inline">{group.title}</span>
+                        <div className="sm:hidden mt-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                            {progress}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="hidden sm:block">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                            {progress}%
+                          </span>
+                      </div>
+                    </button>
 
+                    {/* 右側：日期設定區 (訓練期間) */}
+                    <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm self-start sm:self-auto">
+                      <div className="flex items-center gap-1 text-gray-500 px-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">期間:</span>
+                      </div>
+                      
+                      {userRole === 'teacher' ? (
+                        <>
+                          <input 
+                            type="date" 
+                            className="outline-none text-gray-600 font-medium bg-transparent w-24 sm:w-auto"
+                            value={period.startDate}
+                            onChange={(e) => handlePeriodChange(group.id, 'startDate', e.target.value)}
+                          />
+                          <span className="text-gray-300">➜</span>
+                          <input 
+                            type="date" 
+                            className="outline-none text-gray-600 font-medium bg-transparent w-24 sm:w-auto"
+                            value={period.endDate}
+                            onChange={(e) => handlePeriodChange(group.id, 'endDate', e.target.value)}
+                          />
+                          
+                          {/* 儲存按鈕 (僅在變更時或儲存中顯示) */}
+                          {(hasChanged || isSaving) && (
+                             <button
+                               onClick={() => handleSavePeriod(group.id)}
+                               disabled={isSaving}
+                               className="ml-1 p-1 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-200 transition-colors"
+                               title="儲存日期"
+                             >
+                               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                             </button>
+                          )}
+                        </>
+                      ) : (
+                        // 學生唯讀視角
+                        <div className="flex items-center gap-2 text-gray-600 font-medium px-1">
+                           <span>{period.startDate || '--'}</span>
+                           <ArrowRight className="w-3 h-3 text-gray-400" />
+                           <span>{period.endDate || '--'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 內容區塊 */}
                   {isExpanded && (
-                    <div className="bg-white p-3">
-                      {renderGroupContent(groupItems)}
+                    <div className="bg-white p-3 border-t border-gray-100 animate-in slide-in-from-top-1">
+                      {renderGroupContent(group.items)}
                     </div>
                   )}
                 </div>
