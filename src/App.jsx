@@ -3,6 +3,7 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut, 
+  
   onAuthStateChanged 
 } from 'firebase/auth'
 import { auth, db } from './firebase'
@@ -34,6 +35,13 @@ function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider()
+      
+      // --- 新增：強制每次都顯示帳號選擇畫面 ---
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      })
+      // -------------------------------------
+
       const result = await signInWithPopup(auth, provider)
       console.log("登入成功:", result.user.email);
     } catch (error) {
