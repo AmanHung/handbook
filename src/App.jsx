@@ -183,7 +183,6 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-indigo-100">
-        {/* 修正：手機版 px-3 (12px)，電腦版保持 px-8 */}
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-3">
@@ -365,8 +364,8 @@ function App() {
         </div>
       )}
 
-      {/* 修正：手機版 px-2 (8px)，py-4 (16px)，盡量滿版 */}
-      <main className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
+      {/* 修正：手機版 px-0 (完全無邊距)，電腦版 sm:px-6 保持留白 */}
+      <main className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-8">
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
         {activeTab === 'shift' && <ShiftNavigator />}
