@@ -18,7 +18,9 @@ import {
   User,
   Save,
   X,
-  List // Icon
+  List,
+  Bookmark, // 新增圖示：用於獨立大項
+  Circle    // 新增圖示：用於一般細項
 } from 'lucide-react';
 
 // ============================================================================
@@ -27,7 +29,6 @@ import {
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
 const PassportSection = ({ user, userRole, userProfile }) => {
-  // 狀態管理
   const [students, setStudents] = useState([]);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
@@ -37,7 +38,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [expandedGroups, setExpandedGroups] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // 評核 Modal 狀態
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -62,50 +62,36 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   // 讀取護照資料 (從 GAS)
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
-    
-    // 檢查網址是否已設定
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
-      setErrorMsg("尚未設定 Google Apps Script 網址，請通知管理員修正程式碼。");
+      setErrorMsg("尚未設定 Google Apps Script 網址。");
       return;
     }
-
     if (!email) return;
 
     setLoading(true);
     try {
       const response = await fetch(`${GAS_API_URL}?type=getData&studentEmail=${email}`);
-      
-      // 檢查回應狀態
-      if (!response.ok) {
-        throw new Error(`伺服器回應錯誤: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`伺服器回應錯誤: ${response.status}`);
       const data = await response.json();
-      
-      if (data.status === 'error') {
-        throw new Error(data.message || "讀取資料發生錯誤");
-      }
+      if (data.status === 'error') throw new Error(data.message || "讀取資料發生錯誤");
 
       setPassportData(data);
-      
-      // 預設展開第一個類別
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
       }
     } catch (error) {
       console.error("讀取失敗:", error);
-      setErrorMsg("無法讀取護照資料。請確認：1.網路連線正常 2.Apps Script 部署權限已設為「所有人」");
+      setErrorMsg("無法讀取護照資料，請確認網路或權限設定。");
     }
     setLoading(false);
   };
 
-  // 當選擇的學生改變時，重新抓取資料
   useEffect(() => {
     fetchPassportData(selectedStudentEmail);
   }, [selectedStudentEmail]);
 
-  // 資料處理：將扁平的 items 轉為以 Category 分組的結構
+  // 資料處理
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
     if (!acc[item.category_id]) {
       acc[item.category_id] = {
@@ -118,13 +104,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return acc;
   }, {});
 
-  // 開啟評核視窗
   const openEvaluateModal = (item) => {
     if (userRole !== 'teacher') return;
-    
-    // 預設日期為今天
     const today = new Date().toISOString().split('T')[0];
-    
     setCurrentEval({
       itemId: item.id,
       itemName: item.sub_item || item.title, 
@@ -135,13 +117,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setIsModalOpen(true);
   };
 
-  // 送出評核 (寫入 Google Sheet)
   const handleSubmitEval = async () => {
     setSubmitting(true);
-    
-    // 優先使用 userProfile 中的姓名
     const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
-
     const payload = {
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
@@ -152,20 +130,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     };
 
     try {
-      // 使用 text/plain 以避免 CORS 預檢請求失敗
       await fetch(GAS_API_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8', 
-        },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      
-      // 更新成功後，重新讀取資料以顯示最新狀態
       await fetchPassportData(selectedStudentEmail);
       setIsModalOpen(false);
       alert("評核已儲存！");
-      
     } catch (error) {
       console.error(error);
       alert("儲存失敗，請檢查網路或權限設定");
@@ -177,21 +149,33 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // --- 輔助元件：單一項目列 ---
-  const renderItemRow = (item) => {
+  // --- 輔助元件：單一項目列 (包含樣式區分) ---
+  const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
     
     return (
-      <div key={item.id} className="p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0">
+      <div 
+        key={item.id} 
+        className={`
+          p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0
+          ${isMainItem ? 'bg-white border-l-4 border-l-indigo-400 mb-2 shadow-sm rounded-r-lg' : ''} 
+        `}
+      >
         <div className="flex-1">
-          <p className="text-sm text-gray-800 font-medium flex items-start gap-2">
-            {/* 圓點裝飾，增加層次感 */}
-            <span className="mt-1.5"><div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div></span>
+          <p className={`text-sm text-gray-800 flex items-start gap-2 ${isMainItem ? 'font-bold text-base' : 'font-medium'}`}>
+            {/* 視覺區分：大項目用書籤圖示，細項用圓點 */}
+            <span className="mt-1">
+              {isMainItem ? (
+                <Bookmark className="w-4 h-4 text-indigo-500 fill-indigo-100" />
+              ) : (
+                <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />
+              )}
+            </span>
             {item.sub_item || item.title}
           </p>
           {record.teacher && (
-            <p className="text-xs text-green-600 mt-1 ml-3.5 flex items-center gap-1">
+            <p className="text-xs text-green-600 mt-1 ml-6 flex items-center gap-1">
               <UserCheck className="w-3 h-3" />
               {record.teacher} ({new Date(record.date).toLocaleDateString()})
               {record.note && <span className="text-gray-400"> - {record.note}</span>}
@@ -199,7 +183,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           )}
         </div>
 
-        <div className="flex items-center gap-2 ml-3.5 sm:ml-0">
+        <div className="flex items-center gap-2 ml-6 sm:ml-0">
           {status === 'pass' && (
             <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1 whitespace-nowrap">
               <CheckCircle2 className="w-3 h-3" /> 合格
@@ -224,12 +208,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
-  // --- 修正重點：分組邏輯 ---
-  // 無論是否有子項目，一律都使用「標題列 (Header) + 內容區 (List)」的結構
+  // --- 分組渲染邏輯 (修正版) ---
   const renderGroupContent = (items) => {
     // 1. 將項目依據 Item_Name (大分類) 分組
     const groups = {};
-    const groupOrder = []; // 保持順序
+    const groupOrder = []; 
 
     items.forEach(item => {
       if (!groups[item.title]) {
@@ -242,20 +225,30 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return groupOrder.map((mainTitle, idx) => {
       const subItems = groups[mainTitle];
       
-      // 不做 if 判斷，統一渲染結構
-      return (
-        <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden">
-          {/* 大分類標題 (灰色底) */}
-          <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 text-sm flex items-center gap-2">
-            <List className="w-4 h-4 text-gray-500" />
-            {mainTitle}
+      // 判斷邏輯：
+      // 如果有子項目 (sub_item) 或是同名大類下有多筆 -> 顯示「灰色標題 + 列表」 (Group Style)
+      // 如果只有一筆且沒有子項目 -> 顯示「獨立大項」 (Main Item Style)
+      
+      const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
+      
+      if (isGroup) {
+        return (
+          <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+            {/* 灰色標題列 */}
+            <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 text-sm flex items-center gap-2">
+              <List className="w-4 h-4 text-gray-500" />
+              {mainTitle}
+            </div>
+            {/* 內容清單 */}
+            <div className="bg-white">
+              {subItems.map(item => renderItemRow(item, false))}
+            </div>
           </div>
-          {/* 內容區域 (白色底) */}
-          <div className="bg-white">
-            {subItems.map(item => renderItemRow(item))}
-          </div>
-        </div>
-      );
+        );
+      } else {
+        // 獨立大項：不顯示灰色標題，改用 renderItemRow 的 isMainItem=true 樣式
+        return renderItemRow(subItems[0], true);
+      }
     });
   };
 
@@ -325,7 +318,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           <div className="space-y-3">
             {Object.values(groupedItems).map((group) => {
               const isExpanded = expandedGroups[group.id];
-              // 簡單進度計算
               const groupItems = group.items || [];
               const completedCount = groupItems.filter(item => passportData.records[item.id]?.status === 'pass').length;
               const totalCount = groupItems.length;
@@ -348,7 +340,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
                   {isExpanded && (
                     <div className="bg-white p-3">
-                      {/* 使用新的統一分層渲染函式 */}
                       {renderGroupContent(groupItems)}
                     </div>
                   )}
