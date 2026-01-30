@@ -14,12 +14,11 @@ import {
   Menu,
   X,
   Shield,
-  Search // 新增 Search icon
+  Search 
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
 import ShiftNavigator from './components/ShiftNavigator'
-import SOPManager from './components/SOPManager' // 雖然移除了導覽，但為了相容性先保留引用，或可移除
 import PassportSection from './components/PassportSection'
 import AdminPage from './components/AdminPage'
 import './App.css'
@@ -150,10 +149,9 @@ function App() {
 
             <div className="hidden md:flex items-center gap-1">
               {[
-                { id: 'lookup', label: 'SOP 速查', icon: Search }, // 換成 Search icon
+                { id: 'lookup', label: 'SOP 速查', icon: Search },
                 { id: 'video', label: '影音教學', icon: BookOpen },
                 { id: 'shift', label: '排班表', icon: BookOpen },
-                // 移除 'sop-manage'
                 { id: 'passport', label: '學習護照', icon: UserIcon },
                 // 只有老師看得到後台管理
                 ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
@@ -213,7 +211,6 @@ function App() {
                 { id: 'lookup', label: 'SOP 速查' },
                 { id: 'video', label: '影音教學' },
                 { id: 'shift', label: '排班表' },
-                // 移除 sop-manage
                 { id: 'passport', label: '學習護照' },
                 ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理' }] : []),
               ].map(item => (
@@ -256,7 +253,6 @@ function App() {
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
         {activeTab === 'shift' && <ShiftNavigator />}
-        {/* sop-manage 已經整合到 admin，這裡不再獨立顯示 */}
         {activeTab === 'passport' && (
           <PassportSection 
             user={user} 
