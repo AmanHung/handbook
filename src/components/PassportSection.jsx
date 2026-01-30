@@ -3,7 +3,7 @@ import {
   collection, 
   getDocs,
   query,
-  where // 確保有引入 where
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -20,10 +20,12 @@ import {
   X
 } from 'lucide-react';
 
-// ★★★ 請將此處替換為您的 Google Apps Script 網頁應用程式網址 ★★★
+// ============================================================================
+// ★★★ 已自動填入您的 Google Apps Script 網址 ★★★
+// ============================================================================
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
-const PassportSection = ({ user, userRole }) => {
+const PassportSection = ({ user, userRole, userProfile }) => { // 修正：接收 userProfile
   // 狀態管理
   const [students, setStudents] = useState([]);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
@@ -32,6 +34,7 @@ const PassportSection = ({ user, userRole }) => {
   const [passportData, setPassportData] = useState({ items: [], records: {} });
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [errorMsg, setErrorMsg] = useState(null);
 
   // 評核 Modal 狀態
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,7 +46,6 @@ const PassportSection = ({ user, userRole }) => {
     if (userRole === 'teacher') {
       const fetchStudents = async () => {
         try {
-          // --- 修正重點 1: 加入 where 條件，只抓取 role 為 student 的用戶 ---
           const q = query(collection(db, 'users'), where('role', '==', 'student'));
           const snap = await getDocs(q);
           const list = snap.docs.map(d => d.data());
@@ -58,21 +60,41 @@ const PassportSection = ({ user, userRole }) => {
 
   // 讀取護照資料 (從 GAS)
   const fetchPassportData = async (email) => {
-    if (!email || !GAS_API_URL.startsWith("http")) return;
+    setErrorMsg(null);
+    
+    // 檢查網址是否已設定
+    if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
+      setErrorMsg("尚未設定 Google Apps Script 網址，請通知管理員修正程式碼。");
+      return;
+    }
+
+    if (!email) return;
+
     setLoading(true);
     try {
       const response = await fetch(`${GAS_API_URL}?type=getData&studentEmail=${email}`);
+      
+      // 檢查回應狀態
+      if (!response.ok) {
+        throw new Error(`伺服器回應錯誤: ${response.status}`);
+      }
+
       const data = await response.json();
+      
+      if (data.status === 'error') {
+        throw new Error(data.message || "讀取資料發生錯誤");
+      }
+
       setPassportData(data);
       
       // 預設展開第一個類別
-      if (data.items.length > 0) {
+      if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
       }
     } catch (error) {
       console.error("讀取失敗:", error);
-      alert("無法讀取護照資料，請確認網路或聯絡管理員");
+      setErrorMsg("無法讀取護照資料。請確認：1.網路連線正常 2.Apps Script 部署權限已設為「所有人」");
     }
     setLoading(false);
   };
@@ -83,7 +105,7 @@ const PassportSection = ({ user, userRole }) => {
   }, [selectedStudentEmail]);
 
   // 資料處理：將扁平的 items 轉為以 Category 分組的結構
-  const groupedItems = passportData.items.reduce((acc, item) => {
+  const groupedItems = (passportData.items || []).reduce((acc, item) => {
     if (!acc[item.category_id]) {
       acc[item.category_id] = {
         id: item.category_id,
@@ -116,22 +138,25 @@ const PassportSection = ({ user, userRole }) => {
   const handleSubmitEval = async () => {
     setSubmitting(true);
     
-    // --- 修正重點 2: 使用 user.displayName (老師姓名) ---
-    // 如果系統抓不到 displayName，則回退顯示 Email 的前綴，確保一定有值
-    const teacherDisplayName = user.displayName || user.email.split('@')[0];
+    // --- 修正重點：優先使用 userProfile 中的姓名 ---
+    const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
 
     const payload = {
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
       status: currentEval.status,
       assessDate: currentEval.date,
-      teacherName: teacherDisplayName, // 傳送姓名
+      teacherName: teacherDisplayName,
       note: currentEval.note
     };
 
     try {
+      // 使用 text/plain 以避免 CORS 預檢請求失敗 (Google Apps Script 特性)
       await fetch(GAS_API_URL, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8', 
+        },
         body: JSON.stringify(payload)
       });
       
@@ -142,7 +167,7 @@ const PassportSection = ({ user, userRole }) => {
       
     } catch (error) {
       console.error(error);
-      alert("儲存失敗");
+      alert("儲存失敗，請檢查網路或權限設定");
     }
     setSubmitting(false);
   };
@@ -198,10 +223,18 @@ const PassportSection = ({ user, userRole }) => {
           {/* Student: Show Name */}
           {userRole !== 'teacher' && (
             <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold">
-              學員：{user.displayName}
+              學員：{userProfile?.displayName || user.displayName}
             </div>
           )}
         </div>
+
+        {/* 錯誤訊息提示 */}
+        {errorMsg && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 rounded text-red-700 text-sm font-bold flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {errorMsg}
+          </div>
+        )}
 
         {/* Loading State */}
         {loading ? (
@@ -214,9 +247,10 @@ const PassportSection = ({ user, userRole }) => {
             {Object.values(groupedItems).map((group) => {
               const isExpanded = expandedGroups[group.id];
               // 計算該組別完成項目數
-              const completedCount = group.items.filter(item => passportData.records[item.id]?.status === 'pass').length;
-              const totalCount = group.items.length;
-              const progress = Math.round((completedCount / totalCount) * 100) || 0;
+              const groupItems = group.items || [];
+              const completedCount = groupItems.filter(item => passportData.records[item.id]?.status === 'pass').length;
+              const totalCount = groupItems.length;
+              const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
               return (
                 <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -235,7 +269,7 @@ const PassportSection = ({ user, userRole }) => {
 
                   {isExpanded && (
                     <div className="bg-white divide-y divide-gray-100">
-                      {group.items.map((item) => {
+                      {groupItems.map((item) => {
                         const record = passportData.records[item.id] || {};
                         const status = record.status; 
                         
@@ -245,7 +279,7 @@ const PassportSection = ({ user, userRole }) => {
                               <p className="text-sm text-gray-800 font-medium">
                                 {item.sub_item || item.title}
                               </p>
-                              {/* 顯示評核資訊 (顯示老師姓名) */}
+                              {/* 顯示評核資訊 */}
                               {record.teacher && (
                                 <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                                   <UserCheck className="w-3 h-3" />
@@ -287,9 +321,10 @@ const PassportSection = ({ user, userRole }) => {
               );
             })}
             
-            {Object.keys(groupedItems).length === 0 && (
-              <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg">
-                目前試算表中沒有設定任何項目 (請至 Google Sheet: PassportItems 分頁新增)
+            {!loading && Object.keys(groupedItems).length === 0 && (
+              <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg bg-gray-50">
+                <p className="mb-2">📋 目前護照內容是空的</p>
+                <p className="text-xs">請至 Google 試算表的 <b>PassportItems</b> 分頁新增項目</p>
               </div>
             )}
           </div>
