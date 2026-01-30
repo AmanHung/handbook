@@ -18,9 +18,8 @@ import {
   User,
   Save,
   X,
-  List,
-  Bookmark, // 新增圖示：用於獨立大項
-  Circle    // 新增圖示：用於一般細項
+  List, // 統一使用 List 圖示
+  Circle
 } from 'lucide-react';
 
 // ============================================================================
@@ -149,7 +148,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // --- 輔助元件：單一項目列 (包含樣式區分) ---
+  // --- 輔助元件：單一項目列 ---
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
@@ -159,15 +158,16 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         key={item.id} 
         className={`
           p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0
-          ${isMainItem ? 'bg-white border-l-4 border-l-indigo-400 mb-2 shadow-sm rounded-r-lg' : ''} 
+          ${isMainItem ? 'bg-white' : ''} 
         `}
       >
         <div className="flex-1">
-          <p className={`text-sm text-gray-800 flex items-start gap-2 ${isMainItem ? 'font-bold text-base' : 'font-medium'}`}>
-            {/* 視覺區分：大項目用書籤圖示，細項用圓點 */}
+          {/* 修正：統一文字與圖示樣式 */}
+          <p className={`text-sm flex items-start gap-2 ${isMainItem ? 'font-bold text-gray-700' : 'font-medium text-gray-800'}`}>
             <span className="mt-1">
               {isMainItem ? (
-                <Bookmark className="w-4 h-4 text-indigo-500 fill-indigo-100" />
+                // 統一使用 List 圖示，顏色與標題列的圖示相同 (text-gray-500)
+                <List className="w-4 h-4 text-gray-500" />
               ) : (
                 <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />
               )}
@@ -208,9 +208,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
-  // --- 分組渲染邏輯 (修正版) ---
+  // --- 分組渲染邏輯 ---
   const renderGroupContent = (items) => {
-    // 1. 將項目依據 Item_Name (大分類) 分組
     const groups = {};
     const groupOrder = []; 
 
@@ -224,10 +223,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
     return groupOrder.map((mainTitle, idx) => {
       const subItems = groups[mainTitle];
-      
-      // 判斷邏輯：
-      // 如果有子項目 (sub_item) 或是同名大類下有多筆 -> 顯示「灰色標題 + 列表」 (Group Style)
-      // 如果只有一筆且沒有子項目 -> 顯示「獨立大項」 (Main Item Style)
       
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
       
@@ -246,8 +241,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         );
       } else {
-        // 獨立大項：不顯示灰色標題，改用 renderItemRow 的 isMainItem=true 樣式
-        return renderItemRow(subItems[0], true);
+        // 獨立大項：移除邊框，樣式與標題列對齊 (但可點擊)
+        // 透過 isMainItem=true 來控制 icon 與 font
+        return (
+           <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+             {renderItemRow(subItems[0], true)}
+           </div>
+        );
       }
     });
   };
