@@ -71,42 +71,45 @@ const QuickLookup = () => {
     fetchSettings();
   }, []);
 
-  // --- 修正重點：動態產生分類顏色 ---
+  // --- 修正重點：改用暖色、淺色系 (Pastel Colors) ---
   const getCategoryStyle = (category) => {
-    if (!category) return 'bg-gray-400 text-white';
+    if (!category) return 'bg-gray-100 text-gray-600';
 
-    // 1. 定義常用分類的固定顏色 (保持視覺一致性)
+    // 1. 固定分類顏色 (使用柔和暖色系)
     const fixedColors = {
-      '門診': 'bg-blue-500 text-white',
-      '住院': 'bg-emerald-500 text-white',
-      '行政': 'bg-slate-500 text-white',
-      '臨床': 'bg-rose-500 text-white',
-      '急診': 'bg-orange-500 text-white',
-      '教學': 'bg-purple-500 text-white',
-      '管制藥': 'bg-red-600 text-white',
-      '庫存': 'bg-cyan-600 text-white',
-      '調劑': 'bg-teal-600 text-white',
-      '系統': 'bg-indigo-600 text-white',
-      '公文': 'bg-stone-500 text-white',
+      '門診': 'bg-orange-100 text-orange-800',   // 溫暖橘
+      '住院': 'bg-rose-100 text-rose-800',       // 柔和紅
+      '急診': 'bg-red-100 text-red-800',         // 警示紅 (淺色版)
+      '行政': 'bg-stone-100 text-stone-800',     // 穩重灰褐
+      '臨床': 'bg-amber-100 text-amber-800',     // 琥珀黃
+      '教學': 'bg-yellow-100 text-yellow-800',   // 明亮黃
+      '管制藥': 'bg-pink-100 text-pink-800',     // 顯眼粉
+      '庫存': 'bg-lime-100 text-lime-800',       // 淺萊姆綠 (偏暖綠)
+      '調劑': 'bg-emerald-100 text-emerald-800', // 淺綠
+      '公文': 'bg-warmGray-100 text-warmGray-800',
     };
 
     if (fixedColors[category]) {
       return fixedColors[category];
     }
 
-    // 2. 其他新分類：動態分配顏色
-    // 定義一個顏色庫
+    // 2. 動態分類顏色庫 (擴充至 12 種，皆為淺底深字)
     const dynamicColors = [
-      'bg-pink-500 text-white',
-      'bg-lime-600 text-white',
-      'bg-fuchsia-600 text-white',
-      'bg-violet-600 text-white',
-      'bg-sky-500 text-white',
-      'bg-amber-500 text-white',
-      'bg-yellow-600 text-white',
+      'bg-orange-200 text-orange-900',
+      'bg-amber-200 text-amber-900',
+      'bg-yellow-200 text-yellow-900',
+      'bg-rose-200 text-rose-900',
+      'bg-pink-200 text-pink-900',
+      'bg-red-200 text-red-900',
+      'bg-stone-200 text-stone-900',
+      'bg-lime-200 text-lime-900',
+      'bg-fuchsia-100 text-fuchsia-800', // 紫紅色 (偏暖紫)
+      'bg-violet-100 text-violet-800',
+      'bg-indigo-100 text-indigo-800',
+      'bg-teal-100 text-teal-800', 
     ];
 
-    // 簡單的雜湊算法：將字串轉為數字，對顏色數量取餘數
+    // 雜湊算法 (確保同一分類永遠拿到同一種顏色)
     let hash = 0;
     for (let i = 0; i < category.length; i++) {
       hash = category.charCodeAt(i) + ((hash << 5) - hash);
@@ -136,7 +139,7 @@ const QuickLookup = () => {
       {/* 搜尋區塊 */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <Search className="w-6 h-6 text-indigo-600" />
+          <Search className="w-6 h-6 text-orange-500" /> {/* Icon 改為暖橘色 */}
           關鍵字查詢
         </h2>
         <div className="relative mb-4">
@@ -146,7 +149,7 @@ const QuickLookup = () => {
             placeholder="請輸入關鍵字：分機、SOP 名稱..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-inner"
+            className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-lg shadow-inner"
           />
         </div>
         
@@ -157,7 +160,7 @@ const QuickLookup = () => {
             <button
               key={`${keyword}-${idx}`}
               onClick={() => setSearchTerm(keyword)}
-              className="px-3 py-1 bg-gray-100 hover:bg-indigo-100 text-gray-600 hover:text-indigo-600 rounded-full text-xs transition-colors border border-gray-200"
+              className="px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:text-orange-900 rounded-full text-xs transition-colors border border-orange-100"
             >
               {keyword}
             </button>
@@ -165,7 +168,7 @@ const QuickLookup = () => {
           {searchTerm && (
             <button 
               onClick={() => setSearchTerm('')}
-              className="px-3 py-1 bg-red-50 text-red-500 hover:bg-red-100 rounded-full text-xs transition-colors border border-red-100 ml-auto"
+              className="px-3 py-1 bg-gray-100 text-gray-500 hover:bg-gray-200 rounded-full text-xs transition-colors border border-gray-200 ml-auto"
             >
               清除
             </button>
@@ -179,7 +182,7 @@ const QuickLookup = () => {
           onClick={() => setActiveTab('sop')}
           className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative top-[1px] rounded-t-lg ${
             activeTab === 'sop' 
-              ? 'text-indigo-600 bg-indigo-50 border-x border-t border-indigo-100' 
+              ? 'text-orange-600 bg-orange-50 border-x border-t border-orange-100' 
               : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
@@ -223,20 +226,20 @@ const QuickLookup = () => {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
                     }}
-                    className="group relative bg-white p-5 rounded-xl border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
+                    className="group relative bg-white p-5 rounded-xl border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
                   >
-                    {/* 左上角分類標籤 */}
+                    {/* 左上角分類標籤 (使用新版配色) */}
                     <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
                       {sop.category || '未分類'}
                     </div>
 
                     <div className="mt-6 flex items-start justify-between">
-                      <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 leading-snug line-clamp-2">
+                      <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
                         {sop.title}
                       </h4>
                       
                       {/* 狀態圖示 */}
-                      <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-indigo-500">
+                      <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-orange-500">
                         {sop.content ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
                       </div>
                     </div>
@@ -244,7 +247,7 @@ const QuickLookup = () => {
                     {/* 底部資訊列：顯示附件圖示 */}
                     <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
                       {sop.attachmentUrl && (
-                        <span className="flex items-center gap-1 text-indigo-500 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
+                        <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
                           <Paperclip className="w-3 h-3" /> 包含附件
                         </span>
                       )}
@@ -298,7 +301,7 @@ const QuickLookup = () => {
             </div>
 
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                <span className={`text-xs px-2 py-1 rounded text-white ${getCategoryStyle(selectedSop.category)}`}>
+                <span className={`text-xs px-2 py-1 rounded ${getCategoryStyle(selectedSop.category)}`}>
                     {selectedSop.category}
                 </span>
                 
@@ -309,7 +312,7 @@ const QuickLookup = () => {
                             href={selectedSop.attachmentUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-sm hover:bg-indigo-100 transition-colors flex items-center gap-1 font-medium"
+                            className="px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-sm hover:bg-orange-100 transition-colors flex items-center gap-1 font-medium"
                         >
                             <ExternalLink className="w-4 h-4" /> 下載/開啟附件
                         </a>
