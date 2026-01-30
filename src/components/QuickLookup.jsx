@@ -5,9 +5,7 @@ import {
   Phone, 
   ExternalLink,
   BookOpen,
-  Link as LinkIcon,
   X,
-  Tag,
   Paperclip
 } from 'lucide-react';
 import { db } from '../firebase';
@@ -21,7 +19,12 @@ const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('sop'); 
   
-  const [sops, setSops] = useState(localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })));
+  // 初始化資料 (支援本地+Firebase)
+  const [sops, setSops] = useState(
+    Array.isArray(localSopData) 
+      ? localSopData.map(item => ({ ...item, source: 'local', id: `local_${item.id}` })) 
+      : []
+  );
   const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS);
   const [loading, setLoading] = useState(true);
   
@@ -48,11 +51,10 @@ const QuickLookup = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. 讀取常用關鍵字 (修正路徑)
+  // 2. 讀取常用關鍵字
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        // 路徑修正：site_settings > sop_config
         const docRef = doc(db, "site_settings", "sop_config");
         const docSnap = await getDoc(docRef);
 
@@ -69,7 +71,7 @@ const QuickLookup = () => {
     fetchSettings();
   }, []);
 
-  // 取得分類對應的顏色樣式 (支援動態分類)
+  // 取得分類對應的顏色樣式
   const getCategoryStyle = (category) => {
     const map = {
       '門診': 'bg-blue-500 text-white',
@@ -79,7 +81,7 @@ const QuickLookup = () => {
       '急診': 'bg-orange-500 text-white',
       '教學': 'bg-purple-500 text-white',
     };
-    return map[category] || 'bg-indigo-500 text-white'; // 預設顏色
+    return map[category] || 'bg-indigo-500 text-white';
   };
 
   // 搜尋與排序邏輯
@@ -180,10 +182,11 @@ const QuickLookup = () => {
                   <div
                     key={sop.id}
                     onClick={() => {
+                      // 修正：使用 attachmentUrl 判斷
                       if (sop.content && sop.content.trim() !== '') {
                         setSelectedSop(sop);
-                      } else if (sop.link && sop.link !== '#') {
-                        window.open(sop.link, '_blank');
+                      } else if (sop.attachmentUrl) {
+                        window.open(sop.attachmentUrl, '_blank');
                       } else {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
@@ -206,9 +209,9 @@ const QuickLookup = () => {
                       </div>
                     </div>
 
-                    {/* 底部資訊列 (移除來源顯示，強調附件) */}
+                    {/* 底部資訊列：顯示附件圖示 */}
                     <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
-                      {sop.link && sop.link !== '#' && (
+                      {sop.attachmentUrl && (
                         <span className="flex items-center gap-1 text-indigo-500 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
                           <Paperclip className="w-3 h-3" /> 包含附件
                         </span>
@@ -268,10 +271,10 @@ const QuickLookup = () => {
                 </span>
                 
                 <div className="flex gap-2">
-                    {/* 下載連結按鈕 */}
-                    {selectedSop.link && selectedSop.link !== '#' && (
+                    {/* 下載連結按鈕 (修正：使用 attachmentUrl) */}
+                    {selectedSop.attachmentUrl && (
                         <a 
-                            href={selectedSop.link} 
+                            href={selectedSop.attachmentUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-sm hover:bg-indigo-100 transition-colors flex items-center gap-1 font-medium"
