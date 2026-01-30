@@ -21,7 +21,7 @@ import {
   List,
   FileText, 
   Circle,
-  Clock, // 新增圖示
+  Clock, 
   ArrowRight
 } from 'lucide-react';
 
@@ -34,7 +34,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
-  const [selectedStudentDate, setSelectedStudentDate] = useState(userProfile?.arrivalDate || '');
+  const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
   // 資料狀態: items(題目), records(成績), periods(訓練期間)
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
@@ -49,11 +49,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
-  
-  // 儲存期間中的狀態
   const [savingPeriod, setSavingPeriod] = useState(null);
 
-  // 初始化：如果是老師，抓取「僅限學生身分」的名單
+  // 1. 初始化學員名單 (僅限老師)
   useEffect(() => {
     if (userRole === 'teacher') {
       const fetchStudents = async () => {
@@ -67,14 +65,28 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         }
       };
       fetchStudents();
-    } else {
-      if (userProfile?.arrivalDate) {
-        setSelectedStudentDate(userProfile.arrivalDate);
-      }
     }
-  }, [userRole, userProfile]);
+  }, [userRole]);
 
-  // 讀取護照資料
+  // 2. 修正重點：自動同步「到職日期」與「學員姓名」
+  // 無論是剛載入還是切換選單，只要 selectedStudentEmail 或 students 變動，就重新查找資料
+  useEffect(() => {
+    if (userRole === 'teacher') {
+      if (students.length > 0 && selectedStudentEmail) {
+        const s = students.find(stud => stud.email === selectedStudentEmail);
+        if (s) {
+          setSelectedStudentName(s.displayName || s.email);
+          setSelectedStudentDate(s.arrivalDate || '');
+        }
+      }
+    } else {
+      // 學生身分：直接讀取自己的 Profile
+      setSelectedStudentName(userProfile?.displayName || user.displayName);
+      setSelectedStudentDate(userProfile?.arrivalDate || '');
+    }
+  }, [selectedStudentEmail, students, userRole, userProfile, user]);
+
+  // 3. 讀取護照資料 (API)
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
@@ -91,7 +103,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       if (data.status === 'error') throw new Error(data.message || "讀取資料發生錯誤");
 
       setPassportData(data);
-      // 初始化編輯狀態
+      // 將伺服器抓到的日期同步到編輯狀態，確保老師看到的是最新值
       setEditPeriods(data.periods || {});
 
       if (data.items && data.items.length > 0) {
@@ -105,11 +117,12 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setLoading(false);
   };
 
+  // 當選擇的 email 改變時，重新抓取護照資料
   useEffect(() => {
     fetchPassportData(selectedStudentEmail);
   }, [selectedStudentEmail]);
 
-  // 資料處理
+  // 資料分組處理
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
     if (!acc[item.category_id]) {
       acc[item.category_id] = {
@@ -139,7 +152,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setSubmitting(true);
     const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
     const payload = {
-      type: 'saveEval', // 標記為評核儲存
+      type: 'saveEval',
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
       status: currentEval.status,
@@ -164,7 +177,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setSubmitting(false);
   };
 
-  // 處理日期變更 (本地 State)
   const handlePeriodChange = (catId, field, value) => {
     setEditPeriods(prev => ({
       ...prev,
@@ -175,14 +187,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }));
   };
 
-  // 儲存訓練期間 (寫入 GAS)
   const handleSavePeriod = async (catId) => {
     setSavingPeriod(catId);
     const periodData = editPeriods[catId];
     const teacherDisplayName = userProfile?.displayName || user.displayName;
 
     const payload = {
-      type: 'savePeriod', // 標記為期間儲存
+      type: 'savePeriod',
       studentEmail: selectedStudentEmail,
       categoryId: catId,
       startDate: periodData?.startDate || '',
@@ -196,7 +207,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      // 不用 alert，顯示勾勾或重新讀取即可
       await fetchPassportData(selectedStudentEmail);
     } catch (error) {
       alert("日期儲存失敗");
@@ -322,13 +332,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <User className="w-4 h-4 text-gray-400" />
                 <select 
                   value={selectedStudentEmail}
-                  onChange={(e) => {
-                    const email = e.target.value;
-                    setSelectedStudentEmail(email);
-                    const s = students.find(stud => stud.email === email);
-                    setSelectedStudentName(s?.displayName || email);
-                    setSelectedStudentDate(s?.arrivalDate || '');
-                  }}
+                  onChange={(e) => setSelectedStudentEmail(e.target.value)}
                   className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
                 >
                   {students.length > 0 ? (
@@ -347,7 +351,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             {userRole !== 'teacher' && (
               <div className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold flex items-center gap-2">
                 <User className="w-4 h-4" />
-                學員：{userProfile?.displayName || user.displayName}
+                學員：{selectedStudentName}
               </div>
             )}
 
@@ -386,19 +390,19 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               const totalCount = groupItems.length;
               const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
               
-              // 取得該組別的起訖日
-              const period = editPeriods[group.id] || { startDate: '', endDate: '' };
+              // 修正重點：分離顯示資料(serverPeriod) 與 編輯資料(editPeriod)
+              const serverPeriod = passportData.periods[group.id] || { startDate: '', endDate: '' };
+              const editPeriod = editPeriods[group.id] || serverPeriod;
+              
               const isSaving = savingPeriod === group.id;
               
-              // 檢查是否有變更 (用於顯示儲存按鈕)
-              const originalPeriod = passportData.periods[group.id] || { startDate: '', endDate: '' };
-              const hasChanged = period.startDate !== originalPeriod.startDate || period.endDate !== originalPeriod.endDate;
+              // 檢查是否有變更
+              const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
 
               return (
                 <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                   {/* 組別 Header */}
                   <div className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    {/* 左側：標題與折疊按鈕 */}
                     <button 
                       onClick={() => toggleGroup(group.id)}
                       className="flex items-center gap-3 hover:text-indigo-600 transition-colors text-left flex-1"
@@ -419,7 +423,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                       </div>
                     </button>
 
-                    {/* 右側：日期設定區 (訓練期間) */}
+                    {/* 日期顯示區 */}
                     <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm self-start sm:self-auto">
                       <div className="flex items-center gap-1 text-gray-500 px-1">
                         <Clock className="w-3.5 h-3.5" />
@@ -431,18 +435,17 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           <input 
                             type="date" 
                             className="outline-none text-gray-600 font-medium bg-transparent w-24 sm:w-auto"
-                            value={period.startDate}
+                            value={editPeriod.startDate || ''}
                             onChange={(e) => handlePeriodChange(group.id, 'startDate', e.target.value)}
                           />
                           <span className="text-gray-300">➜</span>
                           <input 
                             type="date" 
                             className="outline-none text-gray-600 font-medium bg-transparent w-24 sm:w-auto"
-                            value={period.endDate}
+                            value={editPeriod.endDate || ''}
                             onChange={(e) => handlePeriodChange(group.id, 'endDate', e.target.value)}
                           />
                           
-                          {/* 儲存按鈕 (僅在變更時或儲存中顯示) */}
                           {(hasChanged || isSaving) && (
                              <button
                                onClick={() => handleSavePeriod(group.id)}
@@ -455,17 +458,16 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           )}
                         </>
                       ) : (
-                        // 學生唯讀視角
+                        // 修正重點：學生直接讀取伺服器回傳的 serverPeriod，確保看得到
                         <div className="flex items-center gap-2 text-gray-600 font-medium px-1">
-                           <span>{period.startDate || '--'}</span>
+                           <span>{serverPeriod.startDate || '--'}</span>
                            <ArrowRight className="w-3 h-3 text-gray-400" />
-                           <span>{period.endDate || '--'}</span>
+                           <span>{serverPeriod.endDate || '--'}</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* 內容區塊 */}
                   {isExpanded && (
                     <div className="bg-white p-3 border-t border-gray-100 animate-in slide-in-from-top-1">
                       {renderGroupContent(group.items)}
