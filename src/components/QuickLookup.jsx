@@ -71,18 +71,51 @@ const QuickLookup = () => {
     fetchSettings();
   }, []);
 
-  // 取得分類對應的顏色樣式
+  // --- 修正重點：動態產生分類顏色 ---
   const getCategoryStyle = (category) => {
-    const map = {
+    if (!category) return 'bg-gray-400 text-white';
+
+    // 1. 定義常用分類的固定顏色 (保持視覺一致性)
+    const fixedColors = {
       '門診': 'bg-blue-500 text-white',
       '住院': 'bg-emerald-500 text-white',
       '行政': 'bg-slate-500 text-white',
       '臨床': 'bg-rose-500 text-white',
       '急診': 'bg-orange-500 text-white',
       '教學': 'bg-purple-500 text-white',
+      '管制藥': 'bg-red-600 text-white',
+      '庫存': 'bg-cyan-600 text-white',
+      '調劑': 'bg-teal-600 text-white',
+      '系統': 'bg-indigo-600 text-white',
+      '公文': 'bg-stone-500 text-white',
     };
-    return map[category] || 'bg-indigo-500 text-white';
+
+    if (fixedColors[category]) {
+      return fixedColors[category];
+    }
+
+    // 2. 其他新分類：動態分配顏色
+    // 定義一個顏色庫
+    const dynamicColors = [
+      'bg-pink-500 text-white',
+      'bg-lime-600 text-white',
+      'bg-fuchsia-600 text-white',
+      'bg-violet-600 text-white',
+      'bg-sky-500 text-white',
+      'bg-amber-500 text-white',
+      'bg-yellow-600 text-white',
+    ];
+
+    // 簡單的雜湊算法：將字串轉為數字，對顏色數量取餘數
+    let hash = 0;
+    for (let i = 0; i < category.length; i++) {
+      hash = category.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % dynamicColors.length;
+
+    return dynamicColors[index];
   };
+  // ------------------------------------
 
   // 搜尋與排序邏輯
   const filteredExtensions = EXTENSION_DATA.filter(item => 
@@ -182,7 +215,6 @@ const QuickLookup = () => {
                   <div
                     key={sop.id}
                     onClick={() => {
-                      // 修正：使用 attachmentUrl 判斷
                       if (sop.content && sop.content.trim() !== '') {
                         setSelectedSop(sop);
                       } else if (sop.attachmentUrl) {
@@ -271,7 +303,7 @@ const QuickLookup = () => {
                 </span>
                 
                 <div className="flex gap-2">
-                    {/* 下載連結按鈕 (修正：使用 attachmentUrl) */}
+                    {/* 下載連結按鈕 */}
                     {selectedSop.attachmentUrl && (
                         <a 
                             href={selectedSop.attachmentUrl} 
