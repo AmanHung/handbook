@@ -18,7 +18,7 @@ import AdminUploader from './AdminUploader.jsx';
 import { sopData } from '../data/sopData.jsx'; 
 import { trainingData } from '../data/trainingData.jsx';
 
-const AdminPage = () => {
+const AdminPage = ({ user }) => {
   const [activeTab, setActiveTab] = useState('resources'); // resources | settings | migration
   
   // 資料狀態
@@ -98,7 +98,6 @@ const AdminPage = () => {
   };
 
   // 處理參數設定更新
-  // field: 'quickKeywords' 或 'categories'
   const updateSettingArray = async (field, action, value) => {
     if (!value.trim()) return;
     const docRef = doc(db, 'site_settings', 'sop_config');
@@ -128,9 +127,8 @@ const AdminPage = () => {
     let count = 0;
 
     try {
-      // 1. 匯入 SOPs -> sop_articles
+      // 1. 匯入 SOPs
       const sopsToImport = Array.isArray(sopData) ? sopData : []; 
-      
       sopsToImport.forEach(item => {
         const docRef = doc(collection(db, 'sop_articles'));
         batch.set(docRef, {
@@ -144,7 +142,7 @@ const AdminPage = () => {
         count++;
       });
 
-      // 2. 匯入 Videos -> training_videos
+      // 2. 匯入 Videos
       const videoList = [];
       if (Array.isArray(trainingData)) {
         trainingData.forEach(catGroup => {
@@ -246,13 +244,15 @@ const AdminPage = () => {
         {/* --- TAB 1: 資源管理 --- */}
         {activeTab === 'resources' && (
           <div className="space-y-8">
+            {/* 修正重點：將 settings 傳入子元件，確保同步 */}
             <AdminUploader 
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
               onSuccess={() => setEditingItem(null)}
+              settings={settings}
             />
 
-            {/* SOP 列表 (集合: sop_articles) */}
+            {/* SOP 列表 */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
                 <h3 className="font-bold text-blue-800 flex items-center">
@@ -293,7 +293,7 @@ const AdminPage = () => {
               </div>
             </div>
 
-            {/* Video 列表 (集合: training_videos) */}
+            {/* Video 列表 */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
                 <h3 className="font-bold text-purple-800 flex items-center">
@@ -333,7 +333,7 @@ const AdminPage = () => {
         {/* --- TAB 2: 參數設定 --- */}
         {activeTab === 'settings' && (
           <div className="grid md:grid-cols-2 gap-8">
-            {/* 常用關鍵字 (quickKeywords) */}
+            {/* 常用關鍵字 */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
               <div className="flex gap-2 mb-6">
@@ -353,7 +353,7 @@ const AdminPage = () => {
               </div>
             </div>
 
-            {/* 分類標籤 (categories) */}
+            {/* 分類標籤 */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
               <div className="flex gap-2 mb-6">
