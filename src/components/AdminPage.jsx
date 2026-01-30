@@ -12,17 +12,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
-import { Paperclip, ExternalLink, Users, Shield, ShieldAlert, CheckCircle, Crown } from 'lucide-react';
+import { Paperclip, ExternalLink, Users, Shield, ShieldAlert, Crown, Edit, Calendar, Save, X } from 'lucide-react';
 
 // --- 設定超級管理員 Email ---
-// 請在此處填入您的 Email，這些帳號將擁有最高權限且無法被降級
 const SUPER_ADMIN_EMAILS = [
-  'obm0304@gmail.com', // 請確認這是否為您的 Email，若不同請修改
-  'admin@example.com'       // 您可以新增多個管理員
+  'amanhung0419@gmail.com', 
+  'admin@example.com'
 ];
 
 const AdminPage = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('resources'); // resources | settings
+  const [activeTab, setActiveTab] = useState('resources'); 
   
   // 資料狀態
   const [sops, setSops] = useState([]);
@@ -30,11 +29,13 @@ const AdminPage = ({ user }) => {
   const [usersList, setUsersList] = useState([]); 
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
-  // 錯誤狀態
+  // 錯誤與編輯狀態
   const [error, setError] = useState(null);
-
-  // 編輯狀態
-  const [editingItem, setEditingItem] = useState(null);
+  const [editingItem, setEditingItem] = useState(null); // SOP/Video 編輯
+  
+  // 用戶編輯狀態
+  const [editingUser, setEditingUser] = useState(null); // User 編輯
+  const [userForm, setUserForm] = useState({ displayName: '', arrivalDate: '', role: 'student' });
 
   // 輸入狀態 (用於設定頁面)
   const [newKeyword, setNewKeyword] = useState('');
@@ -45,7 +46,7 @@ const AdminPage = ({ user }) => {
     const unsubscribe = onSnapshot(collection(db, 'sop_articles'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSops(list);
-    }, (err) => console.error("SOP 讀取錯誤:", err));
+    });
     return () => unsubscribe();
   }, []);
 
@@ -54,7 +55,7 @@ const AdminPage = ({ user }) => {
     const unsubscribe = onSnapshot(collection(db, 'training_videos'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setVideos(list);
-    }, (err) => console.error("影片讀取錯誤:", err));
+    });
     return () => unsubscribe();
   }, []);
 
@@ -80,64 +81,68 @@ const AdminPage = ({ user }) => {
     return () => unsubscribe();
   }, []);
 
-  // 處理刪除資源
+  // 處理資源刪除/編輯 (SOP/Video)
   const handleDeleteResource = async (collectionName, id) => {
-    if (window.confirm('確定要刪除此項目嗎？此動作無法復原。')) {
+    if (window.confirm('確定要刪除此項目嗎？')) {
       try {
         await deleteDoc(doc(db, collectionName, id));
         if (editingItem && editingItem.id === id) setEditingItem(null);
-      } catch (error) {
-        alert('刪除失敗');
-      }
+      } catch (error) { alert('刪除失敗'); }
     }
   };
-
-  // 處理進入編輯模式
   const handleEditResource = (item, type) => {
     setEditingItem({ ...item, type });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 處理參數設定更新
+  // 處理參數設定
   const updateSettingArray = async (field, action, value) => {
     if (!value.trim()) return;
     const docRef = doc(db, 'site_settings', 'sop_config');
     try {
       if (action === 'add') {
-        if (settings[field]?.includes(value)) {
-          alert('此項目已存在');
-          return;
-        }
+        if (settings[field]?.includes(value)) return alert('已存在');
         await updateDoc(docRef, { [field]: arrayUnion(value) });
       } else if (action === 'remove') {
-        if (window.confirm(`確定要移除 "${value}" 嗎？`)) {
-          await updateDoc(docRef, { [field]: arrayRemove(value) });
-        }
+        if (window.confirm(`確定移除 "${value}"?`)) await updateDoc(docRef, { [field]: arrayRemove(value) });
       }
-    } catch (error) {
-      alert('更新設定失敗: ' + error.message);
-    }
+    } catch (error) { alert('更新失敗'); }
   };
 
-  // 切換用戶身分
-  const toggleUserRole = async (targetUserId, currentRole, targetEmail) => {
-    // 保護機制：超級管理員不能被降級
-    if (SUPER_ADMIN_EMAILS.includes(targetEmail)) {
-      alert("此帳號為超級管理員，無法變更權限。");
-      return;
+  // --- 用戶管理功能 ---
+
+  // 開啟編輯用戶 Modal
+  const openEditUser = (u) => {
+    setEditingUser(u);
+    setUserForm({
+      displayName: u.displayName || '',
+      arrivalDate: u.arrivalDate || '',
+      role: u.role || 'student'
+    });
+  };
+
+  // 儲存用戶資料
+  const handleSaveUser = async (e) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    // 超級管理員保護
+    if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'teacher') {
+       alert("超級管理員必須保留指導藥師(或更高)權限");
+       return;
     }
 
-    const newRole = currentRole === 'teacher' ? 'student' : 'teacher';
-    const roleName = newRole === 'teacher' ? '指導藥師' : 'PGY 學員';
-    
-    // 再次確認
-    if (window.confirm(`確定要將此用戶身分更改為「${roleName}」嗎？\n(更改後可隨時再次調整)`)) {
-      try {
-        await updateDoc(doc(db, 'users', targetUserId), { role: newRole });
-      } catch (error) {
-        console.error("更新身分失敗:", error);
-        alert("更新失敗，請檢查權限");
-      }
+    try {
+      await updateDoc(doc(db, 'users', editingUser.id), {
+        displayName: userForm.displayName,
+        arrivalDate: userForm.arrivalDate,
+        role: userForm.role
+      });
+      setEditingUser(null);
+      alert("用戶資料已更新");
+    } catch (error) {
+      console.error(error);
+      alert("更新失敗");
     }
   };
 
@@ -150,37 +155,18 @@ const AdminPage = ({ user }) => {
           <div>
             <h1 className="text-2xl font-bold text-gray-800">藥局後台管理系統</h1>
             <p className="text-gray-500 text-sm mt-1">
-              目前資料庫狀態：{sops.length} 份 SOP, {videos.length} 部影片
+              目前資料庫狀態：{sops.length} 份 SOP, {videos.length} 部影片, {usersList.length} 位用戶
             </p>
           </div>
           <div className="space-x-2">
-            <button
-              onClick={() => setActiveTab('resources')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              資源管理
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              參數設定
-            </button>
+            <button onClick={() => setActiveTab('resources')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>資源管理</button>
+            <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>參數與人員</button>
           </div>
         </div>
 
-        {/* 錯誤提示 */}
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold">
-            {error}
-          </div>
-        )}
+        {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold">{error}</div>}
 
-        {/* --- TAB 1: 資源管理 --- */}
+        {/* TAB 1: 資源管理 */}
         {activeTab === 'resources' && (
           <div className="space-y-8">
             <AdminUploader 
@@ -189,137 +175,84 @@ const AdminPage = ({ user }) => {
               onSuccess={() => setEditingItem(null)}
               settings={settings}
             />
-
-            {/* SOP 列表 */}
+            {/* ... SOP List ... */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
-                <h3 className="font-bold text-blue-800 flex items-center">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                  SOP 文件 ({sops.length})
-                </h3>
-              </div>
-              <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 uppercase sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3">標題</th>
-                      <th className="px-6 py-3">分類</th>
-                      <th className="px-6 py-3">附件</th>
-                      <th className="px-6 py-3">更新時間</th>
-                      <th className="px-6 py-3 text-right">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {sops.map((sop) => (
-                      <tr key={sop.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-gray-900">
-                          {sop.title}
-                          <div className="flex gap-1 mt-1">
-                            {sop.keywords?.map((k, i) => (
-                              <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded">#{k}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                            {sop.category}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {sop.attachmentUrl ? (
-                            <a href={sop.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 flex items-center gap-1">
-                              <Paperclip className="w-4 h-4" /> 連結
-                            </a>
-                          ) : '-'}
-                        </td>
-                        <td className="px-6 py-4 text-gray-400 text-xs">
-                          {sop.updatedAt?.seconds ? new Date(sop.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 text-right space-x-2">
-                          <button onClick={() => handleEditResource(sop, 'sop')} className="text-indigo-600 hover:text-indigo-900 font-medium">編輯</button>
-                          <button onClick={() => handleDeleteResource('sop_articles', sop.id)} className="text-red-600 hover:text-red-900 font-medium">刪除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+               <div className="px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
+                <h3 className="font-bold text-blue-800">SOP 文件 ({sops.length})</h3>
+               </div>
+               <div className="overflow-x-auto max-h-96">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-50 sticky top-0">
+                     <tr><th className="px-6 py-3">標題</th><th className="px-6 py-3">分類</th><th className="px-6 py-3">附件</th><th className="px-6 py-3 text-right">操作</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {sops.map(s => (
+                       <tr key={s.id} className="hover:bg-gray-50">
+                         <td className="px-6 py-4">{s.title}</td>
+                         <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">{s.category}</span></td>
+                         <td className="px-6 py-4">{s.attachmentUrl ? <a href={s.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 flex items-center gap-1"><Paperclip className="w-3 h-3"/>連結</a> : '-'}</td>
+                         <td className="px-6 py-4 text-right space-x-2">
+                           <button onClick={() => handleEditResource(s, 'sop')} className="text-indigo-600 font-medium">編輯</button>
+                           <button onClick={() => handleDeleteResource('sop_articles', s.id)} className="text-red-600 font-medium">刪除</button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
             </div>
-
-            {/* Video 列表 */}
+            
+            {/* ... Video List ... */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
-                <h3 className="font-bold text-purple-800 flex items-center">
-                  <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                  教學影片 ({videos.length})
-                </h3>
-              </div>
-              <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 uppercase sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3">影片標題</th>
-                      <th className="px-6 py-3">分類</th>
-                      <th className="px-6 py-3 text-right">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {videos.map((vid) => (
-                      <tr key={vid.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 font-medium text-gray-900">
-                          {vid.title}
-                          <a href={vid.url} target="_blank" rel="noreferrer" className="ml-2 text-gray-400 hover:text-purple-600 inline-block">
-                             <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{vid.category}</span>
-                        </td>
-                        <td className="px-6 py-4 text-right space-x-2">
-                          <button onClick={() => handleEditResource(vid, 'video')} className="text-indigo-600 hover:text-indigo-900 font-medium">編輯</button>
-                          <button onClick={() => handleDeleteResource('training_videos', vid.id)} className="text-red-600 hover:text-red-900 font-medium">刪除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+               <div className="px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
+                <h3 className="font-bold text-purple-800">教學影片 ({videos.length})</h3>
+               </div>
+               <div className="overflow-x-auto max-h-96">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-50 sticky top-0">
+                     <tr><th className="px-6 py-3">標題</th><th className="px-6 py-3">分類</th><th className="px-6 py-3 text-right">操作</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {videos.map(v => (
+                       <tr key={v.id} className="hover:bg-gray-50">
+                         <td className="px-6 py-4">{v.title}</td>
+                         <td className="px-6 py-4"><span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{v.category}</span></td>
+                         <td className="px-6 py-4 text-right space-x-2">
+                           <button onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium">編輯</button>
+                           <button onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium">刪除</button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
             </div>
           </div>
         )}
 
-        {/* --- TAB 2: 參數設定 --- */}
+        {/* TAB 2: 參數與人員 */}
         {activeTab === 'settings' && (
           <div className="space-y-8">
+            {/* 關鍵字與分類設定 (保持不變) */}
             <div className="grid md:grid-cols-2 gap-8">
-              {/* 常用關鍵字 */}
               <div className="bg-white p-6 rounded-lg shadow-sm">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
                 <div className="flex gap-2 mb-6">
-                  <input 
-                    type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)}
-                    placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg"
-                  />
+                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg"/>
                   <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg">新增</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {settings.quickKeywords?.map((kw, idx) => (
                     <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center">
-                      {kw}
-                      <button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
+                      {kw}<button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
                     </span>
                   ))}
                 </div>
               </div>
-
-              {/* 分類標籤 */}
               <div className="bg-white p-6 rounded-lg shadow-sm">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
                 <div className="flex gap-2 mb-6">
-                  <input 
-                    type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg"
-                  />
+                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg"/>
                   <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg">新增</button>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -333,69 +266,61 @@ const AdminPage = ({ user }) => {
               </div>
             </div>
 
-            {/* --- 新增區塊：人員權限管理 --- */}
+            {/* 人員權限管理 */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600" />
-                人員權限管理 (指導藥師/學員)
+                <Users className="w-5 h-5 text-indigo-600" /> 人員資料與權限管理
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 text-gray-600 uppercase border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-3">使用者名稱</th>
-                      <th className="px-6 py-3">Email</th>
-                      <th className="px-6 py-3">目前身分</th>
-                      <th className="px-6 py-3">加入時間</th>
-                      <th className="px-6 py-3 text-right">權限操作</th>
+                      <th className="px-6 py-3">使用者</th>
+                      <th className="px-6 py-3">到職日期</th>
+                      <th className="px-6 py-3">身分權限</th>
+                      <th className="px-6 py-3 text-right">管理</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {usersList.map((u) => {
                       const isTeacher = u.role === 'teacher';
-                      const isSelf = u.id === user?.uid;
                       const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(u.email);
                       
                       return (
                         <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/50' : ''}`}>
-                          <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-2">
-                            <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
-                            {u.displayName || '未命名用戶'}
-                            {isSelf && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1 rounded">你自己</span>}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 font-medium text-gray-900">
+                              <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
+                              {u.displayName || '未命名'}
+                              {isSuperAdmin && <Crown className="w-3 h-3 text-amber-500" />}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">{u.email}</div>
                           </td>
-                          <td className="px-6 py-4 text-gray-500">{u.email}</td>
+                          <td className="px-6 py-4 text-gray-600 font-mono">
+                            {u.arrivalDate || '-'}
+                          </td>
                           <td className="px-6 py-4">
                             {isSuperAdmin ? (
                               <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-bold border border-purple-200">
-                                <Crown className="w-3 h-3" /> 系統管理員
+                                系統管理員
                               </span>
                             ) : isTeacher ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-bold">
-                                <Shield className="w-3 h-3" /> 指導藥師
+                                指導藥師
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
-                                <Users className="w-3 h-3" /> PGY 學員
+                                PGY 學員
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-gray-400 text-xs">
-                             {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
-                          </td>
                           <td className="px-6 py-4 text-right">
-                            <button
-                              onClick={() => toggleUserRole(u.id, u.role, u.email)}
-                              disabled={isSuperAdmin} // 超級管理員永遠不能被更改
-                              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                                isSuperAdmin
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-                                  : isTeacher
-                                    ? 'bg-white text-red-600 hover:bg-red-50 border border-red-200 shadow-sm'
-                                    : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                              }`}
-                            >
-                              {isSuperAdmin ? '不可變更' : isTeacher ? '降級為學員' : '升級為藥師'}
-                            </button>
+                             <button 
+                               onClick={() => openEditUser(u)}
+                               className="px-3 py-1 bg-gray-100 hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-medium border border-gray-200 flex items-center gap-1 ml-auto"
+                             >
+                               <Edit className="w-3 h-3" /> 編輯/變更
+                             </button>
                           </td>
                         </tr>
                       );
@@ -403,14 +328,71 @@ const AdminPage = ({ user }) => {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-4 text-xs text-gray-400 flex items-center gap-1">
-                <ShieldAlert className="w-3 h-3" /> 
-                注意：請小心操作。設為「指導藥師」的用戶將可存取此後台頁面。
-              </p>
             </div>
           </div>
         )}
       </div>
+
+      {/* User Edit Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingUser(null)}>
+           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+               <h3 className="text-lg font-bold text-gray-800">編輯用戶資料</h3>
+               <button onClick={() => setEditingUser(null)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+             </div>
+             <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">Email (唯讀)</label>
+                 <input type="text" value={editingUser.email} disabled className="w-full px-4 py-2 border bg-gray-100 rounded-lg text-gray-500" />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">姓名</label>
+                 <input 
+                   type="text" 
+                   value={userForm.displayName} 
+                   onChange={e => setUserForm({...userForm, displayName: e.target.value})}
+                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                 />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
+                 <input 
+                   type="date" 
+                   value={userForm.arrivalDate} 
+                   onChange={e => setUserForm({...userForm, arrivalDate: e.target.value})}
+                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                 />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">系統身分</label>
+                 <div className="flex gap-2">
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'student'})}
+                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                   >
+                     PGY 學員
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'teacher'})}
+                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'teacher' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                   >
+                     指導藥師
+                   </button>
+                 </div>
+                 {SUPER_ADMIN_EMAILS.includes(editingUser.email) && (
+                   <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號建議維持最高權限</p>
+                 )}
+               </div>
+               <div className="pt-4">
+                 <button type="submit" className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700">儲存變更</button>
+               </div>
+             </form>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
