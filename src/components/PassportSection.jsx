@@ -3,7 +3,7 @@ import {
   collection, 
   getDocs,
   query,
-  where
+  where // 確保有引入 where
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 // ★★★ 請將此處替換為您的 Google Apps Script 網頁應用程式網址 ★★★
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
+const GAS_API_URL = "請貼上您的_GAS_WEB_APP_URL"; 
 
 const PassportSection = ({ user, userRole }) => {
   // 狀態管理
@@ -38,15 +38,19 @@ const PassportSection = ({ user, userRole }) => {
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  // 初始化：如果是老師，抓取所有學生名單
+  // 初始化：如果是老師，抓取「僅限學生身分」的名單
   useEffect(() => {
     if (userRole === 'teacher') {
       const fetchStudents = async () => {
-        const q = query(collection(db, 'users')); // 抓取所有用戶
-        const snap = await getDocs(q);
-        const list = snap.docs.map(d => d.data());
-        // 過濾掉老師自己，只留學生 (或是全部都列出來也可以)
-        setStudents(list);
+        try {
+          // --- 修正重點 1: 加入 where 條件，只抓取 role 為 student 的用戶 ---
+          const q = query(collection(db, 'users'), where('role', '==', 'student'));
+          const snap = await getDocs(q);
+          const list = snap.docs.map(d => d.data());
+          setStudents(list);
+        } catch (error) {
+          console.error("讀取學生名單失敗:", error);
+        }
       };
       fetchStudents();
     }
@@ -100,7 +104,7 @@ const PassportSection = ({ user, userRole }) => {
     
     setCurrentEval({
       itemId: item.id,
-      itemName: item.sub_item || item.title, // 優先顯示子項目名稱
+      itemName: item.sub_item || item.title, 
       status: 'pass',
       date: today,
       note: ''
@@ -112,17 +116,20 @@ const PassportSection = ({ user, userRole }) => {
   const handleSubmitEval = async () => {
     setSubmitting(true);
     
+    // --- 修正重點 2: 使用 user.displayName (老師姓名) ---
+    // 如果系統抓不到 displayName，則回退顯示 Email 的前綴，確保一定有值
+    const teacherDisplayName = user.displayName || user.email.split('@')[0];
+
     const payload = {
       studentEmail: selectedStudentEmail,
       itemId: currentEval.itemId,
       status: currentEval.status,
       assessDate: currentEval.date,
-      teacherName: user.displayName || '指導藥師',
+      teacherName: teacherDisplayName, // 傳送姓名
       note: currentEval.note
     };
 
     try {
-      // 使用 fetch POST (no-cors 模式或是 text/plain 以避免 CORS 錯誤)
       await fetch(GAS_API_URL, {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -175,11 +182,15 @@ const PassportSection = ({ user, userRole }) => {
                 }}
                 className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
               >
-                {students.map(s => (
-                  <option key={s.email} value={s.email}>
-                    {s.displayName || s.email} {s.role === 'teacher' ? '(師)' : ''}
-                  </option>
-                ))}
+                {students.length > 0 ? (
+                  students.map(s => (
+                    <option key={s.email} value={s.email}>
+                      {s.displayName || s.email}
+                    </option>
+                  ))
+                ) : (
+                  <option disabled>無符合的學員資料</option>
+                )}
               </select>
             </div>
           )}
@@ -226,7 +237,7 @@ const PassportSection = ({ user, userRole }) => {
                     <div className="bg-white divide-y divide-gray-100">
                       {group.items.map((item) => {
                         const record = passportData.records[item.id] || {};
-                        const status = record.status; // 'pass' or 'improve' or undefined
+                        const status = record.status; 
                         
                         return (
                           <div key={item.id} className="p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50">
@@ -234,7 +245,7 @@ const PassportSection = ({ user, userRole }) => {
                               <p className="text-sm text-gray-800 font-medium">
                                 {item.sub_item || item.title}
                               </p>
-                              {/* 顯示評核資訊 */}
+                              {/* 顯示評核資訊 (顯示老師姓名) */}
                               {record.teacher && (
                                 <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                                   <UserCheck className="w-3 h-3" />
@@ -278,7 +289,7 @@ const PassportSection = ({ user, userRole }) => {
             
             {Object.keys(groupedItems).length === 0 && (
               <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg">
-                目前試算表中沒有設定任何項目 (PassportItems)
+                目前試算表中沒有設定任何項目 (請至 Google Sheet: PassportItems 分頁新增)
               </div>
             )}
           </div>
