@@ -28,7 +28,7 @@ import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
-  const [userProfile, setUserProfile] = useState(null) // 新增：儲存 Firestore 的完整用戶資料
+  const [userProfile, setUserProfile] = useState(null)
   const [userRole, setUserRole] = useState('student')
   const [activeTab, setActiveTab] = useState('lookup')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -77,16 +77,15 @@ function App() {
           
           if (userSnap.exists()) {
             const data = userSnap.data();
-            setUserProfile(data); // 儲存完整資料
+            setUserProfile(data);
             setUserRole(data.role || 'student');
           } else {
-            // 初始化新用戶
             const newUserData = {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
               role: 'student',
-              arrivalDate: '', // 預設空值
+              arrivalDate: '',
               createdAt: new Date().toISOString()
             };
             await setDoc(userRef, newUserData);
@@ -128,14 +127,11 @@ function App() {
         displayName: editForm.displayName,
         arrivalDate: editForm.arrivalDate
       });
-      
-      // 更新本地狀態
       setUserProfile(prev => ({ 
         ...prev, 
         displayName: editForm.displayName, 
         arrivalDate: editForm.arrivalDate 
       }));
-      
       setIsProfileOpen(false);
       alert('個人資料已更新！');
     } catch (error) {
@@ -182,13 +178,13 @@ function App() {
     )
   }
 
-  // 優先顯示自訂姓名，若無則顯示 Google 姓名
   const displayUserName = userProfile?.displayName || user.displayName;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-indigo-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* 修正：手機版 px-3 (12px)，電腦版保持 px-8 */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-3">
               <div className="bg-indigo-600 p-2 rounded-lg">
@@ -236,12 +232,11 @@ function App() {
                       src={user.photoURL} 
                       alt={displayUserName} 
                       className={`w-9 h-9 rounded-full border-2 ${userRole === 'teacher' ? 'border-emerald-400' : 'border-gray-200'}`}
-                      onClick={() => setIsMenuOpen(!isMenuOpen)} // 點擊頭像也可以開選單
+                      onClick={() => setIsMenuOpen(!isMenuOpen)}
                     />
                 </div>
               </div>
 
-              {/* Desktop Logout Button */}
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
@@ -252,7 +247,6 @@ function App() {
           </div>
         </div>
 
-        {/* Dropdown Menu */}
         {isMenuOpen && (
           <div className="absolute right-0 top-16 w-full md:w-64 bg-white shadow-lg border-b border-gray-100 md:rounded-bl-xl z-50 animate-in slide-in-from-top-2">
             <div className="px-4 py-3 border-b border-gray-100 md:hidden">
@@ -266,7 +260,6 @@ function App() {
             </div>
 
             <div className="p-2 space-y-1">
-              {/* Mobile Only Tabs */}
               <div className="md:hidden space-y-1 pb-2 mb-2 border-b border-gray-100">
                 {[
                     { id: 'lookup', label: 'SOP 速查' },
@@ -292,7 +285,6 @@ function App() {
                 ))}
               </div>
 
-              {/* Common Actions */}
               <button
                 onClick={handleOpenProfile}
                 className="w-full text-left px-3 py-2 text-gray-700 font-medium flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors"
@@ -313,7 +305,6 @@ function App() {
         )}
       </nav>
 
-      {/* Profile Edit Modal */}
       {isProfileOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -338,7 +329,6 @@ function App() {
                 />
               </div>
 
-              {/* 只有學生身分才顯示到職日期設定 */}
               {userRole === 'student' && (
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
@@ -375,7 +365,8 @@ function App() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* 修正：手機版 px-2 (8px)，py-4 (16px)，盡量滿版 */}
+      <main className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
         {activeTab === 'shift' && <ShiftNavigator />}
@@ -385,7 +376,6 @@ function App() {
             userRole={userRole}
           />
         )}
-        {/* 只有老師能進入 AdminPage */}
         {activeTab === 'admin' && userRole === 'teacher' && <AdminPage user={user} />}
       </main>
     </div>
