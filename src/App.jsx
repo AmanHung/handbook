@@ -373,6 +373,7 @@ function App() {
           <PassportSection 
             user={user} 
             userRole={userRole}
+            userProfile={userProfile} // 修正：傳遞 userProfile
           />
         )}
         {activeTab === 'admin' && userRole === 'teacher' && <AdminPage user={user} />}
