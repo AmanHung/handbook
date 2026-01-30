@@ -1,90 +1,103 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Play, ExternalLink, Loader } from 'lucide-react';
-import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const VideoGallery = () => {
+  const [activeCategory, setActiveCategory] = useState('All');
+  
+  // Firebase 狀態
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // 1. 讀取影片資料 (training_videos)
   useEffect(() => {
-    // ★★★ 關鍵修正：集合名稱改為 'training_videos' ★★★
-    const q = query(collection(db, 'training_videos'));
-    
+    const q = query(collection(db, 'training_videos'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const videoList = [];
-      snapshot.forEach((doc) => {
-        videoList.push({ id: doc.id, ...doc.data() });
-      });
-      setVideos(videoList);
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setVideos(list);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching videos:", error);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader className="w-8 h-8 animate-spin text-pink-600" />
-        <span className="ml-2 text-gray-500">正在載入教學影片...</span>
-      </div>
-    );
-  }
+  const categories = ['All', ...new Set(videos.map(v => v.category).filter(Boolean))];
+
+  const filteredVideos = activeCategory === 'All' 
+    ? videos 
+    : videos.filter(video => video.category === activeCategory);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <Video className="w-6 h-6 text-pink-600" />
-          影音教學專區
-        </h2>
-        <p className="text-gray-500 mt-1">共 {videos.length} 部教學影片</p>
-      </div>
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+        <span className="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3">🎥</span>
+        藥局影音教學專區
+      </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {videos.map((video) => (
-          <div key={video.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-            {/* 影片縮圖或嵌入 */}
-            <div className="aspect-video bg-gray-900 relative group">
-              {video.url?.includes('youtube.com') || video.url?.includes('youtu.be') ? (
-                <iframe 
-                  src={video.url.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
-                  title={video.title}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white">
-                  <Play className="w-12 h-12 opacity-50" />
-                </div>
-              )}
-            </div>
-            
-            <div className="p-4">
-              <h3 className="font-bold text-gray-800 mb-2 line-clamp-1">{video.title}</h3>
-              <p className="text-sm text-gray-500 mb-4 line-clamp-2">{video.description || '無描述'}</p>
-              
-              <a 
-                href={video.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 font-medium"
-              >
-                <ExternalLink className="w-4 h-4" />
-                前往觀看
-              </a>
-            </div>
-          </div>
+      <div className="flex gap-2 overflow-x-auto pb-4 mb-4 scrollbar-hide">
+        {categories.map((category) => (
+          <button
+            key={category}
+            onClick={() => setActiveCategory(category)}
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${
+              activeCategory === category
+                ? 'bg-purple-600 text-white shadow-lg transform scale-105'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {category}
+          </button>
         ))}
-
-        {videos.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-            目前沒有教學影片資料 (training_videos)
-          </div>
-        )}
       </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-gray-500">影片載入中...</div>
+      ) : filteredVideos.length > 0 ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredVideos.map((video) => (
+            <div key={video.id} className="group bg-gray-50 rounded-xl overflow-hidden hover:shadow-lg transition-all border border-gray-100">
+              <div className="aspect-video bg-black relative">
+                 {video.url.includes('embed') ? (
+                   <iframe 
+                     src={video.url} 
+                     className="w-full h-full" 
+                     title={video.title}
+                     allowFullScreen
+                   ></iframe>
+                 ) : (
+                   <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white flex-col p-4 text-center">
+                     <p className="mb-2">📺</p>
+                     <a href={video.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm break-all">
+                       點擊前往觀看影片
+                     </a>
+                     <p className="text-xs text-gray-500 mt-2">(非內嵌格式)</p>
+                   </div>
+                 )}
+              </div>
+              
+              <div className="p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-gray-800 line-clamp-2 group-hover:text-purple-600 transition-colors">
+                    {video.title}
+                  </h3>
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-md whitespace-nowrap ml-2">
+                    {video.category}
+                  </span>
+                </div>
+                {video.description && (
+                  <p className="text-sm text-gray-500 line-clamp-2">{video.description}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+          <p className="text-gray-500 font-medium">此分類目前沒有影片</p>
+        </div>
+      )}
     </div>
   );
 };
