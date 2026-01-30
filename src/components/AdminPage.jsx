@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
-import { Link, Paperclip, ExternalLink } from 'lucide-react'; // 引入 icon
+import { Link, Paperclip, ExternalLink, Users, Shield, ShieldAlert, CheckCircle } from 'lucide-react';
 
 const AdminPage = ({ user }) => {
   const [activeTab, setActiveTab] = useState('resources'); // resources | settings
@@ -19,6 +19,7 @@ const AdminPage = ({ user }) => {
   // 資料狀態
   const [sops, setSops] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [usersList, setUsersList] = useState([]); // 新增：用戶列表
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
   // 錯誤狀態
@@ -62,11 +63,21 @@ const AdminPage = ({ user }) => {
       if (docSnap.exists()) {
         setSettings(docSnap.data());
       } else {
-        // 如果文件不存在，初始化它 (解決無法讀取的問題)
         setDoc(docRef, { quickKeywords: [], categories: [] });
       }
     }, (err) => {
       console.error("設定檔讀取錯誤:", err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 4. 新增：監聽 用戶列表 (users) - 僅在切換到設定頁籤時運作或常駐
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsersList(list);
+    }, (err) => {
+      console.error("用戶列表讀取錯誤:", err);
     });
     return () => unsubscribe();
   }, []);
@@ -92,7 +103,7 @@ const AdminPage = ({ user }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 處理參數設定更新
+  // 處理參數設定更新 (關鍵字/分類)
   const updateSettingArray = async (field, action, value) => {
     if (!value.trim()) return;
     const docRef = doc(db, 'site_settings', 'sop_config');
@@ -111,6 +122,21 @@ const AdminPage = ({ user }) => {
     } catch (error) {
       console.error(`Error updating ${field}:`, error);
       alert('更新設定失敗: ' + error.message);
+    }
+  };
+
+  // 新增：切換用戶身分
+  const toggleUserRole = async (targetUserId, currentRole) => {
+    const newRole = currentRole === 'teacher' ? 'student' : 'teacher';
+    const roleName = newRole === 'teacher' ? '指導藥師' : 'PGY 學員';
+    
+    if (window.confirm(`確定要將此用戶身分更改為「${roleName}」嗎？`)) {
+      try {
+        await updateDoc(doc(db, 'users', targetUserId), { role: newRole });
+      } catch (error) {
+        console.error("更新身分失敗:", error);
+        alert("更新失敗，請檢查權限");
+      }
     }
   };
 
@@ -160,7 +186,7 @@ const AdminPage = ({ user }) => {
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
               onSuccess={() => setEditingItem(null)}
-              settings={settings} // 重要：將設定傳給子元件
+              settings={settings}
             />
 
             {/* SOP 列表 */}
@@ -187,7 +213,6 @@ const AdminPage = ({ user }) => {
                       <tr key={sop.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 font-medium text-gray-900">
                           {sop.title}
-                          {/* 顯示關鍵字 */}
                           <div className="flex gap-1 mt-1">
                             {sop.keywords?.map((k, i) => (
                               <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded">#{k}</span>
@@ -286,46 +311,121 @@ const AdminPage = ({ user }) => {
 
         {/* --- TAB 2: 參數設定 --- */}
         {activeTab === 'settings' && (
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* 常用關鍵字 */}
-            <div className="bg-white p-6 rounded-lg shadow-sm">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
-              <div className="flex gap-2 mb-6">
-                <input 
-                  type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)}
-                  placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg"
-                />
-                <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg">新增</button>
+          <div className="space-y-8">
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* 常用關鍵字 */}
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
+                <div className="flex gap-2 mb-6">
+                  <input 
+                    type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)}
+                    placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg"
+                  />
+                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg">新增</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {settings.quickKeywords?.map((kw, idx) => (
+                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center">
+                      {kw}
+                      <button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {settings.quickKeywords?.map((kw, idx) => (
-                  <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center">
-                    {kw}
-                    <button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
-                  </span>
-                ))}
+
+              {/* 分類標籤 */}
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
+                <div className="flex gap-2 mb-6">
+                  <input 
+                    type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}
+                    placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg"
+                  />
+                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg">新增</button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {settings.categories?.map((cat, idx) => (
+                    <div key={idx} className="flex justify-between bg-blue-50 px-4 py-2 rounded-lg">
+                      <span className="text-blue-800">{cat}</span>
+                      <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600 text-sm">刪除</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* 分類標籤 */}
-            <div className="bg-white p-6 rounded-lg shadow-sm">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
-              <div className="flex gap-2 mb-6">
-                <input 
-                  type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}
-                  placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg"
-                />
-                <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg">新增</button>
+            {/* --- 新增區塊：人員權限管理 --- */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                人員權限管理 (指導藥師/學員)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-600 uppercase border-b border-gray-100">
+                    <tr>
+                      <th className="px-6 py-3">使用者名稱</th>
+                      <th className="px-6 py-3">Email</th>
+                      <th className="px-6 py-3">目前身分</th>
+                      <th className="px-6 py-3">加入時間</th>
+                      <th className="px-6 py-3 text-right">權限操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {usersList.map((u) => {
+                      const isTeacher = u.role === 'teacher';
+                      const isSelf = u.id === user?.uid;
+                      
+                      return (
+                        <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-2">
+                            <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
+                            {u.displayName || '未命名用戶'}
+                            {isSelf && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1 rounded">你自己</span>}
+                          </td>
+                          <td className="px-6 py-4 text-gray-500">{u.email}</td>
+                          <td className="px-6 py-4">
+                            {isTeacher ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-bold">
+                                <Shield className="w-3 h-3" /> 指導藥師
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                                <Users className="w-3 h-3" /> PGY 學員
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-gray-400 text-xs">
+                             {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => toggleUserRole(u.id, u.role)}
+                              disabled={isSelf} // 防止自己降級自己
+                              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                                isSelf 
+                                  ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                  : isTeacher
+                                    ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                                    : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+                              }`}
+                            >
+                              {isTeacher ? '降級為學員' : '升級為藥師'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex flex-col gap-2">
-                {settings.categories?.map((cat, idx) => (
-                  <div key={idx} className="flex justify-between bg-blue-50 px-4 py-2 rounded-lg">
-                    <span className="text-blue-800">{cat}</span>
-                    <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600 text-sm">刪除</button>
-                  </div>
-                ))}
-              </div>
+              <p className="mt-4 text-xs text-gray-400 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3" /> 
+                注意：只有「指導藥師」身分可以進入後台管理系統。請謹慎設定。
+              </p>
             </div>
+            {/* --- 結束 人員權限管理 --- */}
+
           </div>
         )}
       </div>
