@@ -3,11 +3,10 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut, 
-  
   onAuthStateChanged 
 } from 'firebase/auth'
 import { auth, db } from './firebase'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { 
   BookOpen, 
   LogOut, 
@@ -15,7 +14,10 @@ import {
   Menu,
   X,
   Shield,
-  Search 
+  Search,
+  Calendar,
+  Edit,
+  Save
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
@@ -26,31 +28,26 @@ import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
+  const [userProfile, setUserProfile] = useState(null) // 新增：儲存 Firestore 的完整用戶資料
   const [userRole, setUserRole] = useState('student')
   const [activeTab, setActiveTab] = useState('lookup')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // 個人資料編輯 Modal 狀態
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ displayName: '', arrivalDate: '' })
+
   // 登入處理
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider()
-      
-      // --- 新增：強制每次都顯示帳號選擇畫面 ---
-      provider.setCustomParameters({
-        prompt: 'select_account'
-      })
-      // -------------------------------------
-
+      provider.setCustomParameters({ prompt: 'select_account' })
       const result = await signInWithPopup(auth, provider)
       console.log("登入成功:", result.user.email);
     } catch (error) {
       console.error("登入錯誤:", error);
-      let errorMessage = "登入失敗";
-      if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = "請至 Firebase Console 啟用 Google 登入功能";
-      }
-      alert(`${errorMessage}\n${error.message}`);
+      alert(`登入失敗: ${error.message}`);
     }
   }
 
@@ -59,6 +56,7 @@ function App() {
     try {
       await signOut(auth)
       setUser(null)
+      setUserProfile(null)
       setUserRole('student')
       setActiveTab('lookup')
     } catch (error) {
@@ -78,22 +76,29 @@ function App() {
           const userSnap = await getDoc(userRef)
           
           if (userSnap.exists()) {
-            setUserRole(userSnap.data().role || 'student')
+            const data = userSnap.data();
+            setUserProfile(data); // 儲存完整資料
+            setUserRole(data.role || 'student');
           } else {
-            await setDoc(userRef, {
+            // 初始化新用戶
+            const newUserData = {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
               role: 'student',
+              arrivalDate: '', // 預設空值
               createdAt: new Date().toISOString()
-            })
-            setUserRole('student')
+            };
+            await setDoc(userRef, newUserData);
+            setUserProfile(newUserData);
+            setUserRole('student');
           }
         } catch (error) {
           console.error("Error fetching user data:", error)
         }
       } else {
         setUser(null)
+        setUserProfile(null)
         setUserRole('student')
       }
       setLoading(false)
@@ -101,6 +106,43 @@ function App() {
 
     return () => unsubscribe()
   }, [])
+
+  // 開啟編輯視窗
+  const handleOpenProfile = () => {
+    setEditForm({
+      displayName: userProfile?.displayName || user?.displayName || '',
+      arrivalDate: userProfile?.arrivalDate || ''
+    });
+    setIsProfileOpen(true);
+    setIsMenuOpen(false);
+  }
+
+  // 儲存個人資料
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        displayName: editForm.displayName,
+        arrivalDate: editForm.arrivalDate
+      });
+      
+      // 更新本地狀態
+      setUserProfile(prev => ({ 
+        ...prev, 
+        displayName: editForm.displayName, 
+        arrivalDate: editForm.arrivalDate 
+      }));
+      
+      setIsProfileOpen(false);
+      alert('個人資料已更新！');
+    } catch (error) {
+      console.error("更新失敗:", error);
+      alert('更新失敗，請稍後再試');
+    }
+  }
 
   if (loading) {
     return (
@@ -140,6 +182,9 @@ function App() {
     )
   }
 
+  // 優先顯示自訂姓名，若無則顯示 Google 姓名
+  const displayUserName = userProfile?.displayName || user.displayName;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-indigo-100">
@@ -161,7 +206,6 @@ function App() {
                 { id: 'video', label: '影音教學', icon: BookOpen },
                 { id: 'shift', label: '排班表', icon: BookOpen },
                 { id: 'passport', label: '學習護照', icon: UserIcon },
-                // 只有老師看得到後台管理
                 ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
@@ -182,29 +226,25 @@ function App() {
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-700">{user.displayName}</p>
+                  <p className="text-sm font-medium text-gray-700">{displayUserName}</p>
                   <p className={`text-xs ${userRole === 'teacher' ? 'text-emerald-600 font-bold' : 'text-gray-500'}`}>
                     {userRole === 'teacher' ? '指導藥師' : 'PGY 學員'}
                   </p>
                 </div>
-                <img 
-                  src={user.photoURL} 
-                  alt={user.displayName} 
-                  className={`w-9 h-9 rounded-full border-2 ${userRole === 'teacher' ? 'border-emerald-400' : 'border-gray-200'}`}
-                />
+                <div className="relative group cursor-pointer">
+                    <img 
+                      src={user.photoURL} 
+                      alt={displayUserName} 
+                      className={`w-9 h-9 rounded-full border-2 ${userRole === 'teacher' ? 'border-emerald-400' : 'border-gray-200'}`}
+                      onClick={() => setIsMenuOpen(!isMenuOpen)} // 點擊頭像也可以開選單
+                    />
+                </div>
               </div>
-              
-              <button
-                onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-red-600 transition-colors hidden sm:block"
-                title="登出"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
 
+              {/* Desktop Logout Button */}
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md"
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
               >
                 {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
@@ -212,50 +252,128 @@ function App() {
           </div>
         </div>
 
+        {/* Dropdown Menu */}
         {isMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white">
-            <div className="px-2 pt-2 pb-3 space-y-1">
-              {[
-                { id: 'lookup', label: 'SOP 速查' },
-                { id: 'video', label: '影音教學' },
-                { id: 'shift', label: '排班表' },
-                { id: 'passport', label: '學習護照' },
-                ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理' }] : []),
-              ].map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id)
-                    setIsMenuOpen(false)
-                  }}
-                  className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
-                    activeTab === item.id 
-                      ? 'bg-indigo-50 text-indigo-700' 
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              <div className="border-t border-gray-100 mt-2 pt-2">
-                <div className="flex items-center px-3 py-2 gap-3">
-                  <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full" />
+          <div className="absolute right-0 top-16 w-full md:w-64 bg-white shadow-lg border-b border-gray-100 md:rounded-bl-xl z-50 animate-in slide-in-from-top-2">
+            <div className="px-4 py-3 border-b border-gray-100 md:hidden">
+                <div className="flex items-center gap-3">
+                  <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" />
                   <div>
-                    <p className="font-medium text-gray-700">{user.displayName}</p>
+                    <p className="font-medium text-gray-800">{displayUserName}</p>
                     <p className="text-xs text-gray-500">{user.email}</p>
                   </div>
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-3 py-2 text-red-600 font-medium flex items-center gap-2 hover:bg-red-50 rounded-md"
-                >
-                  <LogOut className="w-4 h-4" /> 登出系統
-                </button>
+            </div>
+
+            <div className="p-2 space-y-1">
+              {/* Mobile Only Tabs */}
+              <div className="md:hidden space-y-1 pb-2 mb-2 border-b border-gray-100">
+                {[
+                    { id: 'lookup', label: 'SOP 速查' },
+                    { id: 'video', label: '影音教學' },
+                    { id: 'shift', label: '排班表' },
+                    { id: 'passport', label: '學習護照' },
+                    ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理' }] : []),
+                ].map(item => (
+                    <button
+                    key={item.id}
+                    onClick={() => {
+                        setActiveTab(item.id)
+                        setIsMenuOpen(false)
+                    }}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
+                        activeTab === item.id 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                    >
+                    {item.label}
+                    </button>
+                ))}
               </div>
+
+              {/* Common Actions */}
+              <button
+                onClick={handleOpenProfile}
+                className="w-full text-left px-3 py-2 text-gray-700 font-medium flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors"
+              >
+                <UserIcon className="w-4 h-4" /> 個人資料設定
+              </button>
+              
+              <div className="border-t border-gray-100 my-1"></div>
+              
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-3 py-2 text-red-600 font-medium flex items-center gap-2 hover:bg-red-50 rounded-md transition-colors"
+              >
+                <LogOut className="w-4 h-4" /> 登出系統
+              </button>
             </div>
           </div>
         )}
       </nav>
+
+      {/* Profile Edit Modal */}
+      {isProfileOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Edit className="w-5 h-5 text-indigo-600" /> 編輯個人資料
+              </h3>
+              <button onClick={() => setIsProfileOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">顯示名稱 (姓名)</label>
+                <input 
+                  type="text" 
+                  value={editForm.displayName}
+                  onChange={e => setEditForm({...editForm, displayName: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="請輸入您的真實姓名"
+                />
+              </div>
+
+              {/* 只有學生身分才顯示到職日期設定 */}
+              {userRole === 'student' && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+                    <input 
+                      type="date" 
+                      value={editForm.arrivalDate}
+                      onChange={e => setEditForm({...editForm, arrivalDate: e.target.value})}
+                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">此日期將用於計算您的學習進度</p>
+                </div>
+              )}
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsProfileOpen(false)}
+                  className="flex-1 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium"
+                >
+                  取消
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium flex justify-center items-center gap-2"
+                >
+                  <Save className="w-4 h-4" /> 儲存變更
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'lookup' && <QuickLookup />}
