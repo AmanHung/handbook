@@ -64,13 +64,13 @@ const QuickLookup = () => {
     if (!category) return 'bg-gray-100 text-gray-600';
     const fixedColors = {
       '門診': 'bg-orange-100 text-orange-800',
-      '住院': 'bg-rose-100 text-rose-800',
+      '藥品諮詢': 'bg-rose-100 text-rose-800',
       '急診': 'bg-red-100 text-red-800',
       '行政流程': 'bg-stone-100 text-stone-800',
       '臨床藥學': 'bg-amber-100 text-amber-800',
       '教學': 'bg-yellow-100 text-yellow-800',
       '管制藥': 'bg-pink-100 text-pink-800',
-      '藥品諮詢': 'bg-lime-100 text-lime-800',
+      '藥品': 'bg-lime-100 text-lime-800',
       '調劑規範': 'bg-emerald-100 text-emerald-800',
       '公文': 'bg-warmGray-100 text-warmGray-800',
     };
