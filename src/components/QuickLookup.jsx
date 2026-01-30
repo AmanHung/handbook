@@ -80,12 +80,12 @@ const QuickLookup = () => {
       '門診': 'bg-orange-100 text-orange-800',   // 溫暖橘
       '住院': 'bg-rose-100 text-rose-800',       // 柔和紅
       '急診': 'bg-red-100 text-red-800',         // 警示紅 (淺色版)
-      '行政': 'bg-stone-100 text-stone-800',     // 穩重灰褐
+      '行政流程': 'bg-stone-100 text-stone-800',     // 穩重灰褐
       '臨床': 'bg-amber-100 text-amber-800',     // 琥珀黃
       '教學': 'bg-yellow-100 text-yellow-800',   // 明亮黃
       '管制藥': 'bg-pink-100 text-pink-800',     // 顯眼粉
       '庫存': 'bg-lime-100 text-lime-800',       // 淺萊姆綠 (偏暖綠)
-      '調劑': 'bg-emerald-100 text-emerald-800', // 淺綠
+      '調劑規範': 'bg-emerald-100 text-emerald-800', // 淺綠
       '公文': 'bg-warmGray-100 text-warmGray-800',
     };
 
