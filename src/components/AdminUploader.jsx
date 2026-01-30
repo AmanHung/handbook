@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase.js';
 
-// 此元件同時處理 SOP 與 Video 的新增/編輯
-const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
+// 修正重點：新增接收 settings prop
+const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { quickKeywords: [], categories: [] } }) => {
   const [loading, setLoading] = useState(false);
-  const [resourceType, setResourceType] = useState('sop'); // 'sop' or 'video'
+  const [resourceType, setResourceType] = useState('sop'); 
   
-  // 表單資料
   const [formData, setFormData] = useState({
     title: '',
     category: '',
-    content: '', // SOP 用
-    url: '', // Video 用
-    keywords: [], // 陣列
+    content: '',
+    url: '',
+    keywords: [],
     description: ''
   });
 
-  // 設定選項 (從 Firebase 讀取)
-  const [availableKeywords, setAvailableKeywords] = useState([]);
-  const [availableCategories, setAvailableCategories] = useState([]);
+  // 從 props 取得設定 (不再需要自己 fetch)
+  const availableKeywords = settings.quickKeywords || [];
+  const availableCategories = settings.categories || [];
 
   // 初始化或當編輯資料改變時更新表單
   useEffect(() => {
@@ -44,25 +43,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
       });
     }
   }, [editData]);
-
-  // 讀取設定檔 (關鍵字與分類)
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const docRef = doc(db, 'site_settings', 'sop_config');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          // 注意：這裡是讀取 quickKeywords
-          setAvailableKeywords(data.quickKeywords || []);
-          setAvailableCategories(data.categories || []);
-        }
-      } catch (error) {
-        console.error("Error fetching settings:", error);
-      }
-    };
-    fetchSettings();
-  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -109,7 +89,6 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess }) => {
         docData.url = formData.url;
       }
 
-      // 修正：使用正確的集合名稱
       const collectionName = resourceType === 'sop' ? 'sop_articles' : 'training_videos';
 
       if (editData) {
