@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
+import { Link, Paperclip, ExternalLink } from 'lucide-react'; // 引入 icon
 
 const AdminPage = ({ user }) => {
   const [activeTab, setActiveTab] = useState('resources'); // resources | settings
@@ -61,7 +62,7 @@ const AdminPage = ({ user }) => {
       if (docSnap.exists()) {
         setSettings(docSnap.data());
       } else {
-        // 如果文件不存在，初始化它
+        // 如果文件不存在，初始化它 (解決無法讀取的問題)
         setDoc(docRef, { quickKeywords: [], categories: [] });
       }
     }, (err) => {
@@ -109,7 +110,7 @@ const AdminPage = ({ user }) => {
       }
     } catch (error) {
       console.error(`Error updating ${field}:`, error);
-      alert('更新設定失敗');
+      alert('更新設定失敗: ' + error.message);
     }
   };
 
@@ -159,7 +160,7 @@ const AdminPage = ({ user }) => {
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
               onSuccess={() => setEditingItem(null)}
-              settings={settings}
+              settings={settings} // 重要：將設定傳給子元件
             />
 
             {/* SOP 列表 */}
@@ -176,6 +177,7 @@ const AdminPage = ({ user }) => {
                     <tr>
                       <th className="px-6 py-3">標題</th>
                       <th className="px-6 py-3">分類</th>
+                      <th className="px-6 py-3">附件</th>
                       <th className="px-6 py-3">更新時間</th>
                       <th className="px-6 py-3 text-right">操作</th>
                     </tr>
@@ -183,11 +185,34 @@ const AdminPage = ({ user }) => {
                   <tbody className="divide-y divide-gray-100">
                     {sops.map((sop) => (
                       <tr key={sop.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-gray-900">{sop.title}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {sop.title}
+                          {/* 顯示關鍵字 */}
+                          <div className="flex gap-1 mt-1">
+                            {sop.keywords?.map((k, i) => (
+                              <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded">#{k}</span>
+                            ))}
+                          </div>
+                        </td>
                         <td className="px-6 py-4">
                           <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
                             {sop.category}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {sop.attachmentUrl ? (
+                            <a 
+                              href={sop.attachmentUrl} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                              title="開啟附件"
+                            >
+                              <Paperclip className="w-4 h-4" /> 連結
+                            </a>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-gray-400 text-xs">
                           {sop.updatedAt?.seconds ? new Date(sop.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
@@ -200,7 +225,7 @@ const AdminPage = ({ user }) => {
                     ))}
                     {sops.length === 0 && (
                       <tr>
-                        <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                           目前沒有 SOP 資料，請使用上方表單新增。
                         </td>
                       </tr>
@@ -230,7 +255,12 @@ const AdminPage = ({ user }) => {
                   <tbody className="divide-y divide-gray-100">
                     {videos.map((vid) => (
                       <tr key={vid.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 font-medium text-gray-900">{vid.title}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {vid.title}
+                          <a href={vid.url} target="_blank" rel="noreferrer" className="ml-2 text-gray-400 hover:text-purple-600 inline-block">
+                             <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </td>
                         <td className="px-6 py-4">
                           <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{vid.category}</span>
                         </td>
