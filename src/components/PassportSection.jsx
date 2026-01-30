@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 // ★★★ 請將此處替換為您的 Google Apps Script 網頁應用程式網址 ★★★
-const GAS_API_URL = "請貼上您的_GAS_WEB_APP_URL"; 
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
 const PassportSection = ({ user, userRole }) => {
   // 狀態管理
