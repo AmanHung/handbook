@@ -8,16 +8,15 @@ import {
   arrayRemove, 
   deleteDoc,
   setDoc,
-  getDoc,
   writeBatch,
   serverTimestamp
 } from 'firebase/firestore';
-import { db } from '../firebase';
-import AdminUploader from './AdminUploader';
+import { db } from '../firebase.js';
+import AdminUploader from './AdminUploader.jsx';
 
 // 引入原始靜態資料 (用於初始化/匯入)
-import { sopData } from '../data/sopData'; 
-import { trainingData } from '../data/trainingData';
+import { sopData } from '../data/sopData.jsx'; 
+import { trainingData } from '../data/trainingData.jsx';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('resources'); // resources | settings | migration
