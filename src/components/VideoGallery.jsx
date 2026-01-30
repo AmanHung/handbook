@@ -5,12 +5,9 @@ import { Search, Play, Film, ExternalLink, Video } from 'lucide-react';
 
 const VideoGallery = () => {
   const [activeCategory, setActiveCategory] = useState('All');
-  
-  // Firebase 狀態
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. 讀取影片資料
   useEffect(() => {
     const q = query(collection(db, 'training_videos'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -28,17 +25,11 @@ const VideoGallery = () => {
     if (!url) return null;
     let videoId = '';
     try {
-      if (url.includes('youtube.com/watch?v=')) {
-        videoId = url.split('v=')[1]?.split('&')[0];
-      } else if (url.includes('youtu.be/')) {
-        videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      } else if (url.includes('youtube.com/embed/')) {
-        return url; 
-      } else if (url.includes('m.youtube.com/watch?v=')) {
-        videoId = url.split('v=')[1]?.split('&')[0];
-      }
-    } catch (e) { console.error("URL parsing error:", e); return null; }
-
+      if (url.includes('youtube.com/watch?v=')) videoId = url.split('v=')[1]?.split('&')[0];
+      else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      else if (url.includes('youtube.com/embed/')) return url; 
+      else if (url.includes('m.youtube.com/watch?v=')) videoId = url.split('v=')[1]?.split('&')[0];
+    } catch (e) { return null; }
     if (videoId) return `https://www.youtube.com/embed/${videoId}`;
     return null; 
   };
@@ -47,16 +38,16 @@ const VideoGallery = () => {
   const filteredVideos = activeCategory === 'All' ? videos : videos.filter(video => video.category === activeCategory);
 
   return (
-    // 修正：手機版 p-3
-    <div className="bg-white rounded-lg shadow-md p-3 md:p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+    // 修正：手機版背景透明、無圓角、無陰影、p-0
+    <div className="bg-transparent md:bg-white md:rounded-lg md:shadow-md p-0 md:p-6">
+      <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 md:mb-6 flex items-center px-4 md:px-0 pt-4 md:pt-0">
         <span className="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3">
-          <Film className="w-6 h-6" />
+          <Film className="w-5 h-5 md:w-6 md:h-6" />
         </span>
         影音教學專區
       </h2>
 
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-4 mb-2 md:mb-6 scrollbar-hide px-4 md:px-0">
         {categories.map(cat => (
           <button
             key={cat}
@@ -64,7 +55,7 @@ const VideoGallery = () => {
             className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
               activeCategory === cat
                 ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-white md:bg-gray-100 text-gray-600 border border-gray-200 md:border-transparent hover:bg-gray-200'
             }`}
           >
             {cat}
@@ -78,13 +69,14 @@ const VideoGallery = () => {
           影片載入中...
         </div>
       ) : filteredVideos.length > 0 ? (
-        // 修正：手機版 gap-3
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+        // 修正：手機版 gap-y-6 (上下間距)，電腦版 gap-6
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-6 md:gap-6">
           {filteredVideos.map((video) => {
             const embedUrl = getEmbedUrl(video.url);
             
             return (
-              <div key={video.id} className="group bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
+              // 修正：手機版 rounded-none (滿版無圓角)，僅在電腦版有圓角
+              <div key={video.id} className="group bg-white border-t border-b md:border border-gray-100 md:rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
                 <div className="relative w-full aspect-video bg-gray-900">
                    {embedUrl ? (
                      <iframe 
@@ -137,7 +129,7 @@ const VideoGallery = () => {
           })}
         </div>
       ) : (
-        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 mx-4 md:mx-0">
           <p className="text-gray-500 font-medium">此分類目前沒有影片</p>
         </div>
       )}
