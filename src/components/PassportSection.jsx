@@ -23,8 +23,8 @@ import {
   Circle,
   Clock, 
   ArrowRight,
-  ClipboardList, // 新增圖示：訓練紀錄
-  PenTool        // 新增圖示：學習評估
+  ClipboardList,
+  PenTool
 } from 'lucide-react';
 
 // ============================================================================
@@ -35,15 +35,17 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-Xt
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   
-  // 老師登入時，預設先不選，等名單載入後自動選第一位；學生登入時，選自己
-  const [selectedStudentEmail, setSelectedStudentEmail] = useState(userRole === 'teacher' ? '' : user?.email);
+  // 判斷是否為教職 (老師 OR 管理員)
+  const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
+  
+  // 老師/管理員登入時，預設先不選，等名單載入後自動選第一位；學生登入時，選自己
+  const [selectedStudentEmail, setSelectedStudentEmail] = useState(isTeacherOrAdmin ? '' : user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
-  // ★★★ 新增：子分頁狀態 ('records' = 訓練紀錄, 'assessment' = 學習評估) ★★★
   const [activeSubTab, setActiveSubTab] = useState('records');
 
-  // 資料狀態: items(題目), records(成績), periods(訓練期間)
+  // 資料狀態
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
 
@@ -56,9 +58,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [submitting, setSubmitting] = useState(false);
   const [savingPeriod, setSavingPeriod] = useState(null);
 
-  // 1. 初始化學員名單 (僅限老師)
+  // 1. 初始化學員名單 (僅限教職人員)
   useEffect(() => {
-    if (userRole === 'teacher') {
+    if (isTeacherOrAdmin) {
       const fetchStudents = async () => {
         try {
           const q = query(collection(db, 'users'), where('role', '==', 'student'));
@@ -78,11 +80,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       };
       fetchStudents();
     }
-  }, [userRole]);
+  }, [userRole]); // userRole 變動 (例如切換帳號) 時重新讀取
 
   // 2. 自動同步「到職日期」與「學員姓名」
   useEffect(() => {
-    if (userRole === 'teacher') {
+    if (isTeacherOrAdmin) {
       if (students.length > 0 && selectedStudentEmail) {
         const s = students.find(stud => stud.email === selectedStudentEmail);
         if (s) {
@@ -149,7 +151,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   }, {});
 
   const openEvaluateModal = (item) => {
-    if (userRole !== 'teacher') return;
+    if (!isTeacherOrAdmin) return; // 只有教職人員可開評核
     const today = new Date().toISOString().split('T')[0];
     setCurrentEval({
       itemId: item.id,
@@ -237,10 +239,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // --------------------------------------------------------------------------
-  // 渲染區域：訓練紀錄 (原本的護照勾選表)
-  // --------------------------------------------------------------------------
-  
+  // 渲染：單一項目
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
@@ -281,7 +280,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             </span>
           )}
           
-          {userRole === 'teacher' && (
+          {isTeacherOrAdmin && (
             <button
               onClick={() => openEvaluateModal(item)}
               className="px-3 py-1 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-md text-xs font-bold transition-colors whitespace-nowrap"
@@ -294,6 +293,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
+  // 渲染：群組內容 (遞迴)
   const renderGroupContent = (items) => {
     const groups = {};
     const groupOrder = []; 
@@ -331,6 +331,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     });
   };
 
+  // 渲染：訓練紀錄 Tab
   const renderTrainingRecords = () => (
     <div className="space-y-4">
       {Object.values(groupedItems).map((group) => {
@@ -377,7 +378,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   <span className="hidden sm:inline">期間:</span>
                 </div>
                 
-                {userRole === 'teacher' ? (
+                {isTeacherOrAdmin ? (
                   <>
                     <input 
                       type="date" 
@@ -432,9 +433,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     </div>
   );
 
-  // --------------------------------------------------------------------------
-  // 渲染區域：學習評估 (未來擴充表單)
-  // --------------------------------------------------------------------------
+  // 渲染：學習評估 Tab
   const renderAssessment = () => (
     <div className="bg-white p-8 border border-gray-200 rounded-lg text-center animate-in fade-in">
       <div className="inline-block p-4 bg-indigo-50 rounded-full mb-4">
@@ -446,9 +445,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         目前功能建置中。
       </p>
       
-      {/* 這裡未來可以放 iframe 嵌入 Google Form 或是自訂的 React 表單 */}
-      {/* <iframe src="GOOGLE_FORM_URL" ... /> */}
-      
       <button className="px-4 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed font-medium">
         即將開放
       </button>
@@ -459,7 +455,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-6 md:rounded-xl shadow-sm border border-gray-100">
         
-        {/* Header (共用：標題 + 學生選擇) */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-lg">
@@ -468,13 +464,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <div>
               <h2 className="text-xl font-bold text-gray-800">新進人員學習護照</h2>
               <p className="text-xs text-gray-500">
-                {userRole === 'teacher' ? '請選擇學員以檢視紀錄或評估' : '您的學習進度總覽'}
+                {isTeacherOrAdmin ? '請選擇學員以檢視紀錄或評估' : '您的學習進度總覽'}
               </p>
             </div>
           </div>
 
           <div className="flex flex-col gap-2 items-end">
-            {userRole === 'teacher' && (
+            {isTeacherOrAdmin && (
               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
                 <User className="w-4 h-4 text-gray-400" />
                 <select 
@@ -495,7 +491,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               </div>
             )}
             
-            {userRole !== 'teacher' && (
+            {!isTeacherOrAdmin && (
               <div className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold flex items-center gap-2">
                 <User className="w-4 h-4" />
                 學員：{selectedStudentName}
@@ -560,7 +556,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         )}
       </div>
 
-      {/* Evaluate Modal (共用，雖然目前只有 Records 會用到) */}
+      {/* Evaluate Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
