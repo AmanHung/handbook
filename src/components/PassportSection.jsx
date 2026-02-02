@@ -32,7 +32,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-Xt
 
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
-  const [selectedStudentEmail, setSelectedStudentEmail] = useState(user?.email);
+  
+  // 老師登入時，預設先不選，等名單載入後自動選第一位；學生登入時，選自己
+  const [selectedStudentEmail, setSelectedStudentEmail] = useState(userRole === 'teacher' ? '' : user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
@@ -60,26 +62,37 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           const snap = await getDocs(q);
           const list = snap.docs.map(d => d.data());
           setStudents(list);
+
+          // 修正重點 A: 名單載入後，如果目前沒選學生(或選的是老師自己)，預設選第一位學生
+          if (list.length > 0) {
+            // 檢查目前選的 email 是否在學生名單內
+            const isCurrentEmailValid = list.some(s => s.email === selectedStudentEmail);
+            if (!selectedStudentEmail || !isCurrentEmailValid) {
+              setSelectedStudentEmail(list[0].email);
+            }
+          }
         } catch (error) {
           console.error("讀取學生名單失敗:", error);
         }
       };
       fetchStudents();
     }
-  }, [userRole]);
+  }, [userRole]); // 移除 selectedStudentEmail 依賴，避免無窮迴圈
 
-  // 2. 自動同步「到職日期」與「學員姓名」
+  // 2. 修正重點 B: 集中處理「連動資料」(姓名、到職日)
+  // 只要 selectedStudentEmail 改變，或 students 名單改變，就自動更新對應資料
   useEffect(() => {
     if (userRole === 'teacher') {
       if (students.length > 0 && selectedStudentEmail) {
         const s = students.find(stud => stud.email === selectedStudentEmail);
         if (s) {
           setSelectedStudentName(s.displayName || s.email);
+          // 確保讀取 arrivalDate，若無則為空字串
           setSelectedStudentDate(s.arrivalDate || '');
         }
       }
     } else {
-      // 學生身分：直接讀取自己的 Profile
+      // 學生身分：直接讀取傳入的 userProfile
       setSelectedStudentName(userProfile?.displayName || user.displayName);
       setSelectedStudentDate(userProfile?.arrivalDate || '');
     }
@@ -104,9 +117,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setPassportData(data);
       setEditPeriods(data.periods || {});
 
+      // 預設展開第一個類別
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
-        setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
+        // 只有第一次載入才自動展開，避免操作中亂跳
+        if (Object.keys(expandedGroups).length === 0) {
+            setExpandedGroups(prev => ({ ...prev, [firstCat]: true }));
+        }
       }
     } catch (error) {
       console.error("讀取失敗:", error);
@@ -115,8 +132,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setLoading(false);
   };
 
+  // 當選擇的 email 改變時，重新抓取護照資料
   useEffect(() => {
-    fetchPassportData(selectedStudentEmail);
+    if (selectedStudentEmail) {
+      fetchPassportData(selectedStudentEmail);
+    }
   }, [selectedStudentEmail]);
 
   // 資料分組處理
@@ -184,15 +204,22 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }));
   };
 
-  // 修正重點：儲存期間時，使用 selectedStudentEmail
+  // 儲存訓練期間
   const handleSavePeriod = async (catId) => {
     setSavingPeriod(catId);
     const periodData = editPeriods[catId];
     const teacherDisplayName = userProfile?.displayName || user.displayName;
 
+    // 修正重點 C: 再次確保 selectedStudentEmail 是有效的
+    if (!selectedStudentEmail) {
+        alert("錯誤：未選擇學生，無法儲存。");
+        setSavingPeriod(null);
+        return;
+    }
+
     const payload = {
       type: 'savePeriod',
-      studentEmail: selectedStudentEmail, // 修正：這是目標學生的 email
+      studentEmail: selectedStudentEmail, // 確保這裡是學生的 Email
       categoryId: catId,
       startDate: periodData?.startDate || '',
       endDate: periodData?.endDate || '',
@@ -330,7 +357,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <User className="w-4 h-4 text-gray-400" />
                 <select 
                   value={selectedStudentEmail}
-                  onChange={(e) => setSelectedStudentEmail(e.target.value)}
+                  onChange={(e) => setSelectedStudentEmail(e.target.value)} // 這裡只更新 Email，透過 useEffect 連動其他資料
                   className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
                 >
                   {students.length > 0 ? (
@@ -340,7 +367,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                       </option>
                     ))
                   ) : (
-                    <option disabled>無符合的學員資料</option>
+                    <option disabled>載入中...</option>
                   )}
                 </select>
               </div>
@@ -388,13 +415,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               const totalCount = groupItems.length;
               const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
               
-              // 分離顯示資料(serverPeriod) 與 編輯資料(editPeriod)
               const serverPeriod = passportData.periods[group.id] || { startDate: '', endDate: '' };
               const editPeriod = editPeriods[group.id] || serverPeriod;
               
               const isSaving = savingPeriod === group.id;
-              
-              // 檢查是否有變更
               const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
 
               return (
@@ -456,7 +480,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           )}
                         </>
                       ) : (
-                        // 學生唯讀視角
                         <div className="flex items-center gap-2 text-gray-600 font-medium px-1">
                            <span>{serverPeriod.startDate || '--'}</span>
                            <ArrowRight className="w-3 h-3 text-gray-400" />
