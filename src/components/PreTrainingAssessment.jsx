@@ -10,60 +10,128 @@ import {
   Trash2,
   FileText,
   ArrowLeft,
-  ChevronRight
+  ChevronRight,
+  User,
+  Calendar,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 
 const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, gasApiUrl }) => {
   const [view, setView] = useState('menu');
   const [formData, setFormData] = useState({});
-  const [status, setStatus] = useState('draft'); 
+  const [status, setStatus] = useState('draft'); // draft, submitted, assessed, approved
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const isAdmin = userRole === 'admin';
-  const isStudent = userRole === 'student'; 
-  
-  const isGlobalReadOnly = status === 'approved' || (status === 'submitted' && !isAdmin);
+  // 用於暫存簽核資訊
+  const [signOffData, setSignOffData] = useState({
+    teacherName: '',
+    teacherDate: '',
+    adminName: '',
+    adminDate: ''
+  });
+
+  const isAdmin = userRole === 'admin';     // 教學負責人
+  const isTeacher = userRole === 'teacher'; // 一般教師
+  const isStudent = userRole === 'student'; // 學生
+
+  // 唯讀邏輯：
+  // 1. 已結案 (approved) -> 全鎖
+  // 2. 待審核 (assessed) 且不是 Admin -> 鎖 (等 Admin 審)
+  // 3. 待評估 (submitted) 且是 學生 -> 鎖 (等老師評)
+  const isGlobalReadOnly = 
+    status === 'approved' || 
+    (status === 'assessed' && !isAdmin) ||
+    (status === 'submitted' && isStudent);
 
   useEffect(() => {
-    if (view === 'form' && studentEmail) {
+    // 只要切換到表單或選單，都重新讀取最新狀態，確保資訊同步
+    if (studentEmail) {
       loadFormData();
     }
   }, [view, studentEmail]);
 
-  // 1. 從 Google Sheet 讀取資料
+  // 設定預設簽核日期與姓名
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    // 如果是老師且還沒填過，預設填入
+    if (isTeacher && !signOffData.teacherName) {
+      setSignOffData(prev => ({ ...prev, teacherName: userRole === 'teacher' ? '指導藥師' : '', teacherDate: today }));
+    }
+    // 如果是 Admin 且還沒填過
+    if (isAdmin && !signOffData.adminName) {
+      setSignOffData(prev => ({ ...prev, adminName: '教學負責人', adminDate: today }));
+    }
+  }, [userRole, isTeacher, isAdmin]);
+
   const loadFormData = async () => {
     setLoading(true);
     try {
-      // 呼叫 GAS: type=getAssessment
       const response = await fetch(`${gasApiUrl}?type=getAssessment&studentEmail=${studentEmail}&formType=pre_training`);
       const data = await response.json();
       
-      setFormData(data.formData || {});
+      const loadedFormData = data.formData || {};
+      setFormData(loadedFormData);
       setStatus(data.status || 'draft');
       setLastUpdated(data.updatedAt ? new Date(data.updatedAt) : null);
+
+      // 載入已儲存的簽核資訊
+      setSignOffData({
+        teacherName: loadedFormData.sign_teacher_name || '',
+        teacherDate: loadedFormData.sign_teacher_date || '',
+        adminName: loadedFormData.sign_admin_name || '',
+        adminDate: loadedFormData.sign_admin_date || ''
+      });
       
     } catch (error) {
       console.error("讀取表單失敗", error);
-      alert("無法讀取表單資料，請檢查網路連線");
     }
     setLoading(false);
   };
 
-  // 2. 寫入資料到 Google Sheet
   const handleSave = async (newStatus) => {
     setSaving(true);
-    
-    // 如果是切換狀態，確認要寫入的狀態；否則維持原狀
     const targetStatus = newStatus || status;
+    const today = new Date().toISOString().split('T')[0];
+
+    // 準備要儲存的資料 (包含簽核資訊)
+    let finalFormData = { ...formData };
+
+    // 1. 學生提交：紀錄提交日期
+    if (newStatus === 'submitted') {
+      finalFormData.sign_student_date = today;
+    }
+
+    // 2. 教師評估提交：寫入教師簽核
+    if (newStatus === 'assessed') {
+      if (!signOffData.teacherName || !signOffData.teacherDate) {
+        alert("請填寫評估教師姓名與日期");
+        setSaving(false);
+        return;
+      }
+      finalFormData.sign_teacher_name = signOffData.teacherName;
+      finalFormData.sign_teacher_date = signOffData.teacherDate;
+    }
+
+    // 3. 負責人審核提交：寫入負責人簽核
+    if (newStatus === 'approved') {
+      if (!signOffData.adminName || !signOffData.adminDate) {
+        alert("請填寫審核負責人姓名與日期");
+        setSaving(false);
+        return;
+      }
+      finalFormData.sign_admin_name = signOffData.adminName;
+      finalFormData.sign_admin_date = signOffData.adminDate;
+    }
 
     const payload = {
       type: 'saveAssessment',
-      formType: 'pre_training', // 識別這份表單的 ID
+      formType: 'pre_training',
       studentEmail,
       studentName,
-      formData,
+      formData: finalFormData,
       status: targetStatus,
       updatedBy: currentUserEmail
     };
@@ -76,24 +144,33 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
       });
       
       setStatus(targetStatus);
+      setFormData(finalFormData); // 更新本地狀態
       setLastUpdated(new Date());
-      alert(targetStatus === 'approved' ? '已完成審核！' : '儲存成功！');
       
+      let msg = '儲存成功！';
+      if (newStatus === 'submitted') msg = '已送出，等待教師評估。';
+      if (newStatus === 'assessed') msg = '評估完成，等待負責人審核。';
+      if (newStatus === 'approved') msg = '已完成審核結案！';
+      
+      alert(msg);
+      
+      if (newStatus === 'approved' || newStatus === 'submitted' || newStatus === 'assessed') {
+        setView('menu'); // 完成重要動作後返回列表
+      }
+
     } catch (error) {
       console.error("儲存失敗", error);
-      alert("儲存失敗");
+      alert("儲存失敗，請檢查網路");
     }
     setSaving(false);
   };
 
+  // --- 通用欄位處理 ---
   const handleChange = (sectionId, fieldId, value) => {
     if (isGlobalReadOnly) return;
     setFormData(prev => ({
       ...prev,
-      [sectionId]: {
-        ...prev[sectionId],
-        [fieldId]: value
-      }
+      [sectionId]: { ...prev[sectionId], [fieldId]: value }
     }));
   };
 
@@ -103,32 +180,23 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     const newList = [...currentList];
     if (!newList[index]) newList[index] = {};
     newList[index][fieldId] = value;
-    
-    setFormData(prev => ({
-      ...prev,
-      [sectionId]: { ...prev[sectionId], list: newList }
-    }));
+    setFormData(prev => ({ ...prev, [sectionId]: { ...prev[sectionId], list: newList } }));
   };
 
   const addDynamicItem = (sectionId) => {
     if (isGlobalReadOnly) return;
     const currentList = formData[sectionId]?.list || [];
-    setFormData(prev => ({
-      ...prev,
-      [sectionId]: { ...prev[sectionId], list: [...currentList, {}] }
-    }));
+    setFormData(prev => ({ ...prev, [sectionId]: { ...prev[sectionId], list: [...currentList, {}] } }));
   };
 
   const removeDynamicItem = (sectionId, index) => {
     if (isGlobalReadOnly) return;
     const currentList = formData[sectionId]?.list || [];
     const newList = currentList.filter((_, i) => i !== index);
-    setFormData(prev => ({
-      ...prev,
-      [sectionId]: { ...prev[sectionId], list: newList }
-    }));
+    setFormData(prev => ({ ...prev, [sectionId]: { ...prev[sectionId], list: newList } }));
   };
 
+  // --- 渲染欄位 ---
   const renderField = (field, sectionId, value, onChangeHandler, isSectionLocked) => {
     const disabled = isGlobalReadOnly || isSectionLocked;
     const widthStyle = field.width ? { width: field.width } : { width: '100%' };
@@ -145,17 +213,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             onChange={e => onChangeHandler(field.id, e.target.value)}
             disabled={disabled}
             placeholder={field.placeholder}
-          />
-        );
-      case 'month': 
-        return (
-          <input
-            type="month"
-            style={widthStyle}
-            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
-            value={value || ''}
-            onChange={e => onChangeHandler(field.id, e.target.value)}
-            disabled={disabled}
           />
         );
       case 'textarea':
@@ -208,7 +265,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             )}
           </div>
         );
-      
       case 'score_radio':
         return (
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -241,7 +297,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             </div>
           </div>
         );
-
       case 'checkbox':
         const checkedValues = Array.isArray(value) ? value : [];
         return (
@@ -266,12 +321,19 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             ))}
           </div>
         );
-      default:
-        return null;
+      default: return null;
     }
   };
 
+  // -------------------------------------------------------------------------
+  // 畫面 1: 選單列表 (包含狀態顯示)
+  // -------------------------------------------------------------------------
   if (view === 'menu') {
+    // 狀態判斷邏輯
+    const isSubmitted = ['submitted', 'assessed', 'approved'].includes(status);
+    const isAssessed = ['assessed', 'approved'].includes(status);
+    const isApproved = status === 'approved';
+
     return (
       <div className="max-w-4xl mx-auto animate-in fade-in">
         <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
@@ -279,26 +341,81 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           可用的評估表單
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button 
-            onClick={() => setView('form')}
-            className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-300 transition-all text-left group"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 transition-colors">
-                  新進藥師學前評估表
-                </h4>
-                <p className="text-sm text-gray-500 mt-2">
-                  適用對象：新進 PGY 學員<br/>
-                  內容包含：背景調查、工作經歷、學習歷程調查
-                </p>
-              </div>
-              <div className="bg-gray-100 p-2 rounded-full group-hover:bg-indigo-100 transition-colors">
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600" />
-              </div>
+        <div 
+          onClick={() => setView('form')}
+          className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer overflow-hidden group"
+        >
+          {/* Header */}
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 group-hover:bg-indigo-50 transition-colors">
+            <div>
+              <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600">新進藥師學前評估表</h4>
+              <p className="text-xs text-gray-500 mt-1">版本：{PRE_TRAINING_FORM.version}</p>
             </div>
-          </button>
+            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600" />
+          </div>
+
+          {/* 狀態進度顯示區 */}
+          <div className="p-4 space-y-3">
+            {/* 1. 學生填寫 */}
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 text-gray-700">
+                <div className={`w-2 h-2 rounded-full ${isSubmitted ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                <span>學生填寫</span>
+                {formData.sign_student_date && (
+                  <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">
+                    {formData.sign_student_date}
+                  </span>
+                )}
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                isSubmitted ? 'bg-green-100 text-green-700' : 
+                status === 'draft' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {isSubmitted ? '已完成' : '填寫中'}
+              </span>
+            </div>
+
+            {/* 2. 教師評估 */}
+            <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
+              <div className="flex items-center gap-2 text-gray-700">
+                <div className={`w-2 h-2 rounded-full ${isAssessed ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                <span>教師評估</span>
+                {formData.sign_teacher_name && (
+                  <>
+                    <span className="font-bold text-xs">[{formData.sign_teacher_name}]</span>
+                    <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">{formData.sign_teacher_date}</span>
+                  </>
+                )}
+              </div>
+              {/* 只有當 學生已交 且 還沒評估 時，顯示待評估 */}
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                isAssessed ? 'bg-green-100 text-green-700' : 
+                (isSubmitted && !isAssessed) ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {isAssessed ? '已完成' : (isSubmitted ? '待評估' : '--')}
+              </span>
+            </div>
+
+            {/* 3. 負責人審核 */}
+            <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
+              <div className="flex items-center gap-2 text-gray-700">
+                <div className={`w-2 h-2 rounded-full ${isApproved ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                <span>負責人審核</span>
+                {formData.sign_admin_name && (
+                  <>
+                    <span className="font-bold text-xs">[{formData.sign_admin_name}]</span>
+                    <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">{formData.sign_admin_date}</span>
+                  </>
+                )}
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                isApproved ? 'bg-green-100 text-green-700' : 
+                (isAssessed && !isApproved) ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {isApproved ? '完成' : (isAssessed ? '待審核' : '--')}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -309,6 +426,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in slide-in-from-right-4">
       
+      {/* 頂部導航 */}
       <div className="flex items-center gap-2 mb-4">
         <button 
           onClick={() => setView('menu')}
@@ -322,13 +440,18 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
 
       <div className={`p-4 rounded-lg flex justify-between items-center ${
         status === 'approved' ? 'bg-green-50 border border-green-200 text-green-800' :
-        status === 'submitted' ? 'bg-orange-50 border border-orange-200 text-orange-800' :
+        status === 'assessed' ? 'bg-purple-50 border border-purple-200 text-purple-800' :
+        status === 'submitted' ? 'bg-blue-50 border border-blue-200 text-blue-800' :
         'bg-gray-50 border border-gray-200 text-gray-700'
       }`}>
         <div className="flex items-center gap-2">
            {status === 'approved' ? <Lock className="w-5 h-5"/> : <Unlock className="w-5 h-5"/>}
            <span className="font-bold">
-             狀態：{status === 'draft' ? '草稿 (教師填寫中)' : status === 'submitted' ? '已提交 (等待教學負責人審核)' : '已核准 (結案)'}
+             狀態：
+             {status === 'draft' && '草稿 (學生填寫中)'}
+             {status === 'submitted' && '已提交 (待教師評估)'}
+             {status === 'assessed' && '已評估 (待負責人審核)'}
+             {status === 'approved' && '已核准 (結案)'}
            </span>
         </div>
         {lastUpdated && <span className="text-xs opacity-70">最後更新：{lastUpdated.toLocaleString()}</span>}
@@ -342,7 +465,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
 
         <div className="p-6 md:p-8 space-y-10">
           {PRE_TRAINING_FORM.sections.map(section => {
-            
             const isSectionLocked = section.access_control === 'teacher_admin' && isStudent;
 
             return (
@@ -368,8 +490,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                 <div key={sub.id} className={sub.type === 'checkbox' ? 'md:col-span-2' : ''}>
                                   <label className="text-xs font-bold text-gray-500 mb-1 block">{sub.label}</label>
                                   {renderField(
-                                    sub, 
-                                    section.id, 
+                                    sub, section.id, 
                                     formData[section.id]?.[`${field.id}_${sub.id}`], 
                                     (fid, val) => handleChange(section.id, `${field.id}_${fid}`, val),
                                     isSectionLocked
@@ -387,8 +508,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                             {field.label} {field.required && <span className="text-red-500">*</span>}
                           </label>
                           {renderField(
-                            field, 
-                            section.id, 
+                            field, section.id, 
                             formData[section.id]?.[field.id], 
                             (fid, val) => handleChange(section.id, fid, val),
                             isSectionLocked
@@ -399,41 +519,29 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   </div>
                 )}
 
-                {/* 動態列表 (Grid Layout) */}
                 {section.is_dynamic_list && (
                   <div className="space-y-4">
                     {(formData[section.id]?.list || []).map((item, idx) => (
                       <div key={idx} className="relative p-4 border border-gray-200 rounded-lg bg-gray-50 grid grid-cols-1 md:grid-cols-12 gap-4">
                         {section.fields.map(field => (
-                          <div 
-                            key={field.id} 
-                            className={`md:col-span-${field.col_span || 12} col-span-12`} 
-                          >
+                          <div key={field.id} className={`md:col-span-${field.col_span || 12} col-span-12`}>
                             <label className="text-xs font-bold text-gray-500 mb-1 block">{field.label}</label>
                             {renderField(
-                              field, 
-                              section.id, 
-                              item[field.id], 
+                              field, section.id, item[field.id], 
                               (fid, val) => handleDynamicListChange(section.id, idx, fid, val),
                               isSectionLocked
                             )}
                           </div>
                         ))}
                         {!isGlobalReadOnly && !isSectionLocked && (
-                          <button 
-                            onClick={() => removeDynamicItem(section.id, idx)}
-                            className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
-                          >
+                          <button onClick={() => removeDynamicItem(section.id, idx)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
                     ))}
                     {!isGlobalReadOnly && !isSectionLocked && (
-                      <button
-                        onClick={() => addDynamicItem(section.id)}
-                        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-indigo-500 hover:text-indigo-600 font-bold flex items-center justify-center gap-2 transition-colors"
-                      >
+                      <button onClick={() => addDynamicItem(section.id)} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-indigo-500 hover:text-indigo-600 font-bold flex items-center justify-center gap-2 transition-colors">
                         <Plus className="w-5 h-5" /> {section.add_button_text}
                       </button>
                     )}
@@ -453,8 +561,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                 <label className="text-sm font-bold text-gray-700 min-w-[80px]">{field.label}:</label>
                                 <div className="flex-1">
                                   {renderField(
-                                    field, 
-                                    section.id, 
+                                    field, section.id, 
                                     formData[section.id]?.[field.id], 
                                     (fid, val) => handleChange(section.id, fid, val),
                                     isSectionLocked
@@ -469,56 +576,30 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                            <div className="overflow-x-auto">
                              <table className="w-full text-sm text-left">
                                <thead className="bg-gray-50 text-gray-700 font-bold border-b border-gray-200">
-                                 <tr>
-                                   {subSec.columns.map(col => <th key={col} className="p-3">{col}</th>)}
-                                 </tr>
+                                 <tr>{subSec.columns.map(col => <th key={col} className="p-3">{col}</th>)}</tr>
                                </thead>
                                <tbody className="divide-y divide-gray-100">
                                  {subSec.rows.map(row => (
                                    <tr key={row.id}>
                                      <td className="p-3 font-medium text-gray-800">{row.unit}</td>
-                                     
                                      <td className="p-3">
                                        <div className="flex flex-wrap gap-2">
                                          {row.assessment.options.map(opt => (
                                             <label key={opt} className="flex items-center gap-1 cursor-pointer">
-                                              <input 
-                                                type="radio"
-                                                name={`${row.id}_assess`}
-                                                value={opt}
-                                                checked={formData[section.id]?.[`${row.id}_assess`] === opt}
-                                                onChange={e => handleChange(section.id, `${row.id}_assess`, e.target.value)}
-                                                disabled={isGlobalReadOnly || isSectionLocked}
-                                                className="text-indigo-600"
-                                              />
+                                              <input type="radio" name={`${row.id}_assess`} value={opt} checked={formData[section.id]?.[`${row.id}_assess`] === opt} onChange={e => handleChange(section.id, `${row.id}_assess`, e.target.value)} disabled={isGlobalReadOnly || isSectionLocked} className="text-indigo-600" />
                                               <span>{opt}</span>
                                             </label>
                                          ))}
                                        </div>
                                      </td>
-                                     
                                      <td className="p-3">
                                         <div className="flex flex-col gap-2">
                                           {row.planning.options.map((opt, i) => (
                                             <label key={i} className="flex items-center gap-2 cursor-pointer">
-                                              <input 
-                                                type="radio"
-                                                name={`${row.id}_plan`}
-                                                value={opt.label}
-                                                checked={formData[section.id]?.[`${row.id}_plan`] === opt.label}
-                                                onChange={e => handleChange(section.id, `${row.id}_plan`, e.target.value)}
-                                                disabled={isGlobalReadOnly || isSectionLocked}
-                                                className="text-indigo-600"
-                                              />
+                                              <input type="radio" name={`${row.id}_plan`} value={opt.label} checked={formData[section.id]?.[`${row.id}_plan`] === opt.label} onChange={e => handleChange(section.id, `${row.id}_plan`, e.target.value)} disabled={isGlobalReadOnly || isSectionLocked} className="text-indigo-600" />
                                               <span>{opt.label}</span>
                                               {opt.input_type === 'number' && (
-                                                <input 
-                                                  type="number"
-                                                  className="w-16 border-b border-gray-300 text-center focus:border-indigo-500 outline-none p-0 disabled:bg-transparent"
-                                                  disabled={isGlobalReadOnly || isSectionLocked || formData[section.id]?.[`${row.id}_plan`] !== opt.label}
-                                                  value={formData[section.id]?.[`${row.id}_plan_custom`] || ''}
-                                                  onChange={e => handleChange(section.id, `${row.id}_plan_custom`, e.target.value)}
-                                                />
+                                                <input type="number" className="w-16 border-b border-gray-300 text-center focus:border-indigo-500 outline-none p-0 disabled:bg-transparent" disabled={isGlobalReadOnly || isSectionLocked || formData[section.id]?.[`${row.id}_plan`] !== opt.label} value={formData[section.id]?.[`${row.id}_plan_custom`] || ''} onChange={e => handleChange(section.id, `${row.id}_plan_custom`, e.target.value)} />
                                               )}
                                             </label>
                                           ))}
@@ -539,61 +620,106 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           })}
         </div>
 
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          {!isGlobalReadOnly && (
-             <button
-               onClick={() => handleSave('draft')}
-               disabled={saving}
-               className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium flex items-center gap-2"
-             >
-               {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
-               儲存草稿
-             </button>
+        {/* --- 底部簽核與操作區 --- */}
+        <div className="bg-gray-50 border-t border-gray-200">
+          
+          {/* 1. 教師簽核區 (Submitted 狀態 + 教師) */}
+          {status === 'submitted' && (isTeacher || isAdmin) && (
+            <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
+              <h4 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                <User className="w-4 h-4" /> 教師評估簽核
+              </h4>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-blue-600 mb-1">評估教師姓名</label>
+                  <input 
+                    type="text" 
+                    value={signOffData.teacherName}
+                    onChange={e => setSignOffData({...signOffData, teacherName: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-blue-600 mb-1">評估日期</label>
+                  <input 
+                    type="date" 
+                    value={signOffData.teacherDate}
+                    onChange={e => setSignOffData({...signOffData, teacherDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+              </div>
+            </div>
           )}
 
-          {status === 'draft' && !isAdmin && (
-            <button
-               onClick={() => {
-                 if(window.confirm('提交後將無法再修改，確認送出給教學負責人審核？')) {
-                   handleSave('submitted');
-                 }
-               }}
-               disabled={saving}
-               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium flex items-center gap-2"
-             >
-               <CheckCircle className="w-4 h-4"/>
-               提交審核
-             </button>
+          {/* 2. 負責人審核區 (Assessed 狀態 + Admin) */}
+          {status === 'assessed' && isAdmin && (
+            <div className="px-6 py-4 bg-purple-50 border-b border-purple-100">
+              <h4 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" /> 負責人審核簽核
+              </h4>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-purple-600 mb-1">審核負責人姓名</label>
+                  <input 
+                    type="text" 
+                    value={signOffData.adminName}
+                    onChange={e => setSignOffData({...signOffData, adminName: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-purple-600 mb-1">審核日期</label>
+                  <input 
+                    type="date" 
+                    value={signOffData.adminDate}
+                    onChange={e => setSignOffData({...signOffData, adminDate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+              </div>
+            </div>
           )}
 
-          {status === 'submitted' && isAdmin && (
-             <div className="flex gap-2">
-                <button
-                 onClick={() => handleSave('draft')} 
-                 className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium"
-               >
-                 退回修改
-               </button>
-               <button
-                 onClick={() => {
-                    if(window.confirm('確認資料無誤並核准？核准後將無法變更。')) {
-                      handleSave('approved');
-                    }
-                 }}
-                 disabled={saving}
-                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
-               >
-                 <CheckCircle className="w-4 h-4"/>
-                 核准並結案
-               </button>
-             </div>
-          )}
+          {/* 操作按鈕 */}
+          <div className="px-6 py-4 flex justify-end gap-3">
+            {/* 草稿儲存 */}
+            {!isGlobalReadOnly && (
+              <button onClick={() => handleSave(status)} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium flex items-center gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 儲存進度
+              </button>
+            )}
 
-          {status === 'approved' && (
-             <span className="text-green-600 font-bold flex items-center gap-2">
-               <CheckCircle className="w-5 h-5"/> 本表單已核准結案
-             </span>
-          )}
+            {/* 學生送出 */}
+            {status === 'draft' && isStudent && (
+              <button onClick={() => { if(window.confirm('確認送出？送出後將無法修改。')) handleSave('submitted'); }} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium flex items-center gap-2">
+                <CheckCircle className="w-4 h-4"/> 提交評估
+              </button>
+            )}
+
+            {/* 教師送出 (新增狀態: assessed) */}
+            {status === 'submitted' && (isTeacher || isAdmin) && (
+              <button onClick={() => { if(window.confirm('確認評估完成？將送交負責人審核。')) handleSave('assessed'); }} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2">
+                <CheckCircle className="w-4 h-4"/> 完成評估
+              </button>
+            )}
+
+            {/* 負責人核准 */}
+            {status === 'assessed' && isAdmin && (
+              <div className="flex gap-2">
+                <button onClick={() => handleSave('submitted')} className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium">退回教師</button>
+                <button onClick={() => { if(window.confirm('確認核准並結案？')) handleSave('approved'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4"/> 核准結案
+                </button>
+              </div>
+            )}
+
+            {status === 'approved' && (
+              <span className="text-green-600 font-bold flex items-center gap-2">
+                <CheckCircle className="w-5 h-5"/> 本表單已核准結案
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
