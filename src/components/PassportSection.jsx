@@ -430,13 +430,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   // 渲染：學習評估 Tab (使用新元件)
   const renderAssessment = () => (
-    <PreTrainingAssessment 
-      studentEmail={selectedStudentEmail}
-      studentName={selectedStudentName}
-      userRole={userRole}
-      currentUserEmail={user?.email}
-    />
-  );
+  <PreTrainingAssessment 
+    studentEmail={selectedStudentEmail}
+    studentName={selectedStudentName}
+    userRole={userRole}
+    currentUserEmail={user?.email}
+    gasApiUrl={GAS_API_URL} // ★★★ 關鍵：必須傳入此參數 ★★★
+  />
+);
 
   return (
     <div className="space-y-6">
