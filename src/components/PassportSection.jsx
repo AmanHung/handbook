@@ -68,8 +68,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [userRole]);
 
-  // 2. 修正重點：自動同步「到職日期」與「學員姓名」
-  // 無論是剛載入還是切換選單，只要 selectedStudentEmail 或 students 變動，就重新查找資料
+  // 2. 自動同步「到職日期」與「學員姓名」
   useEffect(() => {
     if (userRole === 'teacher') {
       if (students.length > 0 && selectedStudentEmail) {
@@ -103,7 +102,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       if (data.status === 'error') throw new Error(data.message || "讀取資料發生錯誤");
 
       setPassportData(data);
-      // 將伺服器抓到的日期同步到編輯狀態，確保老師看到的是最新值
       setEditPeriods(data.periods || {});
 
       if (data.items && data.items.length > 0) {
@@ -117,7 +115,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setLoading(false);
   };
 
-  // 當選擇的 email 改變時，重新抓取護照資料
   useEffect(() => {
     fetchPassportData(selectedStudentEmail);
   }, [selectedStudentEmail]);
@@ -187,6 +184,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }));
   };
 
+  // 修正重點：儲存期間時，使用 selectedStudentEmail
   const handleSavePeriod = async (catId) => {
     setSavingPeriod(catId);
     const periodData = editPeriods[catId];
@@ -194,7 +192,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
     const payload = {
       type: 'savePeriod',
-      studentEmail: selectedStudentEmail,
+      studentEmail: selectedStudentEmail, // 修正：這是目標學生的 email
       categoryId: catId,
       startDate: periodData?.startDate || '',
       endDate: periodData?.endDate || '',
@@ -390,7 +388,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               const totalCount = groupItems.length;
               const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
               
-              // 修正重點：分離顯示資料(serverPeriod) 與 編輯資料(editPeriod)
+              // 分離顯示資料(serverPeriod) 與 編輯資料(editPeriod)
               const serverPeriod = passportData.periods[group.id] || { startDate: '', endDate: '' };
               const editPeriod = editPeriods[group.id] || serverPeriod;
               
@@ -458,7 +456,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           )}
                         </>
                       ) : (
-                        // 修正重點：學生直接讀取伺服器回傳的 serverPeriod，確保看得到
+                        // 學生唯讀視角
                         <div className="flex items-center gap-2 text-gray-600 font-medium px-1">
                            <span>{serverPeriod.startDate || '--'}</span>
                            <ArrowRight className="w-3 h-3 text-gray-400" />
