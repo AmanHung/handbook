@@ -13,19 +13,18 @@ import {
   ChevronRight,
   User,
   Calendar,
-  Clock,
   CheckCircle2
 } from 'lucide-react';
 
-const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, gasApiUrl }) => {
+// ★★★ 1. 接收 currentUserName ★★★
+const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, gasApiUrl }) => {
   const [view, setView] = useState('menu');
   const [formData, setFormData] = useState({});
-  const [status, setStatus] = useState('draft'); // draft, submitted, assessed, approved
+  const [status, setStatus] = useState('draft'); 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // 用於暫存簽核資訊
   const [signOffData, setSignOffData] = useState({
     teacherName: '',
     teacherDate: '',
@@ -33,38 +32,43 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     adminDate: ''
   });
 
-  const isAdmin = userRole === 'admin';     // 教學負責人
-  const isTeacher = userRole === 'teacher'; // 一般教師
-  const isStudent = userRole === 'student'; // 學生
+  const isAdmin = userRole === 'admin';     
+  const isTeacher = userRole === 'teacher'; 
+  const isStudent = userRole === 'student'; 
 
-  // 唯讀邏輯：
-  // 1. 已結案 (approved) -> 全鎖
-  // 2. 待審核 (assessed) 且不是 Admin -> 鎖 (等 Admin 審)
-  // 3. 待評估 (submitted) 且是 學生 -> 鎖 (等老師評)
   const isGlobalReadOnly = 
     status === 'approved' || 
     (status === 'assessed' && !isAdmin) ||
     (status === 'submitted' && isStudent);
 
   useEffect(() => {
-    // 只要切換到表單或選單，都重新讀取最新狀態，確保資訊同步
     if (studentEmail) {
       loadFormData();
     }
   }, [view, studentEmail]);
 
-  // 設定預設簽核日期與姓名
+  // ★★★ 2. 自動帶入登入者姓名 ★★★
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    // 如果是老師且還沒填過，預設填入
-    if (isTeacher && !signOffData.teacherName) {
-      setSignOffData(prev => ({ ...prev, teacherName: userRole === 'teacher' ? '指導藥師' : '', teacherDate: today }));
+    
+    // 教師模式：若還沒簽名，自動填入當前登入者姓名
+    if (isTeacher && status === 'submitted' && !signOffData.teacherName) {
+      setSignOffData(prev => ({ 
+        ...prev, 
+        teacherName: currentUserName || '指導藥師', 
+        teacherDate: today 
+      }));
     }
-    // 如果是 Admin 且還沒填過
-    if (isAdmin && !signOffData.adminName) {
-      setSignOffData(prev => ({ ...prev, adminName: '教學負責人', adminDate: today }));
+    
+    // 負責人模式：若還沒簽名，自動填入當前登入者姓名
+    if (isAdmin && status === 'assessed' && !signOffData.adminName) {
+      setSignOffData(prev => ({ 
+        ...prev, 
+        adminName: currentUserName || '教學負責人', 
+        adminDate: today 
+      }));
     }
-  }, [userRole, isTeacher, isAdmin]);
+  }, [userRole, isTeacher, isAdmin, status, currentUserName]);
 
   const loadFormData = async () => {
     setLoading(true);
@@ -77,7 +81,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
       setStatus(data.status || 'draft');
       setLastUpdated(data.updatedAt ? new Date(data.updatedAt) : null);
 
-      // 載入已儲存的簽核資訊
       setSignOffData({
         teacherName: loadedFormData.sign_teacher_name || '',
         teacherDate: loadedFormData.sign_teacher_date || '',
@@ -96,33 +99,30 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     const targetStatus = newStatus || status;
     const today = new Date().toISOString().split('T')[0];
 
-    // 準備要儲存的資料 (包含簽核資訊)
     let finalFormData = { ...formData };
 
-    // 1. 學生提交：紀錄提交日期
     if (newStatus === 'submitted') {
       finalFormData.sign_student_date = today;
     }
 
-    // 2. 教師評估提交：寫入教師簽核
+    // ★★★ 3. 儲存時再次強制使用 currentUserName，確保安全性 ★★★
     if (newStatus === 'assessed') {
-      if (!signOffData.teacherName || !signOffData.teacherDate) {
-        alert("請填寫評估教師姓名與日期");
+      if (!signOffData.teacherDate) {
+        alert("請選擇評估日期");
         setSaving(false);
         return;
       }
-      finalFormData.sign_teacher_name = signOffData.teacherName;
+      finalFormData.sign_teacher_name = currentUserName; // 強制寫入當前登入者
       finalFormData.sign_teacher_date = signOffData.teacherDate;
     }
 
-    // 3. 負責人審核提交：寫入負責人簽核
     if (newStatus === 'approved') {
-      if (!signOffData.adminName || !signOffData.adminDate) {
-        alert("請填寫審核負責人姓名與日期");
+      if (!signOffData.adminDate) {
+        alert("請選擇審核日期");
         setSaving(false);
         return;
       }
-      finalFormData.sign_admin_name = signOffData.adminName;
+      finalFormData.sign_admin_name = currentUserName; // 強制寫入當前登入者
       finalFormData.sign_admin_date = signOffData.adminDate;
     }
 
@@ -144,7 +144,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
       });
       
       setStatus(targetStatus);
-      setFormData(finalFormData); // 更新本地狀態
+      setFormData(finalFormData);
       setLastUpdated(new Date());
       
       let msg = '儲存成功！';
@@ -155,7 +155,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
       alert(msg);
       
       if (newStatus === 'approved' || newStatus === 'submitted' || newStatus === 'assessed') {
-        setView('menu'); // 完成重要動作後返回列表
+        setView('menu');
       }
 
     } catch (error) {
@@ -165,7 +165,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     setSaving(false);
   };
 
-  // --- 通用欄位處理 ---
   const handleChange = (sectionId, fieldId, value) => {
     if (isGlobalReadOnly) return;
     setFormData(prev => ({
@@ -196,7 +195,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     setFormData(prev => ({ ...prev, [sectionId]: { ...prev[sectionId], list: newList } }));
   };
 
-  // --- 渲染欄位 ---
   const renderField = (field, sectionId, value, onChangeHandler, isSectionLocked) => {
     const disabled = isGlobalReadOnly || isSectionLocked;
     const widthStyle = field.width ? { width: field.width } : { width: '100%' };
@@ -325,11 +323,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }
   };
 
-  // -------------------------------------------------------------------------
-  // 畫面 1: 選單列表 (包含狀態顯示)
-  // -------------------------------------------------------------------------
   if (view === 'menu') {
-    // 狀態判斷邏輯
     const isSubmitted = ['submitted', 'assessed', 'approved'].includes(status);
     const isAssessed = ['assessed', 'approved'].includes(status);
     const isApproved = status === 'approved';
@@ -345,7 +339,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           onClick={() => setView('form')}
           className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer overflow-hidden group"
         >
-          {/* Header */}
           <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 group-hover:bg-indigo-50 transition-colors">
             <div>
               <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600">新進藥師學前評估表</h4>
@@ -354,9 +347,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600" />
           </div>
 
-          {/* 狀態進度顯示區 */}
           <div className="p-4 space-y-3">
-            {/* 1. 學生填寫 */}
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 text-gray-700">
                 <div className={`w-2 h-2 rounded-full ${isSubmitted ? 'bg-green-500' : 'bg-gray-300'}`}></div>
@@ -375,7 +366,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
               </span>
             </div>
 
-            {/* 2. 教師評估 */}
             <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
               <div className="flex items-center gap-2 text-gray-700">
                 <div className={`w-2 h-2 rounded-full ${isAssessed ? 'bg-green-500' : 'bg-gray-300'}`}></div>
@@ -387,7 +377,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   </>
                 )}
               </div>
-              {/* 只有當 學生已交 且 還沒評估 時，顯示待評估 */}
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                 isAssessed ? 'bg-green-100 text-green-700' : 
                 (isSubmitted && !isAssessed) ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'
@@ -396,7 +385,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
               </span>
             </div>
 
-            {/* 3. 負責人審核 */}
             <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
               <div className="flex items-center gap-2 text-gray-700">
                 <div className={`w-2 h-2 rounded-full ${isApproved ? 'bg-green-500' : 'bg-gray-300'}`}></div>
@@ -426,7 +414,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in slide-in-from-right-4">
       
-      {/* 頂部導航 */}
       <div className="flex items-center gap-2 mb-4">
         <button 
           onClick={() => setView('menu')}
@@ -623,7 +610,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
         {/* --- 底部簽核與操作區 --- */}
         <div className="bg-gray-50 border-t border-gray-200">
           
-          {/* 1. 教師簽核區 (Submitted 狀態 + 教師) */}
+          {/* 1. 教師簽核區 (Submitted 狀態 + 教師/管理員) */}
           {status === 'submitted' && (isTeacher || isAdmin) && (
             <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
               <h4 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
@@ -635,8 +622,8 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   <input 
                     type="text" 
                     value={signOffData.teacherName}
-                    onChange={e => setSignOffData({...signOffData, teacherName: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-md"
+                    disabled={true} // ★★★ 唯讀設定
+                    className="w-full px-3 py-2 border rounded-md bg-gray-100 cursor-not-allowed" // 灰色背景
                   />
                 </div>
                 <div className="flex-1">
@@ -664,8 +651,8 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   <input 
                     type="text" 
                     value={signOffData.adminName}
-                    onChange={e => setSignOffData({...signOffData, adminName: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-md"
+                    disabled={true} // ★★★ 唯讀設定
+                    className="w-full px-3 py-2 border rounded-md bg-gray-100 cursor-not-allowed"
                   />
                 </div>
                 <div className="flex-1">
