@@ -38,6 +38,9 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [editForm, setEditForm] = useState({ displayName: '', arrivalDate: '' })
 
+  // 輔助函式：判斷是否為教職人員 (包含 老師 與 管理員)
+  const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
+
   // 登入處理
   const handleLogin = async () => {
     try {
@@ -140,6 +143,20 @@ function App() {
     }
   }
 
+  // 取得顯示的身分名稱
+  const getRoleLabel = () => {
+    if (userRole === 'admin') return '教學負責人';
+    if (userRole === 'teacher') return '指導藥師';
+    return 'PGY 學員';
+  };
+
+  // 取得身分對應的顏色
+  const getRoleColorClass = () => {
+    if (userRole === 'admin') return 'text-purple-600 font-bold'; // 管理員紫色
+    if (userRole === 'teacher') return 'text-emerald-600 font-bold'; // 老師綠色
+    return 'text-gray-500';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -201,7 +218,8 @@ function App() {
                 { id: 'video', label: '影音教學', icon: BookOpen },
                 { id: 'shift', label: '排班表', icon: BookOpen },
                 { id: 'passport', label: '學習護照', icon: UserIcon },
-                ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
+                // 只有管理員或老師看得到後台 (但可以保留給 admin 最高權限)
+                ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
                   key={item.id}
@@ -222,15 +240,15 @@ function App() {
               <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200">
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-700">{displayUserName}</p>
-                  <p className={`text-xs ${userRole === 'teacher' ? 'text-emerald-600 font-bold' : 'text-gray-500'}`}>
-                    {userRole === 'teacher' ? '指導藥師' : 'PGY 學員'}
+                  <p className={`text-xs ${getRoleColorClass()}`}>
+                    {getRoleLabel()}
                   </p>
                 </div>
                 <div className="relative group cursor-pointer">
                     <img 
                       src={user.photoURL} 
                       alt={displayUserName} 
-                      className={`w-9 h-9 rounded-full border-2 ${userRole === 'teacher' ? 'border-emerald-400' : 'border-gray-200'}`}
+                      className={`w-9 h-9 rounded-full border-2 ${isTeacherOrAdmin ? 'border-emerald-400' : 'border-gray-200'}`}
                       onClick={() => setIsMenuOpen(!isMenuOpen)}
                     />
                 </div>
@@ -253,7 +271,7 @@ function App() {
                   <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" />
                   <div>
                     <p className="font-medium text-gray-800">{displayUserName}</p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
+                    <p className={`text-xs ${getRoleColorClass()}`}>{getRoleLabel()}</p>
                   </div>
                 </div>
             </div>
@@ -265,7 +283,7 @@ function App() {
                     { id: 'video', label: '影音教學' },
                     { id: 'shift', label: '排班表' },
                     { id: 'passport', label: '學習護照' },
-                    ...(userRole === 'teacher' ? [{ id: 'admin', label: '後台管理' }] : []),
+                    ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理' }] : []),
                 ].map(item => (
                     <button
                     key={item.id}
@@ -373,10 +391,10 @@ function App() {
           <PassportSection 
             user={user} 
             userRole={userRole}
-            userProfile={userProfile} // 修正：傳遞 userProfile
+            userProfile={userProfile} // 傳遞 userProfile
           />
         )}
-        {activeTab === 'admin' && userRole === 'teacher' && <AdminPage user={user} />}
+        {activeTab === 'admin' && isTeacherOrAdmin && <AdminPage user={user} />}
       </main>
     </div>
   )
