@@ -24,9 +24,8 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const isAdmin = userRole === 'admin';
-  const isStudent = userRole === 'student'; // 判斷是否為學生
+  const isStudent = userRole === 'student'; 
   
-  // 全域唯讀判斷：已核准 OR (已提交 且 不是管理員)
   const isGlobalReadOnly = status === 'approved' || (status === 'submitted' && !isAdmin);
 
   useEffect(() => {
@@ -128,9 +127,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }));
   };
 
-  // 渲染表單控制項
   const renderField = (field, sectionId, value, onChangeHandler, isSectionLocked) => {
-    // 欄位唯讀條件：全域唯讀 或 該區塊對此人鎖定
     const disabled = isGlobalReadOnly || isSectionLocked;
     const widthStyle = field.width ? { width: field.width } : { width: '100%' };
 
@@ -141,19 +138,18 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           <input
             type={field.type}
             style={widthStyle} 
-            className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
             disabled={disabled}
             placeholder={field.placeholder}
           />
         );
-      case 'month': 
+      case 'month': // 雖然這次拿掉了，但保留此 case 以防未來需要
         return (
           <input
             type="month"
-            style={widthStyle}
-            className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
             disabled={disabled}
@@ -163,7 +159,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
         return (
           <textarea
             style={widthStyle}
-            className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             rows={3}
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
@@ -210,7 +206,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           </div>
         );
       
-      // ★★★ 新增類型：分數 + 選項 ★★★
       case 'score_radio':
         return (
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -221,7 +216,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                 placeholder="0-100"
                 className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100 text-center"
                 value={formData[sectionId]?.[`${field.id}_score`] || ''}
-                onChange={e => onChangeHandler(`${field.id}_score`, e.target.value)} // 儲存到 _score 欄位
+                onChange={e => onChangeHandler(`${field.id}_score`, e.target.value)} 
                 disabled={disabled}
               />
             </div>
@@ -311,7 +306,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in slide-in-from-right-4">
       
-      {/* 頂部導航 */}
       <div className="flex items-center gap-2 mb-4">
         <button 
           onClick={() => setView('menu')}
@@ -323,7 +317,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
         <span className="text-gray-700 font-medium">{studentName} 的評估表</span>
       </div>
 
-      {/* 狀態列 */}
       <div className={`p-4 rounded-lg flex justify-between items-center ${
         status === 'approved' ? 'bg-green-50 border border-green-200 text-green-800' :
         status === 'submitted' ? 'bg-orange-50 border border-orange-200 text-orange-800' :
@@ -347,8 +340,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
         <div className="p-6 md:p-8 space-y-10">
           {PRE_TRAINING_FORM.sections.map(section => {
             
-            // ★★★ 修正 2: 權限判斷 ★★★
-            // 如果該區塊限制為 "teacher_admin"，且當前用戶是學生，則鎖定該區塊
             const isSectionLocked = section.access_control === 'teacher_admin' && isStudent;
 
             return (
@@ -356,14 +347,12 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                 <h3 className="text-lg font-bold text-gray-800 mb-1">{section.title}</h3>
                 {section.description && <p className="text-sm text-gray-500 mb-6">{section.description}</p>}
 
-                {/* 顯示鎖定提示 */}
                 {isSectionLocked && (
                   <div className="bg-gray-100 text-gray-500 p-3 rounded mb-4 text-sm flex items-center gap-2">
                     <Lock className="w-4 h-4" /> 此區域僅限指導藥師或教學負責人填寫
                   </div>
                 )}
 
-                {/* A. 一般區塊 */}
                 {section.fields && !section.is_dynamic_list && (
                   <div className="grid grid-cols-1 gap-6">
                     {section.fields.map(field => {
@@ -380,7 +369,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                     section.id, 
                                     formData[section.id]?.[`${field.id}_${sub.id}`], 
                                     (fid, val) => handleChange(section.id, `${field.id}_${fid}`, val),
-                                    isSectionLocked // 傳入區塊鎖定狀態
+                                    isSectionLocked
                                   )}
                                 </div>
                               ))}
@@ -407,13 +396,16 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   </div>
                 )}
 
-                {/* B. 動態列表 (工作經歷) */}
+                {/* 動態列表 (Grid Layout) */}
                 {section.is_dynamic_list && (
                   <div className="space-y-4">
                     {(formData[section.id]?.list || []).map((item, idx) => (
                       <div key={idx} className="relative p-4 border border-gray-200 rounded-lg bg-gray-50 grid grid-cols-1 md:grid-cols-12 gap-4">
                         {section.fields.map(field => (
-                          <div key={field.id} className={field.type === 'textarea' ? 'md:col-span-6' : 'md:col-span-3'}>
+                          <div 
+                            key={field.id} 
+                            className={`md:col-span-${field.col_span || 12} col-span-12`} // 關鍵修改
+                          >
                             <label className="text-xs font-bold text-gray-500 mb-1 block">{field.label}</label>
                             {renderField(
                               field, 
@@ -445,14 +437,12 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                   </div>
                 )}
 
-                {/* C. 子區塊 (評核與規劃) */}
                 {section.sub_sections && (
                   <div className="space-y-8">
                     {section.sub_sections.map((subSec, idx) => (
                       <div key={idx} className="bg-white border border-gray-200 rounded-lg p-5">
                         <h4 className="font-bold text-indigo-700 mb-4 pb-2 border-b border-gray-100">{subSec.title}</h4>
                         
-                        {/* C-1. 一般欄位 */}
                         {subSec.fields && (
                           <div className="space-y-4">
                             {subSec.fields.map(field => (
@@ -472,7 +462,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                           </div>
                         )}
 
-                        {/* C-2. 表格 (訓練規劃) */}
                         {subSec.layout === 'table' && (
                            <div className="overflow-x-auto">
                              <table className="w-full text-sm text-left">
