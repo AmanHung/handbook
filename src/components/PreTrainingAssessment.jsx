@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { PRE_TRAINING_FORM } from '../data/preTrainingForm';
 import { 
   Save, 
@@ -15,7 +13,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail }) => {
+const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, gasApiUrl }) => {
   const [view, setView] = useState('menu');
   const [formData, setFormData] = useState({});
   const [status, setStatus] = useState('draft'); 
@@ -34,48 +32,52 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }
   }, [view, studentEmail]);
 
+  // 1. 從 Google Sheet 讀取資料
   const loadFormData = async () => {
     setLoading(true);
     try {
-      const docRef = doc(db, 'training_assessments', `${studentEmail}_pre_training`);
-      const docSnap = await getDoc(docRef);
+      // 呼叫 GAS: type=getAssessment
+      const response = await fetch(`${gasApiUrl}?type=getAssessment&studentEmail=${studentEmail}&formType=pre_training`);
+      const data = await response.json();
       
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setFormData(data.formData || {});
-        setStatus(data.status || 'draft');
-        setLastUpdated(data.updatedAt?.toDate() || null);
-      } else {
-        setFormData({});
-        setStatus('draft');
-      }
+      setFormData(data.formData || {});
+      setStatus(data.status || 'draft');
+      setLastUpdated(data.updatedAt ? new Date(data.updatedAt) : null);
+      
     } catch (error) {
       console.error("讀取表單失敗", error);
+      alert("無法讀取表單資料，請檢查網路連線");
     }
     setLoading(false);
   };
 
+  // 2. 寫入資料到 Google Sheet
   const handleSave = async (newStatus) => {
     setSaving(true);
-    try {
-      const docRef = doc(db, 'training_assessments', `${studentEmail}_pre_training`);
-      
-      const payload = {
-        studentEmail,
-        studentName,
-        formData,
-        status: newStatus || status,
-        updatedBy: currentUserEmail,
-        updatedAt: new Date(),
-        ...(newStatus === 'submitted' && { submittedBy: currentUserEmail, submittedAt: new Date() }),
-        ...(newStatus === 'approved' && { approvedBy: currentUserEmail, approvedAt: new Date() })
-      };
+    
+    // 如果是切換狀態，確認要寫入的狀態；否則維持原狀
+    const targetStatus = newStatus || status;
 
-      await setDoc(docRef, payload, { merge: true });
+    const payload = {
+      type: 'saveAssessment',
+      formType: 'pre_training', // 識別這份表單的 ID
+      studentEmail,
+      studentName,
+      formData,
+      status: targetStatus,
+      updatedBy: currentUserEmail
+    };
+
+    try {
+      await fetch(gasApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
       
-      setStatus(newStatus || status);
+      setStatus(targetStatus);
       setLastUpdated(new Date());
-      alert(newStatus === 'approved' ? '已完成審核！' : '儲存成功！');
+      alert(targetStatus === 'approved' ? '已完成審核！' : '儲存成功！');
       
     } catch (error) {
       console.error("儲存失敗", error);
@@ -145,10 +147,11 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
             placeholder={field.placeholder}
           />
         );
-      case 'month': // 雖然這次拿掉了，但保留此 case 以防未來需要
+      case 'month': 
         return (
           <input
             type="month"
+            style={widthStyle}
             className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
@@ -404,7 +407,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                         {section.fields.map(field => (
                           <div 
                             key={field.id} 
-                            className={`md:col-span-${field.col_span || 12} col-span-12`} // 關鍵修改
+                            className={`md:col-span-${field.col_span || 12} col-span-12`} 
                           >
                             <label className="text-xs font-bold text-gray-500 mb-1 block">{field.label}</label>
                             {renderField(
