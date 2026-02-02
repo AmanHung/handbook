@@ -2,7 +2,7 @@
 
 export const PRE_TRAINING_FORM = {
   form_title: "衛生福利部豐原醫院藥劑科 新進藥師學前評估表",
-  version: "1140903", // 更新版本號
+  version: "1140905", // 更新版本號
   sections: [
     {
       id: "section_background",
@@ -35,14 +35,19 @@ export const PRE_TRAINING_FORM = {
     {
       id: "section_work_experience",
       title: "二、工作經歷",
-      description: "請填寫過往服務機構與服務期間",
+      description: "請填寫過往服務機構與服務期間 (請填寫民國年)",
       is_dynamic_list: true,
       add_button_text: "新增工作經歷",
       fields: [
-        // 修改 1: 移除工作內容，改為日曆選擇模式 (month)
-        { id: "work_org", label: "服務機構/單位", type: "text", width: "40%" },
-        { id: "work_start", label: "起始年月", type: "month", width: "25%" },
-        { id: "work_end", label: "結束年月", type: "month", width: "25%" }
+        // 修改：拆分成 5 個欄位，利用 col_span 排版
+        // 總格數 12: 機構(4) + 起始年(2) + 起始月(2) + 結束年(2) + 結束月(2)
+        { id: "work_org", label: "服務機構/單位", type: "text", col_span: 4 },
+        
+        { id: "start_year", label: "起-年", type: "number", placeholder: "110", col_span: 2 },
+        { id: "start_month", label: "起-月", type: "number", placeholder: "1", col_span: 2 },
+        
+        { id: "end_year", label: "迄-年", type: "number", placeholder: "112", col_span: 2 },
+        { id: "end_month", label: "迄-月", type: "number", placeholder: "12", col_span: 2 }
       ]
     },
     {
@@ -112,12 +117,11 @@ export const PRE_TRAINING_FORM = {
       id: "section_assessment",
       title: "四、綜合評量結果及訓練規劃",
       description: "由指導藥師評估，最後由教學負責人審核 (學員不可填寫)",
-      access_control: "teacher_admin", // 修改 2: 設定為 教師/管理員 專用
+      access_control: "teacher_admin",
       sub_sections: [
         {
           title: "A. 評核項目",
           fields: [
-            // 修改 3: 類型改為 score_radio，支援填分數
             { id: "assess_interview", label: "面試結果", type: "score_radio", options: ["優", "一般", "待加強"] },
             { id: "assess_written_test", label: "筆試結果", type: "score_radio", options: ["優", "一般", "待加強"] },
             { id: "assess_ksa", label: "KSA評估", type: "score_radio", options: ["優", "一般", "待加強"] }
