@@ -10,32 +10,37 @@ import {
   Lock, 
   Unlock,
   Plus,
-  Trash2
+  Trash2,
+  FileText,
+  ArrowLeft,
+  ChevronRight
 } from 'lucide-react';
 
 const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUserEmail }) => {
+  // 視圖狀態：'menu' (選單) | 'form' (表單內容)
+  const [view, setView] = useState('menu');
+  
   const [formData, setFormData] = useState({});
   const [status, setStatus] = useState('draft'); // draft, submitted, approved
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // 權限判斷
   const isAdmin = userRole === 'admin';
   const isTeacher = userRole === 'teacher';
-  // 唯讀模式：如果是 approved，或者是 submit 狀態下的一般老師(不能再改，只能等admin審)
+  // 唯讀判斷：已核准 OR (已提交 且 不是管理員)
   const isReadOnly = status === 'approved' || (status === 'submitted' && !isAdmin);
 
   useEffect(() => {
-    if (studentEmail) {
+    // 當進入表單模式且有學生Email時才讀取
+    if (view === 'form' && studentEmail) {
       loadFormData();
     }
-  }, [studentEmail]);
+  }, [view, studentEmail]);
 
   const loadFormData = async () => {
     setLoading(true);
     try {
-      // 存放在独立的 collection: training_assessments
       const docRef = doc(db, 'training_assessments', `${studentEmail}_pre_training`);
       const docSnap = await getDoc(docRef);
       
@@ -63,10 +68,9 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
         studentEmail,
         studentName,
         formData,
-        status: newStatus || status, // 如果沒傳入狀態，就維持原狀
+        status: newStatus || status,
         updatedBy: currentUserEmail,
         updatedAt: new Date(),
-        // 記錄流程
         ...(newStatus === 'submitted' && { submittedBy: currentUserEmail, submittedAt: new Date() }),
         ...(newStatus === 'approved' && { approvedBy: currentUserEmail, approvedAt: new Date() })
       };
@@ -84,7 +88,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     setSaving(false);
   };
 
-  // 通用欄位變更處理
   const handleChange = (sectionId, fieldId, value) => {
     if (isReadOnly) return;
     setFormData(prev => ({
@@ -96,7 +99,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }));
   };
 
-  // 動態列表處理 (工作經歷)
   const handleDynamicListChange = (sectionId, index, fieldId, value) => {
     if (isReadOnly) return;
     const currentList = formData[sectionId]?.list || [];
@@ -129,28 +131,40 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }));
   };
 
-  // 渲染表單控制項
   const renderField = (field, sectionId, value, onChangeHandler) => {
     const disabled = isReadOnly;
+    // 支援從 JSON 傳入的寬度，如果沒有則預設 100%
+    const widthStyle = field.width ? { width: field.width } : { width: '100%' };
 
     switch (field.type) {
       case 'text':
-      case 'month':
-      case 'number':
+      case 'number': // 支援數字輸入
         return (
           <input
             type={field.type}
-            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            style={widthStyle} // 套用寬度
+            className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
             disabled={disabled}
             placeholder={field.placeholder}
           />
         );
+      case 'month': // 保留支援，雖然這次需求改用 number
+        return (
+          <input
+            type="month"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            value={value || ''}
+            onChange={e => onChangeHandler(field.id, e.target.value)}
+            disabled={disabled}
+          />
+        );
       case 'textarea':
         return (
           <textarea
-            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
+            style={widthStyle}
+            className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100"
             rows={3}
             value={value || ''}
             onChange={e => onChangeHandler(field.id, e.target.value)}
@@ -225,10 +239,66 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
     }
   };
 
+  // -------------------------------------------------------------------------
+  // 畫面 1: 選單列表 (Menu View)
+  // -------------------------------------------------------------------------
+  if (view === 'menu') {
+    return (
+      <div className="max-w-4xl mx-auto animate-in fade-in">
+        <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-indigo-600" />
+          可用的評估表單
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 按鈕 1: 學前評估 */}
+          <button 
+            onClick={() => setView('form')}
+            className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-300 transition-all text-left group"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="font-bold text-gray-800 text-lg group-hover:text-indigo-600 transition-colors">
+                  新進藥師學前評估表
+                </h4>
+                <p className="text-sm text-gray-500 mt-2">
+                  適用對象：新進 PGY 學員<br/>
+                  內容包含：背景調查、工作經歷、學習歷程調查
+                </p>
+              </div>
+              <div className="bg-gray-100 p-2 rounded-full group-hover:bg-indigo-100 transition-colors">
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600" />
+              </div>
+            </div>
+          </button>
+
+          {/* 未來可在此新增更多按鈕，例如：月評核、DOPS... */}
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // 畫面 2: 表單內容 (Form View)
+  // -------------------------------------------------------------------------
+  
   if (loading) return <div className="p-8 text-center text-gray-500 flex justify-center"><Loader2 className="animate-spin mr-2"/> 載入表單中...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in slide-in-from-right-4">
+      
+      {/* 頂部導航列 */}
+      <div className="flex items-center gap-2 mb-4">
+        <button 
+          onClick={() => setView('menu')}
+          className="flex items-center gap-1 text-gray-500 hover:text-indigo-600 font-bold text-sm bg-white px-3 py-2 rounded-lg border border-gray-200 shadow-sm"
+        >
+          <ArrowLeft className="w-4 h-4" /> 返回列表
+        </button>
+        <span className="text-gray-300">|</span>
+        <span className="text-gray-700 font-medium">{studentName} 的評估表</span>
+      </div>
+
       {/* 狀態列 */}
       <div className={`p-4 rounded-lg flex justify-between items-center ${
         status === 'approved' ? 'bg-green-50 border border-green-200 text-green-800' :
@@ -272,7 +342,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                 {renderField(
                                   sub, 
                                   section.id, 
-                                  formData[section.id]?.[`${field.id}_${sub.id}`], // 組合鍵值避免衝突
+                                  formData[section.id]?.[`${field.id}_${sub.id}`], 
                                   (fid, val) => handleChange(section.id, `${field.id}_${fid}`, val)
                                 )}
                               </div>
@@ -281,8 +351,10 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                         </div>
                       )
                     }
+                    
+                    // 處理並排顯示 (如果欄位有設定寬度)
                     return (
-                      <div key={field.id}>
+                      <div key={field.id} style={{ display: field.width ? 'inline-block' : 'block', width: field.width ? field.width : '100%', paddingRight: '1rem' }}>
                         <label className="block text-sm font-bold text-gray-700 mb-2">
                           {field.label} {field.required && <span className="text-red-500">*</span>}
                         </label>
@@ -298,7 +370,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                 </div>
               )}
 
-              {/* B. 動態列表 (工作經歷) */}
+              {/* B. 動態列表 */}
               {section.is_dynamic_list && (
                 <div className="space-y-4">
                   {(formData[section.id]?.list || []).map((item, idx) => (
@@ -335,7 +407,7 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                 </div>
               )}
 
-              {/* C. 子區塊 (評核與規劃) - 包含 Table */}
+              {/* C. 子區塊 (評核與規劃) */}
               {section.sub_sections && (
                 <div className="space-y-8">
                   {section.sub_sections.map((subSec, idx) => (
@@ -375,7 +447,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                  <tr key={row.id}>
                                    <td className="p-3 font-medium text-gray-800">{row.unit}</td>
                                    
-                                   {/* 綜合評量 */}
                                    <td className="p-3">
                                      <div className="flex flex-wrap gap-2">
                                        {row.assessment.options.map(opt => (
@@ -395,7 +466,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
                                      </div>
                                    </td>
                                    
-                                   {/* 訓練規劃 (含自訂輸入) */}
                                    <td className="p-3">
                                       <div className="flex flex-col gap-2">
                                         {row.planning.options.map((opt, i) => (
@@ -437,10 +507,8 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
           ))}
         </div>
 
-        {/* 底部按鈕區 */}
+        {/* 底部按鈕 */}
         <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          
-          {/* 1. 儲存草稿 (老師在 Draft 狀態) */}
           {!isReadOnly && (
              <button
                onClick={() => handleSave('draft')}
@@ -452,7 +520,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
              </button>
           )}
 
-          {/* 2. 提交給 Admin (老師在 Draft 狀態) */}
           {status === 'draft' && !isAdmin && (
             <button
                onClick={() => {
@@ -468,11 +535,10 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
              </button>
           )}
 
-          {/* 3. 管理員核准 (Admin 在 Submitted 狀態) */}
           {status === 'submitted' && isAdmin && (
              <div className="flex gap-2">
                 <button
-                 onClick={() => handleSave('draft')} // 退回草稿
+                 onClick={() => handleSave('draft')} 
                  className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium"
                >
                  退回修改
