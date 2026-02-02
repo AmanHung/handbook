@@ -2,17 +2,16 @@
 
 export const PRE_TRAINING_FORM = {
   form_title: "衛生福利部豐原醫院藥劑科 新進藥師學前評估表",
-  version: "1140902", // 更新版本號
+  version: "1140903", // 更新版本號
   sections: [
     {
       id: "section_background",
-      title: "一、學習背景評估", // 修正編號：二 -> 一
+      title: "一、學習背景評估",
       description: "請填寫您的學歷背景與語言能力",
       fields: [
         { id: "edu_university", label: "大學校系", type: "text", required: true },
         { id: "edu_system", label: "學制", type: "radio", options: ["4年", "5年", "6年"], required: true },
         
-        // 修改：拆分畢業年月
         { 
           id: "edu_uni_grad_year", label: "大學畢業-年 (民國)", type: "number", placeholder: "例如: 110", width: "50%", required: true 
         },
@@ -23,7 +22,6 @@ export const PRE_TRAINING_FORM = {
         { id: "edu_grad_school", label: "研究所校系", type: "text", required: false },
         { id: "edu_grad_degree", label: "研究所學位", type: "radio", options: ["無", "碩士", "博士"], required: false },
         
-        // 修改：拆分畢業年月 (研究所)
         { 
           id: "edu_grad_year", label: "研究所畢業-年 (民國)", type: "number", placeholder: "例如: 112", width: "50%", required: false 
         },
@@ -36,25 +34,25 @@ export const PRE_TRAINING_FORM = {
     },
     {
       id: "section_work_experience",
-      title: "二、工作經歷", // 修正編號：三 -> 二
-      description: "請填寫過往服務機構與工作內容",
+      title: "二、工作經歷",
+      description: "請填寫過往服務機構與服務期間",
       is_dynamic_list: true,
       add_button_text: "新增工作經歷",
       fields: [
-        { id: "work_org", label: "服務機構/單位", type: "text", width: "30%" },
-        { id: "work_content", label: "工作內容", type: "textarea", width: "50%" },
-        { id: "work_period", label: "起迄年月", type: "text", placeholder: "YYY/MM - YYY/MM", width: "20%" }
+        // 修改 1: 移除工作內容，改為日曆選擇模式 (month)
+        { id: "work_org", label: "服務機構/單位", type: "text", width: "40%" },
+        { id: "work_start", label: "起始年月", type: "month", width: "25%" },
+        { id: "work_end", label: "結束年月", type: "month", width: "25%" }
       ]
     },
     {
       id: "section_learning_history",
-      title: "三、學習歷程（領照後階段）", // 修正編號：四 -> 三
+      title: "三、學習歷程（領照後階段）",
       description: "請勾選您已具備的技能，並填寫受訓期間 (請填寫數字)",
       fields: [
         {
           id: "history_outpatient", label: "1. 門診調劑作業", type: "group",
           sub_fields: [
-            // 修改：拆分訓練期間
             { id: "year", label: "訓練期間 (年)", type: "number", placeholder: "年數" },
             { id: "month", label: "訓練期間 (月)", type: "number", placeholder: "月數" },
             { id: "skills", label: "具備技能", type: "checkbox", options: ["無", "一般藥品調劑", "小兒處方調劑", "門診處方覆核", "交付藥品", "管制藥品調劑", "藥品外觀辨識", "其他"], has_other_text: true }
@@ -112,16 +110,17 @@ export const PRE_TRAINING_FORM = {
     },
     {
       id: "section_assessment",
-      title: "四、綜合評量結果及訓練規劃", // 修正編號：五 -> 四
-      description: "由指導藥師評估，最後由教學負責人審核",
-      access_control: "admin_only",
+      title: "四、綜合評量結果及訓練規劃",
+      description: "由指導藥師評估，最後由教學負責人審核 (學員不可填寫)",
+      access_control: "teacher_admin", // 修改 2: 設定為 教師/管理員 專用
       sub_sections: [
         {
           title: "A. 評核項目",
           fields: [
-            { id: "assess_interview", label: "面試結果", type: "radio", options: ["優", "一般", "待加強"] },
-            { id: "assess_written_test", label: "筆試結果", type: "radio", options: ["優", "一般", "待加強"] },
-            { id: "assess_ksa", label: "KSA評估", type: "radio", options: ["優", "一般", "待加強"] }
+            // 修改 3: 類型改為 score_radio，支援填分數
+            { id: "assess_interview", label: "面試結果", type: "score_radio", options: ["優", "一般", "待加強"] },
+            { id: "assess_written_test", label: "筆試結果", type: "score_radio", options: ["優", "一般", "待加強"] },
+            { id: "assess_ksa", label: "KSA評估", type: "score_radio", options: ["優", "一般", "待加強"] }
           ]
         },
         {
