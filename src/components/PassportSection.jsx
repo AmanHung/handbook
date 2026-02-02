@@ -26,6 +26,8 @@ import {
   ClipboardList,
   PenTool
 } from 'lucide-react';
+// ★★★ 引入新元件 ★★★
+import PreTrainingAssessment from './PreTrainingAssessment';
 
 // ============================================================================
 // ★★★ 已自動填入您的 Google Apps Script 網址 ★★★
@@ -35,10 +37,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-Xt
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   
-  // 判斷是否為教職 (老師 OR 管理員)
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
   
-  // 老師/管理員登入時，預設先不選，等名單載入後自動選第一位；學生登入時，選自己
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(isTeacherOrAdmin ? '' : user?.email);
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
@@ -58,7 +58,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [submitting, setSubmitting] = useState(false);
   const [savingPeriod, setSavingPeriod] = useState(null);
 
-  // 1. 初始化學員名單 (僅限教職人員)
+  // 1. 初始化學員名單
   useEffect(() => {
     if (isTeacherOrAdmin) {
       const fetchStudents = async () => {
@@ -80,9 +80,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       };
       fetchStudents();
     }
-  }, [userRole]); // userRole 變動 (例如切換帳號) 時重新讀取
+  }, [userRole]);
 
-  // 2. 自動同步「到職日期」與「學員姓名」
+  // 2. 自動同步
   useEffect(() => {
     if (isTeacherOrAdmin) {
       if (students.length > 0 && selectedStudentEmail) {
@@ -98,7 +98,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [selectedStudentEmail, students, userRole, userProfile, user]);
 
-  // 3. 讀取護照資料 (API)
+  // 3. 讀取護照資料
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
@@ -117,7 +117,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setPassportData(data);
       setEditPeriods(data.periods || {});
 
-      // 預設展開第一個類別
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         if (Object.keys(expandedGroups).length === 0) {
@@ -137,7 +136,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [selectedStudentEmail]);
 
-  // 資料分組處理
+  // 資料分組
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
     if (!acc[item.category_id]) {
       acc[item.category_id] = {
@@ -151,7 +150,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   }, {});
 
   const openEvaluateModal = (item) => {
-    if (!isTeacherOrAdmin) return; // 只有教職人員可開評核
+    if (!isTeacherOrAdmin) return;
     const today = new Date().toISOString().split('T')[0];
     setCurrentEval({
       itemId: item.id,
@@ -239,7 +238,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // 渲染：單一項目
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
@@ -293,7 +291,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
-  // 渲染：群組內容 (遞迴)
   const renderGroupContent = (items) => {
     const groups = {};
     const groupOrder = []; 
@@ -349,7 +346,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
         return (
           <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-            {/* 組別 Header */}
             <div className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <button 
                 onClick={() => toggleGroup(group.id)}
@@ -371,7 +367,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 </div>
               </button>
 
-              {/* 日期顯示區 */}
               <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm self-start sm:self-auto">
                 <div className="flex items-center gap-1 text-gray-500 px-1">
                   <Clock className="w-3.5 h-3.5" />
@@ -433,22 +428,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     </div>
   );
 
-  // 渲染：學習評估 Tab
+  // 渲染：學習評估 Tab (使用新元件)
   const renderAssessment = () => (
-    <div className="bg-white p-8 border border-gray-200 rounded-lg text-center animate-in fade-in">
-      <div className="inline-block p-4 bg-indigo-50 rounded-full mb-4">
-        <PenTool className="w-8 h-8 text-indigo-400" />
-      </div>
-      <h3 className="text-lg font-bold text-gray-700 mb-2">學習評估表單</h3>
-      <p className="text-gray-500 max-w-md mx-auto mb-6">
-        此區域將用於填寫學員的階段性學習評估（如 DOPS, Mini-CEX 或月評核）。
-        目前功能建置中。
-      </p>
-      
-      <button className="px-4 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed font-medium">
-        即將開放
-      </button>
-    </div>
+    <PreTrainingAssessment 
+      studentEmail={selectedStudentEmail}
+      studentName={selectedStudentName}
+      userRole={userRole}
+      currentUserEmail={user?.email}
+    />
   );
 
   return (
