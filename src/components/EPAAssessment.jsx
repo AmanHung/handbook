@@ -278,63 +278,77 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                   <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded border whitespace-pre-line">{currentRecord.evaluation.feedback_content || "無"}</p>
                 </section>
 
-                {/* 4. 學員雙向回饋 (新增) */}
+                {/* 4. 學員雙向回饋區塊 */}
                 <section className="pt-6 border-t mt-6">
                   <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center justify-between">
                     <span>學員回饋與滿意度</span>
                   </h4>
 
-                  {/* 如果已經有分數，顯示結果；如果是學員且沒分數，顯示表單 */}
-                  {currentRecord.evaluation.satisfaction_score ? (
+                  {/* 邏輯修正：
+                     1. 如果已經有填寫滿意度 (satisfaction > 0) -> 不論是老師或學員，都顯示「結果」。
+                     2. 如果還沒填寫 AND 是學員 -> 顯示「填寫表單」。
+                     3. 如果還沒填寫 AND 是老師 -> 顯示「學員尚未填寫」提示。
+                  */}
+                  
+                  {/* 情境 1: 已有資料 (顯示結果) */}
+                  {(currentRecord.feedback_satisfaction > 0) ? (
                      <div className="bg-green-50 p-4 rounded-lg border border-green-100 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-green-700 font-bold">教學滿意度：{currentRecord.evaluation.satisfaction_score} / 9</span>
+                          <span className="text-green-700 font-bold">教學滿意度：{currentRecord.feedback_satisfaction} / 9</span>
                         </div>
-                        {currentRecord.feedback_reflection && (
-                           <p className="text-sm text-gray-700"><span className="font-bold">反思心得：</span>{currentRecord.feedback_reflection}</p>
-                        )}
+                        <div className="text-sm text-gray-700">
+                           <span className="font-bold block mb-1">反思心得：</span>
+                           {currentRecord.feedback_reflection || "（學員未填寫文字心得）"}
+                        </div>
                      </div>
-                  ) : !isTeacher ? (
-                    // 學員填寫區
-                    <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 space-y-4">
-                       <h5 className="text-sm font-bold text-orange-800">✍️ 請填寫回饋以完成評估</h5>
-                       
-                       {/* 滿意度 */}
-                       <div>
-                         <label className="block text-xs font-bold text-gray-500 mb-2">本次教學滿意度 (1-9)</label>
-                         <div className="flex gap-1 flex-wrap">
-                           {[1,2,3,4,5,6,7,8,9].map(n => (
-                             <button 
-                               key={n} 
-                               onClick={() => setSatisfaction(n)}
-                               className={`w-8 h-8 rounded-full text-sm font-bold border ${satisfaction === n ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-500 border-gray-300'}`}
-                             >
-                               {n}
-                             </button>
-                           ))}
-                         </div>
-                       </div>
-
-                       {/* 反思心得 */}
-                       <div>
-                         <label className="block text-xs font-bold text-gray-500 mb-2">反思與回饋 (選填)</label>
-                         <textarea 
-                           className="w-full h-20 p-3 text-sm border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none"
-                           placeholder="針對老師的建議，您的想法是..."
-                           value={reflection}
-                           onChange={(e) => setReflection(e.target.value)}
-                         />
-                       </div>
-
-                       <button 
-                         onClick={() => onSaveFeedback(currentRecord.record_id, { satisfaction, reflection })}
-                         className="w-full py-2 bg-orange-600 text-white rounded-lg font-bold text-sm hover:bg-orange-700 transition-colors"
-                       >
-                         送出回饋
-                       </button>
-                    </div>
                   ) : (
-                    <div className="text-center py-4 text-gray-400 text-xs italic">學員尚未填寫回饋</div>
+                    /* 情境 2 & 3: 無資料 */
+                    !isTeacher ? (
+                      // 學員端：顯示填寫表單
+                      <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 space-y-4">
+                         <h5 className="text-sm font-bold text-orange-800">✍️ 請填寫回饋以完成評估</h5>
+                         
+                         {/* 滿意度按鈕 */}
+                         <div>
+                           <label className="block text-xs font-bold text-gray-500 mb-2">本次教學滿意度 (1-9)</label>
+                           <div className="flex gap-1 flex-wrap">
+                             {[1,2,3,4,5,6,7,8,9].map(n => (
+                               <button 
+                                 key={n} 
+                                 onClick={() => setSatisfaction(n)}
+                                 className={`w-8 h-8 rounded-full text-sm font-bold border ${satisfaction === n ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-500 border-gray-300'}`}
+                               >
+                                 {n}
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+
+                         {/* 反思輸入框 */}
+                         <div>
+                           <label className="block text-xs font-bold text-gray-500 mb-2">反思與回饋</label>
+                           <textarea 
+                             className="w-full h-20 p-3 text-sm border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none"
+                             placeholder="針對老師的建議，您的想法是..."
+                             value={reflection}
+                             onChange={(e) => setReflection(e.target.value)}
+                           />
+                         </div>
+
+                         <button 
+                           onClick={() => onSaveFeedback(currentRecord.record_id, { satisfaction, reflection })}
+                           disabled={satisfaction === 0}
+                           className="w-full py-2 bg-orange-600 text-white rounded-lg font-bold text-sm hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                         >
+                           {satisfaction === 0 ? "請先選擇滿意度分數" : "送出回饋"}
+                         </button>
+                      </div>
+                    ) : (
+                      // 老師端：顯示提示
+                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm italic">
+                        學員尚未填寫回饋
+                      </div>
+                    )
                   )}
                 </section>
               </div>
