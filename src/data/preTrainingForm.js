@@ -134,19 +134,19 @@ export const PRE_TRAINING_FORM = {
             {
               id: "plan_dispensing", unit: "調劑作業",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "6個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "7個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
             },
             // 2. 臨床藥事
             {
               id: "plan_clinical", unit: "臨床藥事",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "6個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "2個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
             },
             // 3. 藥物諮詢
             {
               id: "plan_consult", unit: "藥物諮詢",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "2個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
             },
             // 4. 藥品管理
             {
@@ -158,19 +158,19 @@ export const PRE_TRAINING_FORM = {
             {
               id: "plan_tcm", unit: "中藥藥事",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "1個月", value: 1}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "4個月", value: 1}, {label: "自訂月數", input_type: "number"}] }
             },
             // 6. 藥事照護
             {
               id: "plan_care", unit: "藥事照護",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "4個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
             },
             // 7. 特殊製劑
             {
               id: "plan_special", unit: "特殊製劑",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
+              planning: { type: "radio_with_input", options: [{label: "4個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
             }
           ]
         }
