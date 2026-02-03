@@ -66,26 +66,29 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   const handleSaveFeedback = async (recordId, feedbackData) => {
     setIsSubmitting(true);
     try {
-      // 這裡需要後端配合新增一個 update_feedback 的 action (或者我們先簡單做，將資料附加進去)
-      // 若您的後端還沒支援 update，這裡暫時只能模擬成功。
-      // ★ 建議之後在 Code.gs 新增一個 action='save_trainee_feedback'
-      // 為了不讓流程卡住，這裡先不做真實 API 呼叫，僅提示邏輯。
-      
-      // 假設後端有此功能：
-      /*
-      await fetch(apiUrl, {
+      // 呼叫 GAS: action=save_trainee_feedback
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: JSON.stringify({
           action: 'save_trainee_feedback',
           record_id: recordId,
-          ...feedbackData
+          reflection: feedbackData.reflection,
+          satisfaction: feedbackData.satisfaction
         })
       });
-      */
-      alert("功能開發中：您的回饋已送出 (目前僅前端模擬)");
-      // fetchEPARecords(); // 重新讀取以顯示已完成
+      
+      const result = await response.json();
+      if (result.status === 'success') {
+        alert("回饋已成功送出！");
+        setShowHistoryModal(false); // 關閉視窗
+        fetchEPARecords(); // 重新讀取資料，更新介面狀態
+      } else {
+        throw new Error(result.message || "儲存失敗");
+      }
+      
     } catch (error) {
-      alert("儲存失敗");
+      console.error(error);
+      alert("儲存失敗，請檢查網路連線");
     } finally {
       setIsSubmitting(false);
     }
