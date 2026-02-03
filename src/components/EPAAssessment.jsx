@@ -21,13 +21,20 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     if (!studentEmail) return;
     setLoading(true);
     try {
-      // 呼叫 GAS: action=get_epa_records
       const response = await fetch(`${apiUrl}?action=get_epa_records&student_email=${studentEmail}`);
       const data = await response.json();
-      setAssessments(data);
+      
+      // 增加防呆：確認回傳的是陣列才設定，否則設為空陣列
+      if (Array.isArray(data)) {
+        setAssessments(data);
+      } else {
+        console.error("API 回傳格式錯誤 (非陣列):", data);
+        setAssessments([]); 
+      }
     } catch (error) {
       console.error("Failed to fetch EPA records:", error);
-      alert("讀取 EPA 紀錄失敗，請檢查網路");
+      // alert("讀取 EPA 紀錄失敗，請檢查網路"); // 建議先註解掉 alert 避免一直跳窗
+      setAssessments([]);
     } finally {
       setLoading(false);
     }
@@ -136,9 +143,10 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       {showHistoryModal && selectedEPA && (
         <HistoryModal 
           epa={selectedEPA} 
-          records={assessments.filter(r => r.epa_id === selectedEPA.id)}
+          // ★★★ 修改這裡：確保 assessments 是陣列才執行 filter ★★★
+          records={Array.isArray(assessments) ? assessments.filter(r => r.epa_id === selectedEPA.id) : []}
           onClose={() => setShowHistoryModal(false)}
-          onOpenForm={handleOpenForm} // 傳遞切換函式
+          onOpenForm={handleOpenForm}
           isTeacher={isTeacher}
           studentName={studentName}
         />
