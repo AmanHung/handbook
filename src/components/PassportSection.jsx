@@ -24,10 +24,14 @@ import {
   Clock, 
   ArrowRight,
   ClipboardList,
-  PenTool
+  PenTool,
+  Activity // 新增圖示給 EPA 使用
 } from 'lucide-react';
-// ★★★ 引入新元件 ★★★
+
+// 既有元件
 import PreTrainingAssessment from './PreTrainingAssessment';
+// ★★★ 新增：引入 EPA 評估元件 ★★★
+import EPAAssessment from './EPAAssessment';
 
 // ============================================================================
 // ★★★ 已自動填入您的 Google Apps Script 網址 ★★★
@@ -43,6 +47,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
+  // Tab 狀態：預設為 records (訓練紀錄)
+  // 新增 'epa' 選項
   const [activeSubTab, setActiveSubTab] = useState('records');
 
   // 資料狀態
@@ -98,7 +104,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [selectedStudentEmail, students, userRole, userProfile, user]);
 
-  // 3. 讀取護照資料
+  // 3. 讀取護照資料 (僅用於 Training Records Tab)
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!GAS_API_URL || GAS_API_URL.includes("請貼上")) {
@@ -130,11 +136,12 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setLoading(false);
   };
 
+  // 當切換學員時，如果是在「訓練紀錄」分頁，則重新讀取資料
   useEffect(() => {
-    if (selectedStudentEmail) {
+    if (selectedStudentEmail && activeSubTab === 'records') {
       fetchPassportData(selectedStudentEmail);
     }
-  }, [selectedStudentEmail]);
+  }, [selectedStudentEmail, activeSubTab]);
 
   // 資料分組
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
@@ -428,18 +435,42 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     </div>
   );
 
-  // 渲染：學習評估 Tab (使用新元件)
+  // 渲染：學習評估 Tab (使用 PreTrainingAssessment)
   const renderAssessment = () => (
     <PreTrainingAssessment 
       studentEmail={selectedStudentEmail}
       studentName={selectedStudentName}
       userRole={userRole}
       currentUserEmail={user?.email}
-      // ★★★ 新增：傳遞當前使用者的顯示名稱 ★★★
       currentUserName={userProfile?.displayName || user?.displayName} 
       gasApiUrl={GAS_API_URL}
     />
   );
+
+  // ★★★ 新增：渲染 EPA 評估 Tab (使用 EPAAssessment) ★★★
+  const renderEPA = () => (
+    <EPAAssessment 
+      studentEmail={selectedStudentEmail}
+      studentName={selectedStudentName}
+      isTeacher={isTeacherOrAdmin}
+      userProfile={userProfile}
+      apiUrl={GAS_API_URL}
+    />
+  );
+
+  // 決定渲染哪個內容區塊
+  const renderContent = () => {
+    switch(activeSubTab) {
+      case 'records':
+        return renderTrainingRecords();
+      case 'assessment':
+        return renderAssessment();
+      case 'epa':
+        return renderEPA(); // ★★★ 新增渲染路徑 ★★★
+      default:
+        return renderTrainingRecords();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -503,10 +534,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         </div>
 
         {/* Tab 切換按鈕 */}
-        <div className="flex border-b border-gray-200 mb-6">
+        <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
           <button
             onClick={() => setActiveSubTab('records')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors border-b-2 whitespace-nowrap ${
               activeSubTab === 'records'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -517,7 +548,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </button>
           <button
             onClick={() => setActiveSubTab('assessment')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors border-b-2 whitespace-nowrap ${
               activeSubTab === 'assessment'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -525,6 +556,18 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           >
             <PenTool className="w-4 h-4" />
             學習評估
+          </button>
+          {/* ★★★ 新增 EPA 按鈕 ★★★ */}
+          <button
+            onClick={() => setActiveSubTab('epa')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors border-b-2 whitespace-nowrap ${
+              activeSubTab === 'epa'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            EPA 評估
           </button>
         </div>
 
@@ -535,18 +578,17 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         )}
 
-        {loading ? (
+        {loading && activeSubTab === 'records' ? (
           <div className="text-center py-12 text-gray-400 flex flex-col items-center">
             <Loader2 className="w-8 h-8 animate-spin mb-2" />
             <p>正在同步雲端護照資料...</p>
           </div>
         ) : (
-          /* 根據 activeSubTab 顯示對應內容 */
-          activeSubTab === 'records' ? renderTrainingRecords() : renderAssessment()
+          renderContent()
         )}
       </div>
 
-      {/* Evaluate Modal */}
+      {/* Evaluate Modal (僅用於訓練紀錄的評核，EPA 有自己的 Modal) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
