@@ -2,7 +2,7 @@
 
 export const PRE_TRAINING_FORM = {
   form_title: "衛生福利部豐原醫院藥劑科 新進藥師學前評估表",
-  version: "1140905", // 更新版本號
+  version: "1140906", // 更新版本號
   sections: [
     {
       id: "section_background",
@@ -39,8 +39,6 @@ export const PRE_TRAINING_FORM = {
       is_dynamic_list: true,
       add_button_text: "新增工作經歷",
       fields: [
-        // 修改：拆分成 5 個欄位，利用 col_span 排版
-        // 總格數 12: 機構(4) + 起始年(2) + 起始月(2) + 結束年(2) + 結束月(2)
         { id: "work_org", label: "服務機構/單位", type: "text", col_span: 4 },
         
         { id: "start_year", label: "起-年", type: "number", placeholder: "110", col_span: 2 },
@@ -132,40 +130,47 @@ export const PRE_TRAINING_FORM = {
           layout: "table",
           columns: ["訓練單位", "綜合評量", "訓練規劃"],
           rows: [
+            // 1. 調劑作業
             {
-              id: "plan_op", unit: "門診調劑作業",
+              id: "plan_dispensing", unit: "調劑作業",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "6個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
             },
+            // 2. 臨床藥事
             {
-              id: "plan_ud", unit: "住院UD作業",
+              id: "plan_clinical", unit: "臨床藥事",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "6個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
             },
+            // 3. 藥物諮詢
             {
               id: "plan_consult", unit: "藥物諮詢",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
             },
+            // 4. 藥品管理
             {
               id: "plan_manage", unit: "藥品管理",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "1個月", value: 1}, {label: "自訂月數", input_type: "number"}] }
             },
+            // 5. 中藥藥事
             {
-              id: "plan_chemo", unit: "化療藥品調劑",
+              id: "plan_tcm", unit: "中藥藥事",
+              assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
+              planning: { type: "radio_with_input", options: [{label: "1個月", value: 1}, {label: "自訂月數", input_type: "number"}] }
+            },
+            // 6. 藥事照護
+            {
+              id: "plan_care", unit: "藥事照護",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
             },
+            // 7. 特殊製劑
             {
-              id: "plan_tpn", unit: "TPN調劑",
+              id: "plan_special", unit: "特殊製劑",
               assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
               planning: { type: "radio_with_input", options: [{label: "3個月", value: 3}, {label: "自訂月數", input_type: "number"}] }
-            },
-            {
-              id: "plan_clinical", unit: "臨床藥事服務",
-              assessment: { type: "radio", options: ["尚未訓練", "部份訓練", "已完訓"] },
-              planning: { type: "radio_with_input", options: [{label: "6個月", value: 6}, {label: "自訂月數", input_type: "number"}] }
             }
           ]
         }
