@@ -1,55 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, History, ChevronRight, Plus, 
-  Calendar, User, CheckCircle2, AlertCircle, Search, Loader2 
+  Calendar, User, CheckCircle2, AlertCircle, Search, Loader2, Send 
 } from 'lucide-react';
-import { EPA_CONFIG, EPA_LEVEL_OPTIONS } from '../data/EPA_Config';
-import EPAFormModal from './EPAFormModal'; // 引入 Step 3 的表單
+import { EPA_CONFIG, EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
+import EPAFormModal from './EPAFormModal';
 
 const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiUrl }) => {
   const [selectedEPA, setSelectedEPA] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   
-  // 資料狀態
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 1. 讀取歷史紀錄 (API)
+  // API: 讀取
   const fetchEPARecords = async () => {
     if (!studentEmail) return;
     setLoading(true);
     try {
       const response = await fetch(`${apiUrl}?action=get_epa_records&student_email=${studentEmail}`);
       const data = await response.json();
-      
-      // 增加防呆：確認回傳的是陣列才設定，否則設為空陣列
       if (Array.isArray(data)) {
         setAssessments(data);
       } else {
-        console.error("API 回傳格式錯誤 (非陣列):", data);
         setAssessments([]); 
       }
     } catch (error) {
       console.error("Failed to fetch EPA records:", error);
-      // alert("讀取 EPA 紀錄失敗，請檢查網路"); // 建議先註解掉 alert 避免一直跳窗
       setAssessments([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 初始載入或切換學員時重新讀取
   useEffect(() => {
     fetchEPARecords();
   }, [studentEmail]);
 
-  // 2. 儲存新評估 (API)
+  // API: 教師儲存評估
   const handleSaveRecord = async (formData) => {
     setIsSubmitting(true);
     try {
-      // 呼叫 GAS: action=save_epa_record
       await fetch(apiUrl, {
         method: 'POST',
         body: JSON.stringify({
@@ -58,73 +51,85 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
           ...formData
         })
       });
-      
-      alert("評估已儲存！");
-      setShowFormModal(false); // 關閉表單
-      setShowHistoryModal(true); // 回到歷史紀錄
-      fetchEPARecords(); // 重新整理列表
-      
+      alert("評估已儲存，並已發送通知給學員！");
+      setShowFormModal(false); 
+      setShowHistoryModal(true); 
+      fetchEPARecords(); 
     } catch (error) {
-      console.error("Save failed:", error);
       alert("儲存失敗，請稍後再試");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // 開啟歷史視窗
-  const handleCardClick = (epa) => {
-    setSelectedEPA(epa);
-    setShowHistoryModal(true);
-  };
-
-  // 從歷史視窗切換到新增表單
-  const handleOpenForm = () => {
-    setShowHistoryModal(false);
-    setShowFormModal(true);
+  // API: 學員儲存回饋
+  const handleSaveFeedback = async (recordId, feedbackData) => {
+    setIsSubmitting(true);
+    try {
+      // 這裡需要後端配合新增一個 update_feedback 的 action (或者我們先簡單做，將資料附加進去)
+      // 若您的後端還沒支援 update，這裡暫時只能模擬成功。
+      // ★ 建議之後在 Code.gs 新增一個 action='save_trainee_feedback'
+      // 為了不讓流程卡住，這裡先不做真實 API 呼叫，僅提示邏輯。
+      
+      // 假設後端有此功能：
+      /*
+      await fetch(apiUrl, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'save_trainee_feedback',
+          record_id: recordId,
+          ...feedbackData
+        })
+      });
+      */
+      alert("功能開發中：您的回饋已送出 (目前僅前端模擬)");
+      // fetchEPARecords(); // 重新讀取以顯示已完成
+    } catch (error) {
+      alert("儲存失敗");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* 標題區 */}
       <div className="flex justify-between items-center border-b pb-4">
         <div>
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-indigo-600" />
             EPA 可信任專業活動評估
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            學員：<span className="font-medium text-gray-700">{studentName || '未選擇'}</span>
-          </p>
+          <p className="text-sm text-gray-500 mt-1">學員：<span className="font-medium text-gray-700">{studentName || '未選擇'}</span></p>
         </div>
-        
         {loading && <span className="text-indigo-600 flex items-center gap-2 text-sm"><Loader2 className="w-4 h-4 animate-spin"/> 資料同步中...</span>}
       </div>
 
-      {/* EPA 卡片列表 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {EPA_CONFIG.map((epa) => {
-          const epaRecords = assessments.filter(r => r.epa_id === epa.id);
+          const epaRecords = Array.isArray(assessments) ? assessments.filter(r => r.epa_id === epa.id) : [];
           const lastRecord = epaRecords.length > 0 ? epaRecords[0] : null; 
           const count = epaRecords.length;
+          
+          // 檢查是否有待學員回饋的項目 (假設邏輯：有紀錄但 satisfaction_score 為空)
+          // 這裡簡化判斷，只要有紀錄且最新一筆沒有滿意度，就顯示紅點
+          const hasPendingFeedback = lastRecord && !lastRecord.evaluation.satisfaction_score && !isTeacher;
 
           return (
             <div 
               key={epa.id}
-              onClick={() => handleCardClick(epa)}
+              onClick={() => { setSelectedEPA(epa); setShowHistoryModal(true); }}
               className="bg-white border rounded-xl p-5 hover:shadow-lg transition-all cursor-pointer group relative overflow-hidden"
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="flex justify-between items-start mb-3">
                 <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded">{epa.id}</span>
-                {count > 0 && (
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    <History className="w-3 h-3" /> {count} 次
+                {hasPendingFeedback && (
+                  <span className="animate-pulse bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full border border-red-200">
+                    🔔 待回饋
                   </span>
                 )}
               </div>
               <h3 className="font-bold text-gray-800 mb-2 group-hover:text-indigo-600">{epa.title.replace(`${epa.id}. `, '')}</h3>
-              <p className="text-sm text-gray-500 line-clamp-2 mb-4 h-10">{epa.description}</p>
               <div className="pt-3 border-t flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="text-xs text-gray-400">目前信賴等級</span>
@@ -139,20 +144,18 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
         })}
       </div>
 
-      {/* 歷史紀錄 Modal */}
       {showHistoryModal && selectedEPA && (
         <HistoryModal 
           epa={selectedEPA} 
-          // ★★★ 修改這裡：確保 assessments 是陣列才執行 filter ★★★
           records={Array.isArray(assessments) ? assessments.filter(r => r.epa_id === selectedEPA.id) : []}
           onClose={() => setShowHistoryModal(false)}
-          onOpenForm={handleOpenForm}
+          onOpenForm={() => { setShowHistoryModal(false); setShowFormModal(true); }}
+          onSaveFeedback={handleSaveFeedback}
           isTeacher={isTeacher}
           studentName={studentName}
         />
       )}
 
-      {/* 新增評估表單 Modal */}
       {showFormModal && selectedEPA && (
         <EPAFormModal
           epa={selectedEPA}
@@ -167,15 +170,25 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   );
 };
 
-// --- HistoryModal 子元件 (包含新增按鈕邏輯) ---
-const HistoryModal = ({ epa, records, onClose, onOpenForm, isTeacher, studentName }) => {
+// 子元件：歷史紀錄視窗 (含學員回饋表單)
+const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTeacher, studentName }) => {
   const [selectedRecordId, setSelectedRecordId] = useState(null);
+  
+  // 學員回饋 State
+  const [reflection, setReflection] = useState('');
+  const [satisfaction, setSatisfaction] = useState(0);
 
   useEffect(() => {
     if (records.length > 0) setSelectedRecordId(records[0].record_id);
   }, [records]);
 
   const currentRecord = records.find(r => r.record_id === selectedRecordId);
+
+  // 取得評分代碼對應的中文標籤
+  const getPerformanceLabel = (value) => {
+    const opt = EPA_PERFORMANCE_OPTIONS.find(o => o.value === value);
+    return opt ? opt.label : '未評分';
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -225,6 +238,8 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, isTeacher, studentNam
           <div className="w-2/3 overflow-y-auto p-8 bg-white">
             {currentRecord ? (
               <div className="space-y-6">
+                
+                {/* 1. 評估結果 (Level) */}
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">評估結果</h4>
                   <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
@@ -232,20 +247,92 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, isTeacher, studentNam
                     <p className="text-sm text-indigo-600 mt-1">{EPA_LEVEL_OPTIONS.find(o => o.value === currentRecord.evaluation.level)?.label}</p>
                   </div>
                 </section>
+
+                {/* 2. 觀察細項 (加上文字說明) */}
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">觀察細項</h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 border rounded-lg overflow-hidden">
                     {Object.entries(currentRecord.evaluation.checklist).map(([k, v], i) => (
-                      <div key={i} className="flex gap-2 text-sm p-2 bg-gray-50 rounded">
-                        {v === 'meet_expectation' || v === 'exceed_expectation' ? <CheckCircle2 className="w-4 h-4 text-green-500"/> : <AlertCircle className="w-4 h-4 text-orange-500"/>}
-                        <span className="text-gray-700">{k}</span>
+                      <div key={i} className="flex items-center justify-between text-sm p-3 bg-white border-b last:border-0 hover:bg-gray-50">
+                        <span className="text-gray-700 font-medium">{k}</span>
+                        <div className="flex items-center gap-2">
+                           {v === 'meet_expectation' || v === 'exceed_expectation' 
+                             ? <CheckCircle2 className="w-4 h-4 text-green-500"/> 
+                             : <AlertCircle className="w-4 h-4 text-orange-500"/>
+                           }
+                           <span className={`text-xs ${v.includes('meet') ? 'text-green-700' : 'text-gray-500'}`}>
+                             {getPerformanceLabel(v)}
+                           </span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </section>
+
+                {/* 3. 教師回饋 */}
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">教師回饋</h4>
                   <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded border whitespace-pre-line">{currentRecord.evaluation.feedback_content || "無"}</p>
+                </section>
+
+                {/* 4. 學員雙向回饋 (新增) */}
+                <section className="pt-6 border-t mt-6">
+                  <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center justify-between">
+                    <span>學員回饋與滿意度</span>
+                  </h4>
+
+                  {/* 如果已經有分數，顯示結果；如果是學員且沒分數，顯示表單 */}
+                  {currentRecord.evaluation.satisfaction_score ? (
+                     <div className="bg-green-50 p-4 rounded-lg border border-green-100 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-700 font-bold">教學滿意度：{currentRecord.evaluation.satisfaction_score} / 9</span>
+                        </div>
+                        {currentRecord.feedback_reflection && (
+                           <p className="text-sm text-gray-700"><span className="font-bold">反思心得：</span>{currentRecord.feedback_reflection}</p>
+                        )}
+                     </div>
+                  ) : !isTeacher ? (
+                    // 學員填寫區
+                    <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 space-y-4">
+                       <h5 className="text-sm font-bold text-orange-800">✍️ 請填寫回饋以完成評估</h5>
+                       
+                       {/* 滿意度 */}
+                       <div>
+                         <label className="block text-xs font-bold text-gray-500 mb-2">本次教學滿意度 (1-9)</label>
+                         <div className="flex gap-1 flex-wrap">
+                           {[1,2,3,4,5,6,7,8,9].map(n => (
+                             <button 
+                               key={n} 
+                               onClick={() => setSatisfaction(n)}
+                               className={`w-8 h-8 rounded-full text-sm font-bold border ${satisfaction === n ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-500 border-gray-300'}`}
+                             >
+                               {n}
+                             </button>
+                           ))}
+                         </div>
+                       </div>
+
+                       {/* 反思心得 */}
+                       <div>
+                         <label className="block text-xs font-bold text-gray-500 mb-2">反思與回饋 (選填)</label>
+                         <textarea 
+                           className="w-full h-20 p-3 text-sm border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none"
+                           placeholder="針對老師的建議，您的想法是..."
+                           value={reflection}
+                           onChange={(e) => setReflection(e.target.value)}
+                         />
+                       </div>
+
+                       <button 
+                         onClick={() => onSaveFeedback(currentRecord.record_id, { satisfaction, reflection })}
+                         className="w-full py-2 bg-orange-600 text-white rounded-lg font-bold text-sm hover:bg-orange-700 transition-colors"
+                       >
+                         送出回饋
+                       </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-400 text-xs italic">學員尚未填寫回饋</div>
+                  )}
                 </section>
               </div>
             ) : (
