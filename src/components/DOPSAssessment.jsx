@@ -3,7 +3,7 @@ import { DOPS_FORMS } from '../data/dopsForms';
 import { 
   Save, CheckCircle, Loader2, Lock, Unlock, ArrowLeft, User, CheckCircle2, 
   FileText, Check, X as XIcon, AlertCircle, Clock, ChevronRight, Plus, Calendar,
-  Star, AlertTriangle, RotateCcw // 新增 icon
+  Star, AlertTriangle, RotateCcw, Info
 } from 'lucide-react';
 
 const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, gasApiUrl }) => {
@@ -122,7 +122,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       setRecordsList(list);
 
       if (list.length > 0) {
-        // 若當前沒有選中任何項目，預設選第一筆
         if (!currentInstanceId || !list.find(r => r.instanceId === currentInstanceId)) {
           setCurrentInstanceId(list[0].instanceId);
         }
@@ -135,7 +134,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     setListLoading(false);
   };
 
-  // 建立新評估 (教師用)
   const handleCreateNew = () => {
     const newId = 'NEW_' + new Date().getTime();
     const today = new Date().toISOString().split('T')[0];
@@ -168,7 +166,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     };
 
     if (newStatus === 'teacher_graded') {
-      // 檢查是否填寫分數
       if (!finalFormData.global_rating) {
         alert("請填寫整體評估分數！");
         setSaving(false); return;
@@ -176,6 +173,8 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       finalFormData.sign_teacher_name = currentUserName;
       finalFormData.sign_teacher_date = today;
     }
+
+    let alertMessage = "儲存成功！";
 
     if (newStatus === 'completed') {
       if (!finalFormData.feedback_student_thoughts) {
@@ -185,12 +184,18 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       finalFormData.sign_student_name = currentUserName;
       finalFormData.sign_student_date = today;
 
-      // ★★★ 關鍵修改：判斷分數是否 >= 8 ★★★
+      // ★★★ 關鍵修改：分數邏輯判定 ★★★
       const score = parseInt(finalFormData.global_rating || 0, 10);
-      if (score < 8) {
-        targetStatus = 'needs_improvement'; // 分數不足，轉為待加強
+      
+      if (score <= 6) {
+        targetStatus = 'needs_improvement';
+        alertMessage = "整體表現6分(含)以下：整體作業流程需重新訓練→1個月後重測";
+      } else if (score === 7) {
+        targetStatus = 'needs_improvement';
+        alertMessage = "整體表現7分：針對不足之項目進行加強訓練→1週後重測";
       } else {
-        targetStatus = 'completed'; // 分數達標，結案
+        targetStatus = 'completed';
+        alertMessage = "整體表現8(含)以上→已完成此項考核";
       }
     }
 
@@ -214,14 +219,8 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
         body: JSON.stringify(payload)
       });
       
-      // 根據結果跳出不同提示
-      if (targetStatus === 'completed') {
-        alert("分數達標 (≧8)，恭喜結案！");
-      } else if (targetStatus === 'needs_improvement') {
-        alert("分數未達 8 分，狀態標記為「待加強」。\n教師可點擊「建立新評估」進行再次考核。");
-      } else {
-        alert("儲存成功！");
-      }
+      // 跳出判定結果提示
+      alert(alertMessage);
 
       await loadRecordsList(); 
 
@@ -297,10 +296,18 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const StatusBadge = ({ status }) => {
     switch (status) {
       case 'completed': return <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> 已結案</span>;
-      case 'needs_improvement': return <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3"/> 待加強</span>; // 新增狀態
+      case 'needs_improvement': return <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3"/> 待加強</span>;
       case 'teacher_graded': return <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold flex items-center gap-1"><User className="w-3 h-3"/> 待學生回饋</span>;
-      default: return <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-bold">未完成</span>;
+      default: return <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-bold">未開始</span>;
     }
+  };
+
+  // 輔助：取得結果訊息
+  const getResultFeedback = (scoreStr) => {
+    const score = parseInt(scoreStr || 0, 10);
+    if (score >= 8) return { text: "整體表現8(含)以上→已完成此項考核", style: "bg-green-50 border-green-200 text-green-800", icon: CheckCircle };
+    if (score === 7) return { text: "整體表現7分：針對不足之項目進行加強訓練→1週後重測", style: "bg-orange-50 border-orange-200 text-orange-800", icon: AlertTriangle };
+    return { text: "整體表現6分(含)以下：整體作業流程需重新訓練→1個月後重測", style: "bg-red-50 border-red-200 text-red-800", icon: AlertTriangle };
   };
 
   if (view === 'menu') {
@@ -355,7 +362,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       </div>
 
       <div className="grid grid-cols-12 gap-6 items-start">
-        {/* 左側：列表 (增加 + 按鈕) */}
+        {/* 左側：評估紀錄列表 */}
         <div className="col-span-12 md:col-span-3 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm sticky top-4">
           <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 flex justify-between items-center">
             評估紀錄
@@ -416,43 +423,55 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
 
             {/* 操作區 */}
             <div className="bg-gray-50 border-t border-gray-200 px-6 py-4">
+              
               {status === 'draft' && (isTeacher || isAdmin) && (
                 <div className="flex justify-end gap-3">
                   <button onClick={() => handleSave('draft')} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg">暫存草稿</button>
                   <button onClick={() => { if(window.confirm('確認評分完成？將通知學生填寫回饋。')) handleSave('teacher_graded'); }} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 送出給學生</button>
                 </div>
               )}
+              
               {status === 'teacher_graded' && isStudent && (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-2 bg-blue-50 p-3 rounded text-blue-800 text-sm"><AlertCircle className="w-5 h-5 mt-0.5"/><div><p className="font-bold">請填寫心得與感想</p></div></div>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => handleSave('teacher_graded')} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg">暫存</button>
-                    <button onClick={() => { if(window.confirm('確認送出？系統將依分數判定結果。')) handleSave('completed'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 提交判定</button>
+                    {/* ★★★ 修改：按鈕文字改為「完成」 ★★★ */}
+                    <button onClick={() => { if(window.confirm('確認送出？系統將依分數判定結果。')) handleSave('completed'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 完成</button>
                   </div>
                 </div>
               )}
-              {/* 待加強狀態：提示教師可以重評 */}
-              {status === 'needs_improvement' && (
-                <div className="flex justify-between items-center bg-red-50 p-3 rounded border border-red-100">
-                  <div className="flex items-center gap-2 text-red-700 text-sm font-bold">
-                    <AlertTriangle className="w-5 h-5"/> 分數未達標，請教師再次評估。
+
+              {/* ★★★ 修改：動態顯示判定結果訊息 ★★★ */}
+              {(status === 'completed' || status === 'needs_improvement') && (
+                <div className="space-y-4">
+                  {(() => {
+                    const result = getResultFeedback(formData.global_rating);
+                    return (
+                      <div className={`flex justify-between items-center p-4 rounded-lg border ${result.style}`}>
+                        <div className="flex items-center gap-2 text-sm font-bold">
+                          <result.icon className="w-5 h-5"/> {result.text}
+                        </div>
+                        {/* 如果是待加強，提供按鈕讓老師快速建立新評估 */}
+                        {status === 'needs_improvement' && (isTeacher || isAdmin) && (
+                          <button onClick={handleCreateNew} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold text-sm flex items-center gap-2">
+                            <RotateCcw className="w-4 h-4"/> 建立新的評估
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="flex justify-between items-center text-sm text-gray-500 pt-2 border-t border-gray-200">
+                    <div className="flex gap-4">
+                      <span>教師簽核：{formData.sign_teacher_name} ({formData.sign_teacher_date})</span>
+                      <span>學生簽核：{formData.sign_student_name} ({formData.sign_student_date})</span>
+                    </div>
+                    {status === 'completed' && <span className="text-green-600 font-bold flex items-center gap-1"><Lock className="w-4 h-4"/> 已結案</span>}
                   </div>
-                  {(isTeacher || isAdmin) && (
-                    <button onClick={handleCreateNew} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold text-sm flex items-center gap-2">
-                      <RotateCcw className="w-4 h-4"/> 建立新的評估
-                    </button>
-                  )}
                 </div>
               )}
-              {status === 'completed' && (
-                <div className="flex justify-between items-center text-sm text-gray-500">
-                  <div className="flex gap-4">
-                    <span>教師簽核：{formData.sign_teacher_name} ({formData.sign_teacher_date})</span>
-                    <span>學生簽核：{formData.sign_student_name} ({formData.sign_student_date})</span>
-                  </div>
-                  <span className="text-green-600 font-bold flex items-center gap-1"><Lock className="w-4 h-4"/> 已結案</span>
-                </div>
-              )}
+
             </div>
           </div>
         </div>
