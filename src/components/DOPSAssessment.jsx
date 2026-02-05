@@ -14,6 +14,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const [currentInstanceId, setCurrentInstanceId] = useState(null); 
 
   const [formData, setFormData] = useState({});
+  // 這是上方日曆選定的日期
   const [evaluationDate, setEvaluationDate] = useState(''); 
   const [status, setStatus] = useState('draft'); 
   
@@ -57,6 +58,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       if (record) {
         setFormData(record.formData || {});
         setStatus(record.status || 'draft');
+        // 載入時，將表單內的 evaluation_date 設定給狀態
         setEvaluationDate(record.formData.evaluation_date || record.timestamp.split('T')[0]);
         
         setSignOffData({
@@ -69,13 +71,13 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     }
   }, [currentInstanceId, recordsList]);
 
+  // 自動帶入簽核姓名 (僅姓名，日期改由 evaluationDate 控制)
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
     if (isTeacher && status === 'submitted' && !signOffData.teacherName) {
-      setSignOffData(prev => ({ ...prev, teacherName: currentUserName || '指導藥師', teacherDate: today }));
+      setSignOffData(prev => ({ ...prev, teacherName: currentUserName || '指導藥師' }));
     }
     if (isAdmin && status === 'assessed' && !signOffData.adminName) {
-      setSignOffData(prev => ({ ...prev, adminName: currentUserName || '教學負責人', adminDate: today }));
+      setSignOffData(prev => ({ ...prev, adminName: currentUserName || '教學負責人' }));
     }
   }, [userRole, isTeacher, isAdmin, status, currentUserName]);
 
@@ -157,32 +159,35 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const handleSave = async (newStatus) => {
     setSaving(true);
     let targetStatus = newStatus || status;
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0]; // 用於學生簽核的實際操作日
     
-    // 確保 evaluationDate 有被寫入 formData
+    // ★★★ 修正點 1: 強制將 evaluationDate (選定的日期) 寫入表單資料 ★★★
     let finalFormData = { 
       ...formData, 
       evaluation_date: evaluationDate 
     };
 
+    // 教師評分完成
     if (newStatus === 'teacher_graded') {
       if (!finalFormData.global_rating) {
         alert("請填寫整體評估分數！");
         setSaving(false); return;
       }
       finalFormData.sign_teacher_name = currentUserName;
-      finalFormData.sign_teacher_date = today;
+      // ★★★ 修正點 2: 教師簽核日期 = 選定的 evaluationDate (而非 today) ★★★
+      finalFormData.sign_teacher_date = evaluationDate; 
     }
 
     let alertMessage = "儲存成功！";
 
+    // 學生回饋完成
     if (newStatus === 'completed') {
       if (!finalFormData.feedback_student_thoughts) {
         alert("請填寫心得與感想後再送出！");
         setSaving(false); return;
       }
       finalFormData.sign_student_name = currentUserName;
-      finalFormData.sign_student_date = today;
+      finalFormData.sign_student_date = today; // 學生簽核日期維持「實際填寫日」
 
       const score = parseInt(finalFormData.global_rating || 0, 10);
       
@@ -472,20 +477,19 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
                   <div className="flex items-start gap-2 bg-blue-50 p-3 rounded text-blue-800 text-sm"><AlertCircle className="w-5 h-5 mt-0.5"/><div><p className="font-bold">請填寫心得與感想</p></div></div>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => handleSave('teacher_graded')} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg">暫存</button>
-                    {/* ★★★ 修改 1：按鈕文字改為「完成」，確認視窗文字更新 ★★★ */}
+                    {/* 按鈕文字改為「完成」，確認視窗文字更新 */}
                     <button onClick={() => { if(window.confirm('確認送出?送出後無法更改')) handleSave('completed'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 完成</button>
                   </div>
                 </div>
               )}
 
-              {/* ★★★ 修改 2 & 3：動態顯示判定結果 (依分數顯示不同區塊與訊息) ★★★ */}
               {(status === 'completed' || status === 'needs_improvement') && (
                 <div className="space-y-4">
                   <RenderResultBlock />
 
                   <div className="flex justify-between items-center text-sm text-gray-500 pt-2 border-t border-gray-200">
                     <div className="flex gap-4">
-                      {/* ★★★ 修改：使用教師選定的 evaluation_date ★★★ */}
+                      {/* 顯示教師選定的日期 (formData.evaluation_date) */}
                       <span>教師評估：{formData.sign_teacher_name} ({formData.evaluation_date})</span>
                       <span>學生回饋：{formData.sign_student_name} ({formData.evaluation_date})</span>
                     </div>
