@@ -159,6 +159,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     let targetStatus = newStatus || status;
     const today = new Date().toISOString().split('T')[0];
     
+    // 確保 evaluationDate 有被寫入 formData
     let finalFormData = { 
       ...formData, 
       evaluation_date: evaluationDate 
@@ -303,7 +304,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     }
   };
 
-  // 渲染結果區塊
   const RenderResultBlock = () => {
     const score = parseInt(formData.global_rating || 0, 10);
     
@@ -332,7 +332,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       );
     }
 
-    // 0-6 分
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center p-4 rounded-lg border bg-red-50 border-red-200 text-red-800 gap-3">
         <div className="flex items-center gap-2 text-sm font-bold">
@@ -473,22 +472,22 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
                   <div className="flex items-start gap-2 bg-blue-50 p-3 rounded text-blue-800 text-sm"><AlertCircle className="w-5 h-5 mt-0.5"/><div><p className="font-bold">請填寫心得與感想</p></div></div>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => handleSave('teacher_graded')} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg">暫存</button>
-                    {/* ★★★ 修正 1：按鈕文字改為「完成」，確認視窗文字更新 ★★★ */}
+                    {/* ★★★ 修改 1：按鈕文字改為「完成」，確認視窗文字更新 ★★★ */}
                     <button onClick={() => { if(window.confirm('確認送出?送出後無法更改')) handleSave('completed'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 完成</button>
                   </div>
                 </div>
               )}
 
-              {/* ★★★ 修正 2 & 3：底部訊息顯示 ★★★ */}
+              {/* ★★★ 修改 2 & 3：動態顯示判定結果 (依分數顯示不同區塊與訊息) ★★★ */}
               {(status === 'completed' || status === 'needs_improvement') && (
                 <div className="space-y-4">
                   <RenderResultBlock />
 
                   <div className="flex justify-between items-center text-sm text-gray-500 pt-2 border-t border-gray-200">
                     <div className="flex gap-4">
-                      {/* ★★★ 修正 3：標籤與日期對應修正 ★★★ */}
-                      <span>教師評估：{formData.sign_teacher_name} ({formData.sign_teacher_date})</span>
-                      <span>學生回饋：{formData.sign_student_name} ({formData.sign_teacher_date})</span>
+                      {/* ★★★ 修改：使用教師選定的 evaluation_date ★★★ */}
+                      <span>教師評估：{formData.sign_teacher_name} ({formData.evaluation_date})</span>
+                      <span>學生回饋：{formData.sign_student_name} ({formData.evaluation_date})</span>
                     </div>
                     {status === 'completed' && <span className="text-green-600 font-bold flex items-center gap-1"><Lock className="w-4 h-4"/> 已結案</span>}
                   </div>
