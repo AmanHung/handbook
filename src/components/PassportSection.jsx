@@ -6,20 +6,19 @@ import { db } from '../firebase';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
-  Circle, Clock, ArrowRight, ClipboardList, PenTool, Activity, 
-  GraduationCap, Layout
+  Circle, Clock, ClipboardList, PenTool, Activity, 
+  GraduationCap, Layout, CheckSquare // 新增 CheckSquare
 } from 'lucide-react';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
-import DOPSAssessment from './DOPSAssessment'; // 新增這行
+import DOPSAssessment from './DOPSAssessment'; // 新增 DOPS 元件
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
 const PassportSection = ({ user, userRole, userProfile }) => {
-  // --- 1. 基礎資料狀態 ---
   const [students, setStudents] = useState([]);
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
   
@@ -27,27 +26,22 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
-  // --- 2. 導航狀態 (雙層設計) ---
-  // Level 1: 'records' (訓練紀錄) | 'assessment' (學習評估)
+  // 導航狀態
   const [activeMainTab, setActiveMainTab] = useState('records'); 
-  
-  // Level 2: 'pre_training' (學前) | 'epa' (EPA) | ...未來擴充
-  const [assessmentType, setAssessmentType] = useState('pre_training');
+  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops
 
-  // --- 3. 訓練紀錄資料狀態 ---
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // --- 4. 評核 Modal 狀態 ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
   const [savingPeriod, setSavingPeriod] = useState(null);
 
-  // --- Effect: 初始化學員名單 ---
+  // 初始化學員名單
   useEffect(() => {
     if (isTeacherOrAdmin) {
       const fetchStudents = async () => {
@@ -58,7 +52,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           setStudents(list);
 
           if (list.length > 0) {
-            // 如果當前選的 email 不在名單內 (或空的)，預設選第一個
             const isCurrentEmailValid = list.some(s => s.email === selectedStudentEmail);
             if (!selectedStudentEmail || !isCurrentEmailValid) {
               setSelectedStudentEmail(list[0].email);
@@ -72,7 +65,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [userRole]);
 
-  // --- Effect: 同步學員資訊 ---
+  // 同步學員資訊
   useEffect(() => {
     if (isTeacherOrAdmin) {
       if (students.length > 0 && selectedStudentEmail) {
@@ -88,14 +81,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [selectedStudentEmail, students, userRole, userProfile, user]);
 
-  // --- Effect: 讀取護照資料 (僅在切換到訓練紀錄時觸發) ---
+  // 讀取護照資料
   useEffect(() => {
     if (selectedStudentEmail && activeMainTab === 'records') {
       fetchPassportData(selectedStudentEmail);
     }
   }, [selectedStudentEmail, activeMainTab]);
 
-  // API: 讀取訓練紀錄
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!email) return;
@@ -109,7 +101,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setPassportData(data);
       setEditPeriods(data.periods || {});
 
-      // 自動展開第一個分類
       if (data.items && data.items.length > 0) {
         const firstCat = data.items[0].category_id;
         if (Object.keys(expandedGroups).length === 0) {
@@ -123,17 +114,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setLoading(false);
   };
 
-  // --- 評核相關邏輯 (Records) ---
   const openEvaluateModal = (item) => {
     if (!isTeacherOrAdmin) return;
     const today = new Date().toISOString().split('T')[0];
-    setCurrentEval({
-      itemId: item.id,
-      itemName: item.sub_item || item.title, 
-      status: 'pass',
-      date: today,
-      note: ''
-    });
+    setCurrentEval({ itemId: item.id, itemName: item.sub_item || item.title, status: 'pass', date: today, note: '' });
     setIsModalOpen(true);
   };
 
@@ -145,13 +129,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
-          type: 'saveEval',
-          studentEmail: selectedStudentEmail,
-          itemId: currentEval.itemId,
-          status: currentEval.status,
-          assessDate: currentEval.date,
-          teacherName: teacherDisplayName,
-          note: currentEval.note
+          type: 'saveEval', studentEmail: selectedStudentEmail, itemId: currentEval.itemId,
+          status: currentEval.status, assessDate: currentEval.date, teacherName: teacherDisplayName, note: currentEval.note
         })
       });
       await fetchPassportData(selectedStudentEmail);
@@ -164,9 +143,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   };
 
   const handlePeriodChange = (catId, field, value) => {
-    setEditPeriods(prev => ({
-      ...prev, [catId]: { ...prev[catId], [field]: value }
-    }));
+    setEditPeriods(prev => ({ ...prev, [catId]: { ...prev[catId], [field]: value } }));
   };
 
   const handleSavePeriod = async (catId) => {
@@ -176,12 +153,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       await fetch(GAS_API_URL, {
         method: 'POST',
         body: JSON.stringify({
-          type: 'savePeriod',
-          studentEmail: selectedStudentEmail, 
-          categoryId: catId,
-          startDate: periodData?.startDate || '',
-          endDate: periodData?.endDate || '',
-          updatedBy: userProfile?.displayName || user.displayName
+          type: 'savePeriod', studentEmail: selectedStudentEmail, categoryId: catId,
+          startDate: periodData?.startDate || '', endDate: periodData?.endDate || '', updatedBy: userProfile?.displayName || user.displayName
         })
       });
       await fetchPassportData(selectedStudentEmail);
@@ -191,20 +164,16 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setSavingPeriod(null);
   };
 
-  // --- 渲染輔助函式 ---
   const toggleGroup = (groupId) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
-    if (!acc[item.category_id]) {
-      acc[item.category_id] = { id: item.category_id, title: item.category_name, items: [] };
-    }
+    if (!acc[item.category_id]) acc[item.category_id] = { id: item.category_id, title: item.category_name, items: [] };
     acc[item.category_id].items.push(item);
     return acc;
   }, {});
 
-  // 渲染單個項目列
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
@@ -236,7 +205,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   };
 
   const renderGroupContent = (items) => {
-    // (邏輯不變: 略為簡化顯示以節省篇幅)
     const groups = {};
     const groupOrder = []; 
     items.forEach(item => {
@@ -255,13 +223,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     });
   };
 
-  // --- 主要渲染區塊 ---
-
   return (
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-6 md:rounded-xl shadow-sm border border-gray-100">
         
-        {/* 1. Header & 學員選擇器 */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-lg">
@@ -302,14 +268,12 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         </div>
 
-        {/* 2. 第一層導航 (主 Tabs) */}
+        {/* 主選單 (Main Tabs) */}
         <div className="flex border-b border-gray-200 mb-6">
           <button
             onClick={() => setActiveMainTab('records')}
             className={`flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 ${
-              activeMainTab === 'records'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              activeMainTab === 'records' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <ClipboardList className="w-4 h-4" />
@@ -318,9 +282,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           <button
             onClick={() => setActiveMainTab('assessment')}
             className={`flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 ${
-              activeMainTab === 'assessment'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              activeMainTab === 'assessment' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <GraduationCap className="w-4 h-4" />
@@ -328,16 +290,15 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </button>
         </div>
 
-        {/* 錯誤訊息 */}
         {errorMsg && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 rounded text-red-700 text-sm font-bold flex items-center gap-2">
             <AlertCircle className="w-5 h-5" /> {errorMsg}
           </div>
         )}
 
-        {/* 3. 內容渲染區 */}
+        {/* 內容區 */}
         {activeMainTab === 'records' ? (
-          // --- A. 訓練紀錄列表 ---
+          // --- 訓練紀錄 ---
           <div className="space-y-4">
             {loading ? (
               <div className="text-center py-12 text-gray-400 flex flex-col items-center">
@@ -365,7 +326,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{progress}%</span>
                         </button>
                         
-                        {/* 日期區塊 (省略重複邏輯，保持原樣) */}
                         <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm self-start sm:self-auto">
                            <Clock className="w-3.5 h-3.5 text-gray-400" />
                            {isTeacherOrAdmin ? (
@@ -390,10 +350,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             )}
           </div>
         ) : (
-          // --- B. 學習評估 (包含 EPA 與 學前) ---
+          // --- 學習評估 ---
           <div className="animate-in fade-in duration-300">
-            
-            {/* 第二層導航 (Sub-Pills) - 手機橫向捲動優化 */}
+            {/* 子選單 (Sub-Pills) */}
             <div className="mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex items-center gap-3">
                 <button
@@ -419,48 +378,51 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   <Activity className="w-4 h-4" />
                   EPA 評估
                 </button>
-                
+
+                {/* ★★★ 新增 DOPS 按鈕 ★★★ */}
                 <button
-  onClick={() => setAssessmentType('dops')}
-  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-    assessmentType === 'dops'
-      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-  }`}
->
-  <CheckSquare className="w-4 h-4" /> {/* 記得引入 CheckSquare icon */}
-  DOPS 評估
-</button>
+                  onClick={() => setAssessmentType('dops')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
+                    assessmentType === 'dops'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <CheckSquare className="w-4 h-4" />
+                  DOPS 評估
+                </button>
+              </div>
+            </div>
 
             {/* 根據按鈕顯示對應元件 */}
             {assessmentType === 'pre_training' ? (
-  <PreTrainingAssessment 
-    studentEmail={selectedStudentEmail}
-    studentName={selectedStudentName}
-    userRole={userRole}
-    currentUserEmail={user?.email}
-    currentUserName={userProfile?.displayName || user?.displayName} 
-    gasApiUrl={GAS_API_URL}
-  />
-) : assessmentType === 'epa' ? (
-  <EPAAssessment 
-    studentEmail={selectedStudentEmail}
-    studentName={selectedStudentName}
-    isTeacher={isTeacherOrAdmin} // 注意這裡 props 名稱可能不同，請確認 DOPSAssessment 需要的 props
-    userProfile={userProfile}
-    apiUrl={GAS_API_URL}
-  />
-) : (
-  // ★★★ 新增 DOPS 渲染 ★★★
-  <DOPSAssessment 
-    studentEmail={selectedStudentEmail}
-    studentName={selectedStudentName}
-    userRole={userRole}
-    currentUserEmail={user?.email}
-    currentUserName={userProfile?.displayName || user?.displayName}
-    gasApiUrl={GAS_API_URL}
-  />
-)}
+              <PreTrainingAssessment 
+                studentEmail={selectedStudentEmail}
+                studentName={selectedStudentName}
+                userRole={userRole}
+                currentUserEmail={user?.email}
+                currentUserName={userProfile?.displayName || user?.displayName} 
+                gasApiUrl={GAS_API_URL}
+              />
+            ) : assessmentType === 'epa' ? (
+              <EPAAssessment 
+                studentEmail={selectedStudentEmail}
+                studentName={selectedStudentName}
+                isTeacher={isTeacherOrAdmin}
+                userProfile={userProfile}
+                apiUrl={GAS_API_URL}
+              />
+            ) : (
+              // ★★★ DOPS 渲染區 ★★★
+              <DOPSAssessment 
+                studentEmail={selectedStudentEmail}
+                studentName={selectedStudentName}
+                userRole={userRole}
+                currentUserEmail={user?.email}
+                currentUserName={userProfile?.displayName || user?.displayName}
+                gasApiUrl={GAS_API_URL}
+              />
+            )}
           </div>
         )}
       </div>
