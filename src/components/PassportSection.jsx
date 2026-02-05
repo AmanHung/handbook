@@ -13,6 +13,7 @@ import {
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
+import DOPSAssessment from './DOPSAssessment'; // 新增這行
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
@@ -419,30 +420,47 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   EPA 評估
                 </button>
                 
-                {/* 預留未來擴充: DOPS, Mini-CEX */}
-                {/* <button className="px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">DOPS (建置中)</button> */}
-              </div>
-            </div>
+                <button
+  onClick={() => setAssessmentType('dops')}
+  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
+    assessmentType === 'dops'
+      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+  }`}
+>
+  <CheckSquare className="w-4 h-4" /> {/* 記得引入 CheckSquare icon */}
+  DOPS 評估
+</button>
 
             {/* 根據按鈕顯示對應元件 */}
             {assessmentType === 'pre_training' ? (
-              <PreTrainingAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                userRole={userRole}
-                currentUserEmail={user?.email}
-                currentUserName={userProfile?.displayName || user?.displayName} 
-                gasApiUrl={GAS_API_URL}
-              />
-            ) : (
-              <EPAAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                isTeacher={isTeacherOrAdmin}
-                userProfile={userProfile}
-                apiUrl={GAS_API_URL}
-              />
-            )}
+  <PreTrainingAssessment 
+    studentEmail={selectedStudentEmail}
+    studentName={selectedStudentName}
+    userRole={userRole}
+    currentUserEmail={user?.email}
+    currentUserName={userProfile?.displayName || user?.displayName} 
+    gasApiUrl={GAS_API_URL}
+  />
+) : assessmentType === 'epa' ? (
+  <EPAAssessment 
+    studentEmail={selectedStudentEmail}
+    studentName={selectedStudentName}
+    isTeacher={isTeacherOrAdmin} // 注意這裡 props 名稱可能不同，請確認 DOPSAssessment 需要的 props
+    userProfile={userProfile}
+    apiUrl={GAS_API_URL}
+  />
+) : (
+  // ★★★ 新增 DOPS 渲染 ★★★
+  <DOPSAssessment 
+    studentEmail={selectedStudentEmail}
+    studentName={selectedStudentName}
+    userRole={userRole}
+    currentUserEmail={user?.email}
+    currentUserName={userProfile?.displayName || user?.displayName}
+    gasApiUrl={GAS_API_URL}
+  />
+)}
           </div>
         )}
       </div>
