@@ -67,6 +67,12 @@ function App() {
     }
   }
 
+  // 定義超級管理員 Email (請換成您自己的 Email)
+  const SUPER_ADMIN_EMAILS = [
+    "obm0304@gmail.com", 
+    "另一個管理員@gmail.com"
+  ];
+
   // 監聽登入狀態並同步使用者資料
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -78,23 +84,41 @@ function App() {
         try {
           const userSnap = await getDoc(userRef)
           
+          let finalRole = 'student'; // 預設
+
           if (userSnap.exists()) {
             const data = userSnap.data();
+            finalRole = data.role || 'student';
+            
+            // ★★★ 強制鎖定超級管理員 ★★★
+            if (SUPER_ADMIN_EMAILS.includes(currentUser.email) && finalRole !== 'admin') {
+               finalRole = 'admin';
+               // 自動修復資料庫中的權限
+               await updateDoc(userRef, { role: 'admin' });
+               console.log("已自動提升為超級管理員權限");
+            }
+
             setUserProfile(data);
-            setUserRole(data.role || 'student');
           } else {
+            // 新使用者註冊
+            if (SUPER_ADMIN_EMAILS.includes(currentUser.email)) {
+               finalRole = 'admin';
+            }
+
             const newUserData = {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
-              role: 'student',
+              role: finalRole, // 使用判定後的權限
               arrivalDate: '',
               createdAt: new Date().toISOString()
             };
             await setDoc(userRef, newUserData);
             setUserProfile(newUserData);
-            setUserRole('student');
           }
+          
+          setUserRole(finalRole); // 設定最終權限狀態
+
         } catch (error) {
           console.error("Error fetching user data:", error)
         }
