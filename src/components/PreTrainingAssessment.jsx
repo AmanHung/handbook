@@ -330,11 +330,6 @@ const PreTrainingAssessment = ({ studentEmail, studentName, userRole, currentUse
 
     return (
       <div className="max-w-4xl mx-auto animate-in fade-in">
-        <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-indigo-600" />
-          可用的評估表單
-        </h3>
-        
         <div 
           onClick={() => setView('form')}
           className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer overflow-hidden group"
