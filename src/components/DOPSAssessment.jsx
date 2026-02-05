@@ -3,7 +3,7 @@ import { DOPS_FORMS } from '../data/dopsForms';
 import { 
   Save, CheckCircle, Loader2, Lock, Unlock, ArrowLeft, User, CheckCircle2, 
   FileText, Check, X as XIcon, AlertCircle, Clock, ChevronRight, Plus, Calendar,
-  Star, AlertTriangle, RotateCcw, Info
+  Star, AlertTriangle, RotateCcw
 } from 'lucide-react';
 
 const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, gasApiUrl }) => {
@@ -37,7 +37,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const canEditScores = (isTeacher || isAdmin) && status === 'draft';
   const canEditStudentFeedback = isStudent && status === 'teacher_graded';
   
-  // 唯讀判定：已結案 或 待加強(此單已結束)
   const isGlobalReadOnly = status === 'completed' || status === 'needs_improvement';
 
   useEffect(() => {
@@ -174,8 +173,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       finalFormData.sign_teacher_date = today;
     }
 
-    let alertMessage = "儲存成功！";
-
     if (newStatus === 'completed') {
       if (!finalFormData.feedback_student_thoughts) {
         alert("請填寫心得與感想後再送出！");
@@ -184,18 +181,12 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       finalFormData.sign_student_name = currentUserName;
       finalFormData.sign_student_date = today;
 
-      // ★★★ 關鍵修改：分數邏輯判定 ★★★
+      // 判斷分數決定狀態
       const score = parseInt(finalFormData.global_rating || 0, 10);
-      
-      if (score <= 6) {
+      if (score < 8) {
         targetStatus = 'needs_improvement';
-        alertMessage = "整體表現6分(含)以下：整體作業流程需重新訓練→1個月後重測";
-      } else if (score === 7) {
-        targetStatus = 'needs_improvement';
-        alertMessage = "整體表現7分：針對不足之項目進行加強訓練→1週後重測";
       } else {
         targetStatus = 'completed';
-        alertMessage = "整體表現8(含)以上→已完成此項考核";
       }
     }
 
@@ -219,8 +210,10 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
         body: JSON.stringify(payload)
       });
       
-      // 跳出判定結果提示
-      alert(alertMessage);
+      // ★★★ 修改：移除這裡的 Alert，只顯示非判定類的成功訊息 ★★★
+      if (newStatus !== 'completed') {
+        alert("儲存成功！");
+      }
 
       await loadRecordsList(); 
 
@@ -302,12 +295,49 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     }
   };
 
-  // 輔助：取得結果訊息
-  const getResultFeedback = (scoreStr) => {
-    const score = parseInt(scoreStr || 0, 10);
-    if (score >= 8) return { text: "整體表現8(含)以上→已完成此項考核", style: "bg-green-50 border-green-200 text-green-800", icon: CheckCircle };
-    if (score === 7) return { text: "整體表現7分：針對不足之項目進行加強訓練→1週後重測", style: "bg-orange-50 border-orange-200 text-orange-800", icon: AlertTriangle };
-    return { text: "整體表現6分(含)以下：整體作業流程需重新訓練→1個月後重測", style: "bg-red-50 border-red-200 text-red-800", icon: AlertTriangle };
+  // ★★★ 修改：渲染結果區塊元件 ★★★
+  const RenderResultBlock = () => {
+    const score = parseInt(formData.global_rating || 0, 10);
+    
+    // 依據分數回傳不同的樣式與文字
+    if (score >= 8) {
+      return (
+        <div className="flex justify-between items-center p-4 rounded-lg border bg-green-50 border-green-200 text-green-800">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <CheckCircle className="w-6 h-6"/> 已完成此項考核
+          </div>
+        </div>
+      );
+    }
+    
+    if (score === 7) {
+      return (
+        <div className="flex flex-col sm:flex-row justify-between items-center p-4 rounded-lg border bg-orange-50 border-orange-200 text-orange-800 gap-3">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <AlertTriangle className="w-6 h-6"/> 針對不足之項目進行加強訓練→1週後重測
+          </div>
+          {(isTeacher || isAdmin) && (
+            <button onClick={handleCreateNew} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+              <RotateCcw className="w-4 h-4"/> 建立新評估
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // 0-6 分
+    return (
+      <div className="flex flex-col sm:flex-row justify-between items-center p-4 rounded-lg border bg-red-50 border-red-200 text-red-800 gap-3">
+        <div className="flex items-center gap-2 text-sm font-bold">
+          <AlertTriangle className="w-6 h-6"/> 整體作業流程需重新訓練→1個月後重測
+        </div>
+        {(isTeacher || isAdmin) && (
+          <button onClick={handleCreateNew} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+            <RotateCcw className="w-4 h-4"/> 建立新評估
+          </button>
+        )}
+      </div>
+    );
   };
 
   if (view === 'menu') {
@@ -436,31 +466,16 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
                   <div className="flex items-start gap-2 bg-blue-50 p-3 rounded text-blue-800 text-sm"><AlertCircle className="w-5 h-5 mt-0.5"/><div><p className="font-bold">請填寫心得與感想</p></div></div>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => handleSave('teacher_graded')} disabled={saving} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg">暫存</button>
-                    {/* ★★★ 修改：按鈕文字改為「完成」 ★★★ */}
+                    {/* ★★★ 修正按鈕文字：完成 ★★★ */}
                     <button onClick={() => { if(window.confirm('確認送出？系統將依分數判定結果。')) handleSave('completed'); }} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 完成</button>
                   </div>
                 </div>
               )}
 
-              {/* ★★★ 修改：動態顯示判定結果訊息 ★★★ */}
+              {/* ★★★ 根據分數顯示不同顏色的區塊 ★★★ */}
               {(status === 'completed' || status === 'needs_improvement') && (
                 <div className="space-y-4">
-                  {(() => {
-                    const result = getResultFeedback(formData.global_rating);
-                    return (
-                      <div className={`flex justify-between items-center p-4 rounded-lg border ${result.style}`}>
-                        <div className="flex items-center gap-2 text-sm font-bold">
-                          <result.icon className="w-5 h-5"/> {result.text}
-                        </div>
-                        {/* 如果是待加強，提供按鈕讓老師快速建立新評估 */}
-                        {status === 'needs_improvement' && (isTeacher || isAdmin) && (
-                          <button onClick={handleCreateNew} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold text-sm flex items-center gap-2">
-                            <RotateCcw className="w-4 h-4"/> 建立新的評估
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  <RenderResultBlock />
 
                   <div className="flex justify-between items-center text-sm text-gray-500 pt-2 border-t border-gray-200">
                     <div className="flex gap-4">
