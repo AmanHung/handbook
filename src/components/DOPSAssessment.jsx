@@ -2,25 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { DOPS_FORMS } from '../data/dopsForms';
 import { 
   Save, CheckCircle, Loader2, Lock, Unlock, ArrowLeft, User, CheckCircle2, 
-  FileText, Check, X as XIcon, AlertCircle, Clock, ChevronRight, Plus, Calendar
+  FileText, Check, X as XIcon, AlertCircle, Clock, ChevronRight, Plus, Calendar,
+  Star // 新增 Star 圖示用於顯示分數
 } from 'lucide-react';
 
 const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, gasApiUrl }) => {
   const [view, setView] = useState('menu'); 
   const [selectedFormId, setSelectedFormId] = useState(null);
   
-  // 列表資料
-  const [recordsList, setRecordsList] = useState([]); // 該 DOPS 項目的所有評估紀錄
-  const [currentInstanceId, setCurrentInstanceId] = useState(null); // 目前選中的紀錄 ID
+  const [recordsList, setRecordsList] = useState([]); 
+  const [currentInstanceId, setCurrentInstanceId] = useState(null); 
 
-  // 表單資料
   const [formData, setFormData] = useState({});
-  const [evaluationDate, setEvaluationDate] = useState(''); // 獨立的評估日期狀態
+  const [evaluationDate, setEvaluationDate] = useState(''); 
   const [status, setStatus] = useState('draft'); 
   
+  // 增加 menuLoading 狀態
+  const [menuLoading, setMenuLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // 用來儲存卡片顯示用的摘要資訊 (狀態 + 分數 + 日期)
+  const [dashboardSummary, setDashboardSummary] = useState({});
 
   const [signOffData, setSignOffData] = useState({
     teacherName: '', teacherDate: '', adminName: '', adminDate: ''
@@ -32,26 +36,29 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
 
   const currentFormConfig = DOPS_FORMS.find(f => f.id === selectedFormId);
 
-  // 權限判斷
   const canEditScores = (isTeacher || isAdmin) && status === 'draft';
   const canEditStudentFeedback = isStudent && status === 'teacher_graded';
   const isGlobalReadOnly = status === 'completed';
 
-  // 進入表單模式時，讀取列表
+  // ★★★ 修改 1：進入選單時，讀取摘要資訊 (狀態 + 分數) ★★★
+  useEffect(() => {
+    if (view === 'menu' && studentEmail) {
+      loadDashboardSummary();
+    }
+  }, [view, studentEmail]);
+
   useEffect(() => {
     if (view === 'form' && selectedFormId && studentEmail) {
       loadRecordsList();
     }
   }, [view, selectedFormId, studentEmail]);
 
-  // 切換 Instance 時，更新表單內容
   useEffect(() => {
     if (currentInstanceId && recordsList.length > 0) {
       const record = recordsList.find(r => r.instanceId === currentInstanceId);
       if (record) {
         setFormData(record.formData || {});
         setStatus(record.status || 'draft');
-        // 設定評估日期：優先從 formData 讀取，若無則用 timestamp
         setEvaluationDate(record.formData.evaluation_date || record.timestamp.split('T')[0]);
         
         setSignOffData({
@@ -64,7 +71,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     }
   }, [currentInstanceId, recordsList]);
 
-  // 自動帶入簽核
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (isTeacher && status === 'submitted' && !signOffData.teacherName) {
@@ -75,7 +81,45 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     }
   }, [userRole, isTeacher, isAdmin, status, currentUserName]);
 
-  // 1. 讀取列表 (API: getDOPSList)
+  // ★★★ 修改 2：讀取摘要資訊函式 ★★★
+  const loadDashboardSummary = async () => {
+    setMenuLoading(true);
+    try {
+      // 這裡我們針對每個表單呼叫 getDOPSList，並取「最新一筆」的資料來顯示在卡片上
+      // 這樣最準確，能反映最新的評分狀況
+      const promises = DOPS_FORMS.map(form => 
+        fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${form.id}`)
+          .then(res => res.json())
+          .then(data => {
+            const list = data.records || [];
+            if (list.length > 0) {
+              // list 已經是時間倒序 (最新的在 index 0)
+              const latest = list[0];
+              return { 
+                id: form.id, 
+                status: latest.status, 
+                updatedAt: latest.timestamp,
+                score: latest.formData?.global_rating // 抓取分數
+              };
+            }
+            return { id: form.id, status: 'draft', score: null };
+          })
+          .catch(() => ({ id: form.id, status: 'draft' }))
+      );
+
+      const results = await Promise.all(promises);
+      const newMap = {};
+      results.forEach(r => {
+        newMap[r.id] = r;
+      });
+      setDashboardSummary(newMap);
+
+    } catch (error) {
+      console.error("讀取摘要失敗", error);
+    }
+    setMenuLoading(false);
+  };
+
   const loadRecordsList = async () => {
     setListLoading(true);
     try {
@@ -85,7 +129,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       
       setRecordsList(list);
 
-      // 如果有紀錄，預設選取最新一筆；若無，自動進入新增模式
       if (list.length > 0) {
         setCurrentInstanceId(list[0].instanceId);
       } else {
@@ -97,17 +140,15 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     setListLoading(false);
   };
 
-  // 2. 建立新評估
   const handleCreateNew = () => {
     const newId = 'NEW_' + new Date().getTime();
     const today = new Date().toISOString().split('T')[0];
     
-    // 建立一個暫時的紀錄物件
     const newRecord = {
       instanceId: newId,
       status: 'draft',
       timestamp: new Date().toISOString(),
-      formData: { evaluation_date: today }, // 預設日期
+      formData: { evaluation_date: today },
       teacherSign: '',
       studentSign: ''
     };
@@ -120,7 +161,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     setSignOffData({ teacherName: '', teacherDate: '', adminName: '', adminDate: '' });
   };
 
-  // 3. 儲存
   const handleSave = async (newStatus) => {
     setSaving(true);
     const targetStatus = newStatus || status;
@@ -128,7 +168,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     
     let finalFormData = { 
       ...formData, 
-      evaluation_date: evaluationDate // 確保評估日期被儲存
+      evaluation_date: evaluationDate 
     };
 
     if (newStatus === 'teacher_graded') {
@@ -145,14 +185,10 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       finalFormData.sign_student_date = today;
     }
 
-    // 如果是新紀錄，instanceId 會帶有 'NEW_' 前綴，後端會自動產生正式 ID
-    // 但為了前端方便，我們傳送這個 ID 給後端，後端若發現不存在就會新增
-    // 若是 NEW_，後端會存入 Instance_ID 欄位。下次讀取時它就變成正式 ID 了。
-    
     const payload = {
       type: 'saveDOPS',
       dopsId: selectedFormId,
-      instanceId: currentInstanceId.startsWith('NEW_') ? null : currentInstanceId, // 若是新單，傳 null 讓後端生成
+      instanceId: currentInstanceId.startsWith('NEW_') ? null : currentInstanceId, 
       studentEmail,
       studentName,
       formData: finalFormData,
@@ -170,8 +206,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       });
       
       alert(targetStatus === 'completed' ? '已結案！' : '儲存成功！');
-      
-      // 重新讀取列表以取得最新的 ID 和狀態
       await loadRecordsList(); 
 
     } catch (error) {
@@ -185,7 +219,6 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     setFormData(prev => ({ ...prev, [fieldId]: value }));
   };
 
-  // --- 欄位渲染 ---
   const renderField = (field) => {
     const value = formData[field.id];
     let editable = false;
@@ -244,16 +277,15 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     return null;
   };
 
-  // --- 狀態標籤 ---
   const StatusBadge = ({ status }) => {
     switch (status) {
       case 'completed': return <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> 已結案</span>;
       case 'teacher_graded': return <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold flex items-center gap-1"><User className="w-3 h-3"/> 待學生回饋</span>;
-      default: return <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-bold">草稿</span>;
+      default: return <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-bold">未開始</span>;
     }
   };
 
-  // --- Menu View (維持儀表板) ---
+  // --- 儀表板視圖 (Menu View) ---
   if (view === 'menu') {
     return (
       <div className="animate-in fade-in">
@@ -261,26 +293,58 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
           <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2"><CheckCircle2 className="w-6 h-6 text-indigo-600" /> DOPS 評估項目</h3>
           <div className="text-xs text-gray-500">共 {DOPS_FORMS.length} 項</div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {DOPS_FORMS.map(form => (
-            <button key={form.id} onClick={() => { setSelectedFormId(form.id); setView('form'); }} className="flex flex-col text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-indigo-400 transition-all group relative overflow-hidden">
-              <div className="flex justify-between items-start mb-3">
-                <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-100 transition-colors"><FileText className="w-6 h-6 text-indigo-600" /></div>
-              </div>
-              <h4 className="font-bold text-gray-800 text-base mb-1 group-hover:text-indigo-600 transition-colors">{form.title}</h4>
-              <p className="text-xs text-gray-500 line-clamp-2 mb-4 h-8">{form.description}</p>
-              <div className="mt-auto pt-3 border-t border-gray-50 flex justify-between items-center w-full">
-                <span className="text-[10px] text-gray-400">點擊進入評估</span>
-                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-              </div>
-            </button>
-          ))}
-        </div>
+        
+        {menuLoading ? (
+          <div className="py-12 text-center text-gray-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>讀取進度中...</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {DOPS_FORMS.map(form => {
+              const summary = dashboardSummary[form.id] || { status: 'draft', score: null, updatedAt: null };
+              
+              return (
+                <button 
+                  key={form.id}
+                  onClick={() => { setSelectedFormId(form.id); setView('form'); }}
+                  className="flex flex-col text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-indigo-400 transition-all group relative overflow-hidden"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-100 transition-colors">
+                      <FileText className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    {/* ★★★ 狀態與分數顯示 ★★★ */}
+                    <div className="flex flex-col items-end gap-1">
+                      <StatusBadge status={summary.status} />
+                      {summary.score && (
+                        <span className="flex items-center gap-1 text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                          <Star className="w-3 h-3 fill-orange-600" /> {summary.score} 分
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <h4 className="font-bold text-gray-800 text-base mb-1 group-hover:text-indigo-600 transition-colors">
+                    {form.title}
+                  </h4>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-4 h-8">
+                    {form.description}
+                  </p>
+                  
+                  <div className="mt-auto pt-3 border-t border-gray-50 flex justify-between items-center w-full">
+                    <span className="text-[10px] text-gray-400">
+                      {summary.updatedAt ? `更新: ${new Date(summary.updatedAt).toLocaleDateString()}` : '尚未開始'}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
 
-  // --- Form View (左側列表 + 右側表單) ---
+  // --- 表單視圖 (左列表 + 右表單) ---
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-in slide-in-from-right-4">
       {/* 導航 */}
@@ -312,8 +376,14 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
                     onClick={() => setCurrentInstanceId(rec.instanceId)}
                     className={`w-full text-left p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors ${currentInstanceId === rec.instanceId ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : ''}`}
                   >
-                    <div className="font-bold text-sm text-gray-800">
-                      {rec.formData.evaluation_date || rec.timestamp.split('T')[0]}
+                    <div className="flex justify-between items-center">
+                      <div className="font-bold text-sm text-gray-800">
+                        {rec.formData.evaluation_date || rec.timestamp.split('T')[0]}
+                      </div>
+                      {/* 列表也顯示分數 */}
+                      {rec.formData?.global_rating && (
+                        <span className="text-xs font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">{rec.formData.global_rating}分</span>
+                      )}
                     </div>
                     <div className="flex justify-between items-center mt-1">
                       <StatusBadge status={rec.status} />
@@ -327,7 +397,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
 
         {/* 右側：表單內容 */}
         <div className="col-span-12 md:col-span-9 space-y-6">
-          {/* 日期選擇區 (置頂) */}
+          {/* 日期選擇區 */}
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
             <div className="flex items-center gap-2 text-indigo-700 font-bold">
               <Calendar className="w-5 h-5" /> 評估日期
