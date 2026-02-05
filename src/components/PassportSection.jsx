@@ -6,14 +6,14 @@ import { db } from '../firebase';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
-  Circle, Clock, ClipboardList, PenTool, Activity, 
-  GraduationCap, Layout, CheckSquare // 新增 CheckSquare
+  Circle, Clock, ClipboardList, Activity, // 移除 PenTool
+  GraduationCap, Layout, CheckSquare 
 } from 'lucide-react';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
-import DOPSAssessment from './DOPSAssessment'; // 新增 DOPS 元件
+import DOPSAssessment from './DOPSAssessment'; 
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
@@ -379,7 +379,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   EPA 評估
                 </button>
 
-                {/* ★★★ 新增 DOPS 按鈕 ★★★ */}
                 <button
                   onClick={() => setAssessmentType('dops')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
@@ -413,7 +412,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 apiUrl={GAS_API_URL}
               />
             ) : (
-              // ★★★ DOPS 渲染區 ★★★
               <DOPSAssessment 
                 studentEmail={selectedStudentEmail}
                 studentName={selectedStudentName}
