@@ -48,23 +48,28 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   const handleSaveRecord = async (formData) => {
     setIsSubmitting(true);
     try {
-      // ★★★ 關鍵修正：將 FormModal 的資料轉換為後端 (GAS) 看得懂的名稱 ★★★
+      // ★★★ 關鍵修正：欄位名稱對應轉換 (Mapping) ★★★
+      // 前端 FormModal 給的是 { checklist, feedback_content, ... }
+      // 後端 GAS 預期的是 { evaluation, feedback, ... }
       const payload = {
         action: 'save_epa_record',
         student_email: studentEmail,
-        // 展開表單資料
+        
         epa_id: formData.epa_id,
         teacher_name: formData.teacher_name,
         date: formData.date,
         level: formData.level,
-        // 欄位對應修正：
-        evaluation: formData.checklist,       // 後端要 evaluation, 前端給 checklist
-        feedback: formData.feedback_content   // 後端要 feedback, 前端給 feedback_content
+        
+        // 將 checklist 轉名為 evaluation 傳給後端
+        evaluation: formData.checklist,       
+        
+        // 將 feedback_content 轉名為 feedback 傳給後端
+        feedback: formData.feedback_content   
       };
 
       await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' }, // 確保 header 正確
+        headers: { 'Content-Type': 'text/plain' }, 
         body: JSON.stringify(payload)
       });
 
@@ -256,6 +261,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
 
   // 取得 Level 對應的完整 Label
   const getLevelLabel = (levelValue) => {
+    if (!levelValue) return '未評分';
     const opt = EPA_LEVEL_OPTIONS.find(o => o.value === levelValue);
     return opt ? opt.label : levelValue;
   }
@@ -302,7 +308,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                       {record.date}
                       {/* 簡短顯示 Level */}
                       <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">
-                         {record.level}
+                         Level {record.level?.replace('Level ', '') || '?'}
                       </span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
@@ -324,7 +330,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">評估結果 (Entrustment Level)</h4>
                   <div className="p-5 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center gap-4">
                     <div className="bg-white p-3 rounded-full shadow-sm">
-                        <span className="text-2xl font-bold text-indigo-700">{currentRecord.level}</span>
+                        <span className="text-2xl font-bold text-indigo-700">{currentRecord.level || '-'}</span>
                     </div>
                     <div>
                         <p className="font-bold text-indigo-800 text-lg">{getLevelLabel(currentRecord.level)}</p>
@@ -359,7 +365,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">教師綜合回饋</h4>
                   <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded border whitespace-pre-line leading-relaxed">
-                      {/* 這裡顯示後端的 feedback_content 欄位 */}
+                      {/* 這裡顯示 feedback_content */}
                       {currentRecord.feedback_content || "（無文字回饋）"}
                   </p>
                 </section>
