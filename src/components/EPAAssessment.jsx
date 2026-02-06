@@ -48,15 +48,26 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   const handleSaveRecord = async (formData) => {
     setIsSubmitting(true);
     try {
-      // 這裡 formData 包含 checklist(物件), feedback_content, level 等
+      // ★★★ 關鍵修正：將 FormModal 的資料轉換為後端 (GAS) 看得懂的名稱 ★★★
+      const payload = {
+        action: 'save_epa_record',
+        student_email: studentEmail,
+        // 展開表單資料
+        epa_id: formData.epa_id,
+        teacher_name: formData.teacher_name,
+        date: formData.date,
+        level: formData.level,
+        // 欄位對應修正：
+        evaluation: formData.checklist,       // 後端要 evaluation, 前端給 checklist
+        feedback: formData.feedback_content   // 後端要 feedback, 前端給 feedback_content
+      };
+
       await fetch(apiUrl, {
         method: 'POST',
-        body: JSON.stringify({
-          action: 'save_epa_record',
-          student_email: studentEmail,
-          ...formData
-        })
+        headers: { 'Content-Type': 'text/plain' }, // 確保 header 正確
+        body: JSON.stringify(payload)
       });
+
       alert("評估已儲存，並已發送通知給學員！");
       setShowFormModal(false); 
       
@@ -65,6 +76,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       setShowHistoryModal(true); 
 
     } catch (error) {
+      console.error(error);
       alert("儲存失敗，請稍後再試");
     } finally {
       setIsSubmitting(false);
@@ -77,6 +89,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'save_trainee_feedback',
           record_id: recordId,
@@ -287,9 +300,9 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                   >
                     <div className="flex justify-between font-bold text-gray-800 text-sm">
                       {record.date}
-                      {/* 簡短顯示 Level (例如 2a, 4) */}
+                      {/* 簡短顯示 Level */}
                       <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">
-                         Level {record.level}
+                         {record.level}
                       </span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
@@ -319,13 +332,13 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                   </div>
                 </section>
 
-                {/* 2. 觀察細項 (從 config 讀取 items 並對應 record 數值) */}
+                {/* 2. 觀察細項評量 */}
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">觀察細項評量</h4>
                   <div className="space-y-0 border rounded-lg overflow-hidden">
-                    {/* ★ 修正重點：使用 epa.check_items 陣列來渲染，確保能對應到 Key ★ */}
+                    {/* 使用 epa.check_items 來對應值 */}
                     {epa.check_items && epa.check_items.map((itemText, idx) => {
-                      // currentRecord.evaluation 存放的是 { "項目文字": "meet_expectation", ... }
+                      // 這裡要對應 evaluation 中的 key
                       const value = currentRecord.evaluation ? currentRecord.evaluation[itemText] : null;
                       const { text, color, icon: Icon } = getPerformanceLabel(value);
 
@@ -346,6 +359,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">教師綜合回饋</h4>
                   <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded border whitespace-pre-line leading-relaxed">
+                      {/* 這裡顯示後端的 feedback_content 欄位 */}
                       {currentRecord.feedback_content || "（無文字回饋）"}
                   </p>
                 </section>
@@ -356,7 +370,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                     <span>學員回饋與滿意度</span>
                   </h4>
                   
-                  {/* 情境 1: 已有資料 */}
+                  {/* 已有資料 */}
                   {(currentRecord.feedback_satisfaction && currentRecord.feedback_satisfaction > 0) ? (
                      <div className="bg-green-50 p-4 rounded-lg border border-green-100 space-y-3">
                         <div className="flex items-center gap-2">
@@ -370,14 +384,13 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                         </div>
                      </div>
                   ) : (
-                    /* 情境 2: 無資料且是學生 */
+                    /* 無資料且是學生 -> 顯示表單 */
                     !isTeacher ? (
                       <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 space-y-4">
                          <h5 className="text-sm font-bold text-orange-800 flex items-center gap-2">
                              <Send className="w-4 h-4"/> 請填寫回饋以完成評估
                          </h5>
                          
-                         {/* 滿意度按鈕 */}
                          <div>
                            <label className="block text-xs font-bold text-gray-500 mb-2">本次教學滿意度 (1-9)</label>
                            <div className="flex gap-1 flex-wrap">
@@ -397,7 +410,6 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                            </div>
                          </div>
 
-                         {/* 反思輸入框 */}
                          <div>
                            <label className="block text-xs font-bold text-gray-500 mb-2">反思與回饋</label>
                            <textarea 
@@ -417,7 +429,7 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                          </button>
                       </div>
                     ) : (
-                      // 情境 3: 無資料且是老師
+                      // 老師端：顯示提示
                       <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm flex flex-col items-center gap-2">
                         <AlertCircle className="w-8 h-8 opacity-50"/>
                         學員尚未填寫回饋
