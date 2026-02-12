@@ -7,16 +7,18 @@ import {
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
   Circle, Clock, ClipboardList, Activity, 
-  GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope // [新] 加入 Stethoscope 圖示
+  GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
+  Award // [新] 學習成果圖示
 } from 'lucide-react';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
 import DOPSAssessment from './DOPSAssessment'; 
-import MiniCEXAssessment from './MiniCEXAssessment'; // [新] 引入 MiniCEX 元件
+import MiniCEXAssessment from './MiniCEXAssessment';
 import KSAAssessment from './KSAAssessment';
 import WrittenTestAssessment from './WrittenTestAssessment';
+import FinalAssessment from './FinalAssessment'; // [新] 引入完訓評估
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
@@ -29,9 +31,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
-  // 導航狀態
+  // 導航狀態: records(訓練紀錄), assessment(學習評估), outcome(學習成果)
   const [activeMainTab, setActiveMainTab] = useState('records'); 
-  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops | minicex | ksa | written_test
+  const [assessmentType, setAssessmentType] = useState('pre_training'); 
 
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
@@ -271,25 +273,40 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         </div>
 
-        {/* 主選單 (Main Tabs) */}
-        <div className="flex border-b border-gray-200 mb-6">
+        {/* 主選單 (Main Tabs) - [新增] 學習成果 */}
+        <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
           <button
             onClick={() => setActiveMainTab('records')}
-            className={`flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 ${
-              activeMainTab === 'records' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeMainTab === 'records' 
+                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
+                : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <ClipboardList className="w-4 h-4" />
+            <ClipboardList className="w-5 h-5" />
             訓練紀錄
           </button>
           <button
             onClick={() => setActiveMainTab('assessment')}
-            className={`flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 ${
-              activeMainTab === 'assessment' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeMainTab === 'assessment' 
+                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
+                : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <GraduationCap className="w-4 h-4" />
+            <GraduationCap className="w-5 h-5" />
             學習評估
+          </button>
+          <button
+            onClick={() => setActiveMainTab('outcome')}
+            className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeMainTab === 'outcome' 
+                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
+                : 'border-transparent text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <Award className="w-5 h-5" />
+            學習成果
           </button>
         </div>
 
@@ -299,10 +316,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         )}
 
-        {/* 內容區 */}
-        {activeMainTab === 'records' ? (
-          // --- 訓練紀錄 ---
-          <div className="space-y-4">
+        {/* 1. 訓練紀錄 */}
+        {activeMainTab === 'records' && (
+          <div className="space-y-4 animate-in fade-in">
             {loading ? (
               <div className="text-center py-12 text-gray-400 flex flex-col items-center">
                 <Loader2 className="w-8 h-8 animate-spin mb-2" />
@@ -352,146 +368,69 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               )
             )}
           </div>
-        ) : (
-          // --- 學習評估 ---
+        )}
+
+        {/* 2. 學習評估 */}
+        {activeMainTab === 'assessment' && (
           <div className="animate-in fade-in duration-300">
-            {/* 子選單 (Sub-Pills) */}
+            {/* 子選單 */}
             <div className="mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setAssessmentType('pre_training')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'pre_training'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <Layout className="w-4 h-4" />
-                  學前評估
+                <button onClick={() => setAssessmentType('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <Layout className="w-4 h-4" /> 新進藥師學前評估表
                 </button>
-
-                <button
-                  onClick={() => setAssessmentType('epa')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'epa'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <Activity className="w-4 h-4" />
-                  EPA 評估
+                <button onClick={() => setAssessmentType('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <Activity className="w-4 h-4" /> EPA 評估
                 </button>
-
-                <button
-                  onClick={() => setAssessmentType('dops')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'dops'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <CheckSquare className="w-4 h-4" />
-                  DOPS 評估
+                <button onClick={() => setAssessmentType('dops')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'dops' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <CheckSquare className="w-4 h-4" /> DOPS 評估
                 </button>
-
-                {/* [新] Mini-CEX 按鈕 */}
-                <button
-                  onClick={() => setAssessmentType('minicex')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'minicex'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <Stethoscope className="w-4 h-4" />
-                  Mini-CEX
+                <button onClick={() => setAssessmentType('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <Stethoscope className="w-4 h-4" /> Mini-CEX
                 </button>
-
-                <button
-                  onClick={() => setAssessmentType('ksa')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'ksa'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <ClipboardCheck className="w-4 h-4" />
-                  KSA 評估
+                <button onClick={() => setAssessmentType('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <ClipboardCheck className="w-4 h-4" /> KSA 評估
                 </button>
-
-                <button
-                  onClick={() => setAssessmentType('written_test')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-                    assessmentType === 'written_test'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <FileEdit className="w-4 h-4" />
-                  筆試測驗
+                <button onClick={() => setAssessmentType('written_test')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'written_test' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <FileEdit className="w-4 h-4" /> 筆試測驗
                 </button>
-
               </div>
             </div>
 
-            {/* 根據按鈕顯示對應元件 */}
-            {assessmentType === 'pre_training' ? (
-              <PreTrainingAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                userRole={userRole}
-                currentUserEmail={user?.email}
-                currentUserName={userProfile?.displayName || user?.displayName} 
-                gasApiUrl={GAS_API_URL}
-              />
-            ) : assessmentType === 'epa' ? (
-              <EPAAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                isTeacher={isTeacherOrAdmin}
-                userProfile={userProfile}
-                apiUrl={GAS_API_URL}
-              />
-            ) : assessmentType === 'dops' ? (
-              <DOPSAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                userRole={userRole}
-                currentUserEmail={user?.email}
-                currentUserName={userProfile?.displayName || user?.displayName}
-                gasApiUrl={GAS_API_URL}
-              />
-            ) : assessmentType === 'minicex' ? (
-              // [新] MiniCEX 元件
-              <MiniCEXAssessment 
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                isTeacher={isTeacherOrAdmin}
-                userProfile={userProfile}
-                apiUrl={GAS_API_URL}
-              />
-            ) : assessmentType === 'ksa' ? (
-              <KSAAssessment
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                isTeacher={isTeacherOrAdmin}
-                userProfile={userProfile}
-                apiUrl={GAS_API_URL}
-              />
-            ) : (
-              <WrittenTestAssessment
-                studentEmail={selectedStudentEmail}
-                studentName={selectedStudentName}
-                isTeacher={isTeacherOrAdmin}
-                userProfile={userProfile}
-                apiUrl={GAS_API_URL}
-              />
-            )}
+            {/* 內容 */}
+            {assessmentType === 'pre_training' && <PreTrainingAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />}
+            {assessmentType === 'epa' && <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
+            {assessmentType === 'dops' && <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />}
+            {assessmentType === 'minicex' && <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
+            {assessmentType === 'ksa' && <KSAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
+            {assessmentType === 'written_test' && <WrittenTestAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
           </div>
         )}
+
+        {/* 3. [新] 學習成果 */}
+        {activeMainTab === 'outcome' && (
+          <div className="animate-in fade-in duration-300">
+             <div className="bg-purple-50 p-4 rounded-lg mb-6 border border-purple-100 flex items-start gap-3">
+               <Award className="w-6 h-6 text-purple-600 shrink-0 mt-1" />
+               <div>
+                 <h3 className="font-bold text-purple-800 text-lg">學習成果總結</h3>
+                 <p className="text-sm text-purple-600">在此檢核學員是否完成所有必修項目，並進行完訓資格審核。</p>
+               </div>
+             </div>
+             
+             <FinalAssessment 
+               studentEmail={selectedStudentEmail} 
+               studentName={selectedStudentName} 
+               isTeacher={isTeacherOrAdmin} 
+               userProfile={userProfile} 
+               apiUrl={GAS_API_URL} 
+             />
+          </div>
+        )}
+
       </div>
 
-      {/* Evaluate Modal (僅用於訓練紀錄) */}
+      {/* Evaluate Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
