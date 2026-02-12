@@ -6,14 +6,15 @@ import { db } from '../firebase';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
-  Circle, Clock, ClipboardList, Activity, // 移除 PenTool
-  GraduationCap, Layout, CheckSquare 
+  Circle, Clock, ClipboardList, Activity, 
+  GraduationCap, Layout, CheckSquare, ClipboardCheck // [新] 加入 KSA 圖示
 } from 'lucide-react';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
 import DOPSAssessment from './DOPSAssessment'; 
+import KSAAssessment from './KSAAssessment'; // [新] 引入 KSA 元件
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
@@ -28,7 +29,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   // 導航狀態
   const [activeMainTab, setActiveMainTab] = useState('records'); 
-  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops
+  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops | ksa
 
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
@@ -390,6 +391,19 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   <CheckSquare className="w-4 h-4" />
                   DOPS 評估
                 </button>
+
+                {/* [新] KSA 評估按鈕 */}
+                <button
+                  onClick={() => setAssessmentType('ksa')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
+                    assessmentType === 'ksa'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  KSA 評估
+                </button>
               </div>
             </div>
 
@@ -411,7 +425,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 userProfile={userProfile}
                 apiUrl={GAS_API_URL}
               />
-            ) : (
+            ) : assessmentType === 'dops' ? (
               <DOPSAssessment 
                 studentEmail={selectedStudentEmail}
                 studentName={selectedStudentName}
@@ -419,6 +433,15 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 currentUserEmail={user?.email}
                 currentUserName={userProfile?.displayName || user?.displayName}
                 gasApiUrl={GAS_API_URL}
+              />
+            ) : (
+              // [新] KSA 元件
+              <KSAAssessment
+                studentEmail={selectedStudentEmail}
+                studentName={selectedStudentName}
+                isTeacher={isTeacherOrAdmin}
+                userProfile={userProfile}
+                apiUrl={GAS_API_URL}
               />
             )}
           </div>
