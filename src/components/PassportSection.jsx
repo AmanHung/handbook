@@ -367,7 +367,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   }`}
                 >
                   <Layout className="w-4 h-4" />
-                  新進藥師學前評估表
+                  學前評估表
                 </button>
 
                 <button
