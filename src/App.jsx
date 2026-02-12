@@ -17,13 +17,16 @@ import {
   Search,
   Calendar,
   Edit,
-  Save
+  Save,
+  ClipboardCheck // [新] 引入 KSA 圖示
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
 import ShiftNavigator from './components/ShiftNavigator'
 import PassportSection from './components/PassportSection'
 import AdminPage from './components/AdminPage'
+// [新] 引入 KSA 評估元件
+import KSAAssessment from './components/KSAAssessment'
 import './App.css'
 
 function App() {
@@ -37,6 +40,11 @@ function App() {
   // 個人資料編輯 Modal 狀態
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [editForm, setEditForm] = useState({ displayName: '', arrivalDate: '' })
+
+  // ★★★ 保留您原本的 GAS 網址 ★★★
+  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx_......(請確認您原本的網址是否正確，若不正確請修正)....../exec"; 
+  // 提醒：上方我用省略號代替，請您貼上時確認一下是否為您原本那串網址。
+  // 為了避免我這邊顯示錯誤，我直接使用您貼給我的變數名稱邏輯，但在實際運作時，請確保這一行是您原本那串完整的 URL。
 
   // 輔助函式：判斷是否為教職人員 (包含 老師 與 管理員)
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
@@ -67,7 +75,7 @@ function App() {
     }
   }
 
-  // 定義超級管理員 Email (請換成您自己的 Email)
+  // 定義超級管理員 Email (保留您的設定)
   const SUPER_ADMIN_EMAILS = [
     "obm0304@gmail.com", 
     "另一個管理員@gmail.com"
@@ -90,10 +98,9 @@ function App() {
             const data = userSnap.data();
             finalRole = data.role || 'student';
             
-            // ★★★ 強制鎖定超級管理員 ★★★
+            // 強制鎖定超級管理員
             if (SUPER_ADMIN_EMAILS.includes(currentUser.email) && finalRole !== 'admin') {
                finalRole = 'admin';
-               // 自動修復資料庫中的權限
                await updateDoc(userRef, { role: 'admin' });
                console.log("已自動提升為超級管理員權限");
             }
@@ -109,7 +116,7 @@ function App() {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
-              role: finalRole, // 使用判定後的權限
+              role: finalRole, 
               arrivalDate: '',
               createdAt: new Date().toISOString()
             };
@@ -117,7 +124,7 @@ function App() {
             setUserProfile(newUserData);
           }
           
-          setUserRole(finalRole); // 設定最終權限狀態
+          setUserRole(finalRole);
 
         } catch (error) {
           console.error("Error fetching user data:", error)
@@ -176,8 +183,8 @@ function App() {
 
   // 取得身分對應的顏色
   const getRoleColorClass = () => {
-    if (userRole === 'admin') return 'text-purple-600 font-bold'; // 管理員紫色
-    if (userRole === 'teacher') return 'text-emerald-600 font-bold'; // 老師綠色
+    if (userRole === 'admin') return 'text-purple-600 font-bold'; 
+    if (userRole === 'teacher') return 'text-emerald-600 font-bold'; 
     return 'text-gray-500';
   };
 
@@ -242,7 +249,9 @@ function App() {
                 { id: 'video', label: '影音教學', icon: BookOpen },
                 { id: 'shift', label: '排班表', icon: BookOpen },
                 { id: 'passport', label: '學習護照', icon: UserIcon },
-                // 只有管理員或老師看得到後台 (但可以保留給 admin 最高權限)
+                // [新] 電腦版導航加入 KSA
+                { id: 'ksa', label: 'KSA 評估', icon: ClipboardCheck }, 
+                // 只有管理員或老師看得到後台
                 ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
@@ -307,6 +316,8 @@ function App() {
                     { id: 'video', label: '影音教學' },
                     { id: 'shift', label: '排班表' },
                     { id: 'passport', label: '學習護照' },
+                    // [新] 手機版選單加入 KSA
+                    { id: 'ksa', label: 'KSA 評估' },
                     ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理' }] : []),
                 ].map(item => (
                     <button
@@ -415,9 +426,21 @@ function App() {
           <PassportSection 
             user={user} 
             userRole={userRole}
-            userProfile={userProfile} // 傳遞 userProfile
+            userProfile={userProfile} 
           />
         )}
+        
+        {/* [新] KSA 評估表主畫面 */}
+        {activeTab === 'ksa' && (
+          <KSAAssessment
+            studentEmail={user.email}
+            studentName={userProfile?.displayName || user.email}
+            isTeacher={isTeacherOrAdmin}
+            userProfile={userProfile}
+            apiUrl={GAS_API_URL}
+          />
+        )}
+
         {activeTab === 'admin' && isTeacherOrAdmin && <AdminPage user={user} />}
       </main>
     </div>
