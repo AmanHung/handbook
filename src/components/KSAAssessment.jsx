@@ -1,16 +1,14 @@
-// src/components/KSAAssessment.jsx
-
 import React, { useState, useEffect } from 'react';
 import { 
   ClipboardCheck, Save, Loader2, AlertCircle, 
-  CheckCircle2, User, ChevronRight 
+  CheckCircle2, User, ChevronRight, Calendar // 新增 Calendar icon
 } from 'lucide-react';
 import { 
   KSA_PHASES, KSA_DOMAINS, getScoreStyle, SCORING_RANGES 
 } from '../data/KSA_Config';
 
 const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiUrl }) => {
-  const [activePhase, setActivePhase] = useState(1); // 預設顯示第1次
+  const [activePhase, setActivePhase] = useState(1);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -18,6 +16,9 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   // 表單狀態
   const [formData, setFormData] = useState({});
   const [comment, setComment] = useState('');
+  
+  // [新] 評估日期狀態 (預設今天)
+  const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
 
   // 1. 讀取資料
   const fetchRecords = async () => {
@@ -44,10 +45,15 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     if (currentRecord) {
       setFormData(currentRecord.scores || {});
       setComment(currentRecord.comment || '');
+      // [新] 載入儲存的日期，若無則顯示今天
+      if (currentRecord.timestamp) {
+        setEvalDate(currentRecord.timestamp.split('T')[0]);
+      }
     } else {
       // 若無紀錄，重置表單
       setFormData({});
       setComment('');
+      setEvalDate(new Date().toISOString().split('T')[0]);
     }
   }, [activePhase, records]);
 
@@ -55,7 +61,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   const handleSave = async () => {
     if (!isTeacher) return;
     
-    // 檢查是否所有項目都已評分
     let allFilled = true;
     KSA_DOMAINS.forEach(domain => {
       domain.items.forEach(item => {
@@ -76,6 +81,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       phaseId: activePhase,
       scores: formData,
       comment: comment,
+      evalDate: evalDate, // [新] 傳送選擇的日期
       teacherSign: userProfile?.displayName || 'Unknown Teacher',
       updatedBy: userProfile?.email
     };
@@ -86,7 +92,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
         body: JSON.stringify(payload)
       });
       alert('KSA 評估已儲存！');
-      fetchRecords(); // 重新讀取以更新畫面
+      fetchRecords();
     } catch (e) {
       alert('儲存失敗');
     } finally {
@@ -94,14 +100,12 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     }
   };
 
-  // 處理評分變更
   const handleScoreChange = (itemId, score) => {
     setFormData(prev => ({ ...prev, [itemId]: score }));
   };
 
-  // 取得目前階段的紀錄
   const currentRecord = records.find(r => r.phaseId == activePhase);
-  const isReadOnly = !isTeacher || (currentRecord && !isTeacher); // 學生唯讀，或非編輯模式
+  const isReadOnly = !isTeacher || (currentRecord && !isTeacher); 
 
   return (
     <div className="animate-in fade-in space-y-6">
@@ -142,18 +146,32 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
 
       {/* 內容區塊 */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        {/* 狀態列 */}
-        <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-          <div className="font-bold text-gray-700">
+        
+        {/* [新] 狀態列 & 日期選擇 */}
+        <div className="p-4 bg-gray-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="font-bold text-gray-700 flex items-center gap-2">
             {KSA_PHASES.find(p => p.id === activePhase)?.label} 評估表
           </div>
-          {currentRecord && (
-            <div className="text-xs text-gray-500 flex items-center gap-1">
-              <User className="w-3 h-3"/> 評核者: {currentRecord.teacherSign}
-              <span className="mx-1">|</span>
-              {new Date(currentRecord.timestamp).toLocaleDateString()}
+          
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            {/* 日期選擇器 */}
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm w-full sm:w-auto">
+              <Calendar className="w-4 h-4 text-purple-600" />
+              <input 
+                type="date" 
+                value={evalDate}
+                onChange={(e) => setEvalDate(e.target.value)}
+                disabled={isReadOnly} // 學生或非編輯模式時鎖定
+                className="text-sm font-medium text-gray-700 outline-none bg-transparent w-full sm:w-auto disabled:text-gray-400 disabled:cursor-not-allowed"
+              />
             </div>
-          )}
+
+            {currentRecord && (
+              <div className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
+                <User className="w-3 h-3"/> {currentRecord.teacherSign}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="p-6 space-y-8">
@@ -169,11 +187,9 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
                     <div key={item.id} className="bg-gray-50 p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="font-bold text-gray-700 w-32">{item.label}</div>
                       
-                      {/* 1-9 分數選擇區 */}
                       <div className="flex-1 flex flex-wrap gap-1">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => {
                           const isSelected = score == num;
-                          // 決定顏色類別
                           let colorClass = 'border-gray-300 hover:border-gray-400';
                           if (num <= 3) colorClass = isSelected ? 'bg-red-500 text-white border-red-600' : 'hover:bg-red-50';
                           else if (num <= 6) colorClass = isSelected ? 'bg-blue-500 text-white border-blue-600' : 'hover:bg-blue-50';
@@ -194,7 +210,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
                         })}
                       </div>
 
-                      {/* 結果標籤顯示 */}
                       <div className="w-32 text-right">
                          {score ? (
                            <span className={`px-2 py-1 rounded text-xs font-bold ${getScoreStyle(score)}`}>
@@ -209,7 +224,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
             </section>
           ))}
 
-          {/* 總評語 */}
           <section>
             <h3 className="text-lg font-bold text-gray-800 mb-2">教師總評</h3>
             {isTeacher ? (
@@ -228,7 +242,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
           </section>
         </div>
 
-        {/* 底部按鈕 */}
         {isTeacher && (
           <div className="p-4 bg-gray-50 border-t flex justify-end">
             <button
