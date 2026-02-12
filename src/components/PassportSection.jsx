@@ -7,16 +7,18 @@ import {
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
   Circle, Clock, ClipboardList, Activity, 
-  GraduationCap, Layout, CheckSquare, ClipboardCheck // [新] 加入 KSA 圖示
+  GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit // [新] 加入 FileEdit 圖示
 } from 'lucide-react';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
 import DOPSAssessment from './DOPSAssessment'; 
-import KSAAssessment from './KSAAssessment'; // [新] 引入 KSA 元件
+import KSAAssessment from './KSAAssessment';
+import WrittenTestAssessment from './WrittenTestAssessment'; // [新] 引入筆試元件
 
 // Google Apps Script API 網址
+// 請確認此網址與 App.jsx 中的一致
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
 const PassportSection = ({ user, userRole, userProfile }) => {
@@ -29,7 +31,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   // 導航狀態
   const [activeMainTab, setActiveMainTab] = useState('records'); 
-  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops | ksa
+  const [assessmentType, setAssessmentType] = useState('pre_training'); // pre_training | epa | dops | ksa | written_test
 
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
@@ -392,7 +394,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   DOPS 評估
                 </button>
 
-                {/* [新] KSA 評估按鈕 */}
                 <button
                   onClick={() => setAssessmentType('ksa')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
@@ -404,6 +405,20 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   <ClipboardCheck className="w-4 h-4" />
                   KSA 評估
                 </button>
+
+                {/* [新] 筆試測驗按鈕 */}
+                <button
+                  onClick={() => setAssessmentType('written_test')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
+                    assessmentType === 'written_test'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <FileEdit className="w-4 h-4" />
+                  筆試測驗
+                </button>
+
               </div>
             </div>
 
@@ -434,9 +449,17 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 currentUserName={userProfile?.displayName || user?.displayName}
                 gasApiUrl={GAS_API_URL}
               />
-            ) : (
-              // [新] KSA 元件
+            ) : assessmentType === 'ksa' ? (
               <KSAAssessment
+                studentEmail={selectedStudentEmail}
+                studentName={selectedStudentName}
+                isTeacher={isTeacherOrAdmin}
+                userProfile={userProfile}
+                apiUrl={GAS_API_URL}
+              />
+            ) : (
+              // [新] 筆試測驗元件
+              <WrittenTestAssessment
                 studentEmail={selectedStudentEmail}
                 studentName={selectedStudentName}
                 isTeacher={isTeacherOrAdmin}
