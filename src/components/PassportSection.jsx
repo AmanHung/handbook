@@ -377,7 +377,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <div className="mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex items-center gap-3">
                 <button onClick={() => setAssessmentType('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                  <Layout className="w-4 h-4" /> 新進藥師學前評估表
+                  <Layout className="w-4 h-4" /> 學前評估
                 </button>
                 <button onClick={() => setAssessmentType('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Activity className="w-4 h-4" /> EPA 評估
