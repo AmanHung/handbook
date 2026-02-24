@@ -53,7 +53,6 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
 
   // 教師儲存評估
   const handleSaveAssessment = async () => {
-    // 驗證
     if (!formData.complexity.medication || !formData.complexity.disease) return alert('請選擇複雜度');
     const allScores = EVALUATION_ITEMS.every(item => formData.scores[item.id]);
     if (!allScores) return alert('請完成所有項目評分');
@@ -110,7 +109,6 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     }
   };
 
-  // 當前選中的紀錄
   const currentRecord = records.find(r => r.record_id === viewingRecordId);
 
   // 1. 卡片選單 (首頁)
@@ -118,20 +116,56 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
         {MINICEX_TOPICS.map(topic => {
-          const count = records.length;
+          // ★★★ 抓取最新一筆紀錄並計算分數 ★★★
+          const latestRecord = records.length > 0 ? records[0] : null;
+          let totalScore = 0;
+          let avgScore = 0;
+          let resultLabel = '未評分';
+          let resultColor = 'bg-gray-100 text-gray-500 border-gray-200';
+
+          if (latestRecord) {
+            const numericScores = Object.values(latestRecord.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
+            if (numericScores.length > 0) {
+              totalScore = numericScores.reduce((a, b) => a + b, 0);
+              avgScore = Math.round(totalScore / numericScores.length);
+              
+              // 依據平均分判斷結果 (1-3, 4-6, 7-9)
+              if (avgScore <= 3) {
+                resultLabel = '有待加強';
+                resultColor = 'bg-red-50 text-red-700 border-red-200';
+              } else if (avgScore <= 6) {
+                resultLabel = '達到預期標準';
+                resultColor = 'bg-blue-50 text-blue-700 border-blue-200';
+              } else {
+                resultLabel = '表現優秀';
+                resultColor = 'bg-green-50 text-green-700 border-green-200';
+              }
+            }
+          }
+
           return (
             <button 
               key={topic.id}
               onClick={() => setSelectedTopic(topic)}
               className="flex flex-col text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-teal-400 transition-all group"
             >
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-3 w-full">
                 <div className="bg-teal-50 p-2 rounded-lg group-hover:bg-teal-100 transition-colors">
                   <Stethoscope className="w-6 h-6 text-teal-600" />
                 </div>
-                {count > 0 && (
-                  <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">
-                    {count} 筆紀錄
+                {/* ★★★ 顯示最新分數與結果 ★★★ */}
+                {latestRecord ? (
+                  <div className="flex flex-col items-end">
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${resultColor}`}>
+                      最新: {totalScore} 分 ({resultLabel})
+                    </span>
+                    <span className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3"/> {latestRecord.date}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded-full border border-gray-200">
+                    尚無紀錄
                   </span>
                 )}
               </div>
@@ -168,7 +202,6 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
       </div>
 
       <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-        
         {/* 左側列表 */}
         <div className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <div className="p-3 bg-gray-50 border-b font-bold text-gray-700 flex items-center gap-2">
@@ -178,25 +211,32 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
             {records.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">尚無紀錄</div>
             ) : (
-              records.map(record => (
-                <button
-                  key={record.record_id}
-                  onClick={() => { setViewingRecordId(record.record_id); setIsAdding(false); }}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
-                    viewingRecordId === record.record_id 
-                      ? 'bg-teal-50 border-teal-200 ring-1 ring-teal-200' 
-                      : 'bg-white border-gray-100 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex justify-between font-bold text-gray-800 text-sm">
-                    {record.date}
-                    {record.status === 'teacher_graded' && <span className="text-orange-500 text-xs">待回饋</span>}
-                  </div>
-                  <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                    <User className="w-3 h-3"/> {record.teacher_name}
-                  </div>
-                </button>
-              ))
+              records.map(record => {
+                // 計算列表上的總分
+                const numScores = Object.values(record.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
+                const recTotal = numScores.reduce((a, b) => a + b, 0);
+
+                return (
+                  <button
+                    key={record.record_id}
+                    onClick={() => { setViewingRecordId(record.record_id); setIsAdding(false); }}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      viewingRecordId === record.record_id 
+                        ? 'bg-teal-50 border-teal-200 ring-1 ring-teal-200' 
+                        : 'bg-white border-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex justify-between font-bold text-gray-800 text-sm">
+                      {record.date}
+                      <span className="text-teal-600 bg-teal-100 px-2 py-0.5 rounded text-xs">{recTotal} 分</span>
+                    </div>
+                    <div className="text-xs text-gray-500 flex justify-between items-center mt-1">
+                      <span className="flex items-center gap-1"><User className="w-3 h-3"/> {record.teacher_name}</span>
+                      {record.status === 'teacher_graded' && <span className="text-orange-500 text-[10px]">待回饋</span>}
+                    </div>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>
