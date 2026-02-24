@@ -106,18 +106,34 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, api
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
         {OSCE_TOPICS.map(topic => {
-          const count = records.length;
+          // ★★★ 抓取最新一筆紀錄並取得結果標籤 ★★★
+          const latestRecord = records.length > 0 ? records[0] : null;
+
           return (
             <button 
               key={topic.id}
               onClick={() => setSelectedTopic(topic)}
               className="flex flex-col text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-yellow-500 transition-all group"
             >
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-3 w-full">
                 <div className="bg-yellow-50 p-2 rounded-lg group-hover:bg-yellow-100 transition-colors">
                   <ClipboardList className="w-6 h-6 text-yellow-600" />
                 </div>
-                {count > 0 && <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">{count} 筆紀錄</span>}
+                {/* ★★★ 顯示最新分數與結果 ★★★ */}
+                {latestRecord ? (
+                  <div className="flex flex-col items-end">
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${getOSCEResult(latestRecord.total_score).color}`}>
+                      最新: {latestRecord.total_score} 分 ({getOSCEResult(latestRecord.total_score).label})
+                    </span>
+                    <span className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3"/> {latestRecord.date}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded-full border border-gray-200">
+                    尚無紀錄
+                  </span>
+                )}
               </div>
               <h4 className="font-bold text-gray-800 text-base mb-1 group-hover:text-yellow-600">{topic.title}</h4>
               <p className="text-xs text-gray-500">{topic.description}</p>
