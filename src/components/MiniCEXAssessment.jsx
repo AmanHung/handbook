@@ -116,30 +116,31 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
         {MINICEX_TOPICS.map(topic => {
-          // ★★★ 抓取最新一筆紀錄並計算分數 ★★★
-          const latestRecord = records.length > 0 ? records[0] : null;
-          let totalScore = 0;
-          let avgScore = 0;
-          let resultLabel = '未評分';
-          let resultColor = 'bg-gray-100 text-gray-500 border-gray-200';
-
+          // ★★★ 修改處 1：計算小數第一位 ★★★
           if (latestRecord) {
             const numericScores = Object.values(latestRecord.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
             if (numericScores.length > 0) {
-              totalScore = numericScores.reduce((a, b) => a + b, 0);
-              avgScore = Math.round(totalScore / numericScores.length);
+              const totalScore = numericScores.reduce((a, b) => a + b, 0);
+              
+              // 取小數第一位 (回傳字串，所以需要 parseFloat 轉回數字作判斷，或直接用字串顯示)
+              const avgScoreStr = (totalScore / numericScores.length).toFixed(1);
+              avgScore = parseFloat(avgScoreStr); 
               
               // 依據平均分判斷結果 (1-3, 4-6, 7-9)
-              if (avgScore <= 3) {
+              // 注意：因為有小數，邏輯微調為 < 4, < 7
+              if (avgScore < 4) {
                 resultLabel = '有待加強';
                 resultColor = 'bg-red-50 text-red-700 border-red-200';
-              } else if (avgScore <= 6) {
+              } else if (avgScore < 7) {
                 resultLabel = '達到預期標準';
                 resultColor = 'bg-blue-50 text-blue-700 border-blue-200';
               } else {
                 resultLabel = '表現優秀';
                 resultColor = 'bg-green-50 text-green-700 border-green-200';
               }
+              
+              // 覆蓋 avgScore 為字串，確保顯示時有小數點 (例如 6.0)
+              avgScore = avgScoreStr;
             }
           }
 
@@ -153,11 +154,11 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
                 <div className="bg-teal-50 p-2 rounded-lg group-hover:bg-teal-100 transition-colors">
                   <Stethoscope className="w-6 h-6 text-teal-600" />
                 </div>
-                {/* ★★★ 顯示最新分數與結果 ★★★ */}
+                {/* 顯示最新平均分與結果 */}
                 {latestRecord ? (
                   <div className="flex flex-col items-end">
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${resultColor}`}>
-                      最新: {totalScore} 分 ({resultLabel})
+                      平均 {avgScore} 分 ({resultLabel})
                     </span>
                     <span className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
                       <Calendar className="w-3 h-3"/> {latestRecord.date}
@@ -178,6 +179,34 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
         })}
       </div>
     );
+  }
+
+  // ★★★ 修改處 2：詳細檢視區的平均分計算 ★★★
+  let detailAvgScore = 0;
+  let detailResultLabel = '';
+  let detailResultColor = '';
+  if (currentRecord) {
+     const numScoresDetail = Object.values(currentRecord.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
+     if (numScoresDetail.length > 0) {
+        const sumDetail = numScoresDetail.reduce((a, b) => a + b, 0);
+        
+        // 取小數第一位
+        const detailAvgStr = (sumDetail / numScoresDetail.length).toFixed(1);
+        const detailAvgNum = parseFloat(detailAvgStr);
+
+        if (detailAvgNum < 4) { 
+           detailResultLabel = '有待加強'; 
+           detailResultColor = 'text-red-600 border-red-200 bg-red-50'; 
+        } else if (detailAvgNum < 7) { 
+           detailResultLabel = '達到預期標準'; 
+           detailResultColor = 'text-blue-600 border-blue-200 bg-blue-50'; 
+        } else { 
+           detailResultLabel = '表現優秀'; 
+           detailResultColor = 'text-green-600 border-green-200 bg-green-50'; 
+        }
+        
+        detailAvgScore = detailAvgStr; // 準備顯示用的字串
+     }
   }
 
   // 2. 詳細內容與表單
@@ -212,9 +241,10 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
               <div className="text-center py-8 text-gray-400 text-sm">尚無紀錄</div>
             ) : (
               records.map(record => {
-                // 計算列表上的總分
+                // 計算列表上的平均分
                 const numScores = Object.values(record.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
-                const recTotal = numScores.reduce((a, b) => a + b, 0);
+                const recSum = numScores.reduce((a, b) => a + b, 0);
+                const recAvg = numScores.length > 0 ? (recSum / numScores.length).toFixed(1) : 0;
 
                 return (
                   <button
@@ -228,7 +258,9 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
                   >
                     <div className="flex justify-between font-bold text-gray-800 text-sm">
                       {record.date}
-                      <span className="text-teal-600 bg-teal-100 px-2 py-0.5 rounded text-xs">{recTotal} 分</span>
+                      <span className="text-teal-700 bg-teal-100 px-2 py-0.5 rounded text-xs border border-teal-200">
+                        平均 {recAvg} 分
+                      </span>
                     </div>
                     <div className="text-xs text-gray-500 flex justify-between items-center mt-1">
                       <span className="flex items-center gap-1"><User className="w-3 h-3"/> {record.teacher_name}</span>
@@ -342,17 +374,26 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
             ) : currentRecord ? (
               // B. 檢視模式
               <div className="space-y-8">
-                {/* 基本資訊 */}
+                {/* 基本資訊與總分 */}
                 <div className="flex justify-between items-start border-b pb-4">
                   <div>
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                       <Calendar className="w-5 h-5 text-teal-600"/> {currentRecord.date}
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">評估教師：{currentRecord.teacher_name}</p>
+                    <div className="text-xs text-gray-500 mt-2 space-y-1">
+                      <p>用藥複雜度: {COMPLEXITY_OPTIONS.medication.find(o => o.value === currentRecord.complexity.medication)?.label}</p>
+                      <p>疾病複雜度: {COMPLEXITY_OPTIONS.disease.find(o => o.value === currentRecord.complexity.disease)?.label}</p>
+                    </div>
                   </div>
-                  <div className="text-right text-xs text-gray-500 space-y-1">
-                    <p>用藥複雜度: {COMPLEXITY_OPTIONS.medication.find(o => o.value === currentRecord.complexity.medication)?.label}</p>
-                    <p>疾病複雜度: {COMPLEXITY_OPTIONS.disease.find(o => o.value === currentRecord.complexity.disease)?.label}</p>
+                  {/* 右上方顯示平均分與判定結果 */}
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-800 mb-2">
+                      {detailAvgScore} <span className="text-sm font-normal text-gray-500">/ 9 分 (平均)</span>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${detailResultColor}`}>
+                      {detailResultLabel}
+                    </span>
                   </div>
                 </div>
 
