@@ -36,6 +36,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [activeMainTab, setActiveMainTab] = useState('records'); 
   const [assessmentType, setAssessmentType] = useState('pre_training'); 
 
+  // ★★★ 新增：追蹤已經載入過的標籤 (達成秒切換) ★★★
+  const [mountedTabs, setMountedTabs] = useState(['pre_training']);
+
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
   const [loading, setLoading] = useState(false);
@@ -86,6 +89,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setSelectedStudentDate(userProfile?.arrivalDate || '');
     }
   }, [selectedStudentEmail, students, userRole, userProfile, user]);
+
+  // ★★★ 新增：當切換學員時，重置已載入的標籤，避免背景同時發出多個 API 請求 ★★★
+  useEffect(() => {
+    setMountedTabs([assessmentType]);
+  }, [selectedStudentEmail]);
 
   // 讀取護照資料
   useEffect(() => {
@@ -172,6 +180,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   const toggleGroup = (groupId) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  // ★★★ 新增：標籤點擊處理函式 ★★★
+  const handleAssessmentTabClick = (tab) => {
+    setAssessmentType(tab);
+    if (!mountedTabs.includes(tab)) {
+      setMountedTabs(prev => [...prev, tab]);
+    }
   };
 
   const groupedItems = (passportData.items || []).reduce((acc, item) => {
@@ -377,39 +393,76 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             {/* 子選單 */}
             <div className="mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex items-center gap-3">
-                <button onClick={() => setAssessmentType('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Layout className="w-4 h-4" /> 學前評估
                 </button>
-                <button onClick={() => setAssessmentType('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Activity className="w-4 h-4" /> EPA 評估
                 </button>
-                <button onClick={() => setAssessmentType('dops')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'dops' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('dops')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'dops' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <CheckSquare className="w-4 h-4" /> DOPS 評估
                 </button>
-                <button onClick={() => setAssessmentType('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Stethoscope className="w-4 h-4" /> Mini-CEX
                 </button>
                 {/* [新加入] OSCE 按鈕 */}
-                <button onClick={() => setAssessmentType('osce')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'osce' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('osce')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'osce' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 <ClipboardList className="w-4 h-4" /> OSCE 評估
                 </button>
-                <button onClick={() => setAssessmentType('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <ClipboardCheck className="w-4 h-4" /> KSA 評估
                 </button>
-                <button onClick={() => setAssessmentType('written_test')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'written_test' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('written_test')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'written_test' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <FileEdit className="w-4 h-4" /> 筆試測驗
                 </button>
               </div>
             </div>
 
-            {/* 內容 */}
-            {assessmentType === 'pre_training' && <PreTrainingAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />}
-            {assessmentType === 'epa' && <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
-            {assessmentType === 'dops' && <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />}
-            {assessmentType === 'minicex' && <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
-            {assessmentType === 'osce' && <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
-            {assessmentType === 'ksa' && <KSAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
-            {assessmentType === 'written_test' && <WrittenTestAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
+            {/* 內容 (使用 CSS 隱藏取代元件卸載，實現秒切換) */}
+            <div className="relative">
+              <div className={assessmentType === 'pre_training' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('pre_training') && (
+                  <PreTrainingAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />
+                )}
+              </div>
+              
+              <div className={assessmentType === 'epa' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('epa') && (
+                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                )}
+              </div>
+
+              <div className={assessmentType === 'dops' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('dops') && (
+                  <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />
+                )}
+              </div>
+
+              <div className={assessmentType === 'minicex' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('minicex') && (
+                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                )}
+              </div>
+
+              <div className={assessmentType === 'osce' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('osce') && (
+                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                )}
+              </div>
+
+              <div className={assessmentType === 'ksa' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('ksa') && (
+                  <KSAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                )}
+              </div>
+
+              <div className={assessmentType === 'written_test' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('written_test') && (
+                  <WrittenTestAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                )}
+              </div>
+            </div>
+
           </div>
         )}
 
