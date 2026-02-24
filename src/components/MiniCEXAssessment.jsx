@@ -116,22 +116,26 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
         {MINICEX_TOPICS.map(topic => {
-          // ★★★ 修改處 1：計算小數第一位 ★★★
+          // ★★★ 必須先定義這些變數，才能在下面使用 ★★★
+          const latestRecord = records.length > 0 ? records[0] : null;
+          let avgScore = 0;
+          let resultLabel = '未評分';
+          let resultColor = 'bg-gray-100 text-gray-500 border-gray-200';
+
           if (latestRecord) {
             const numericScores = Object.values(latestRecord.scores).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
             if (numericScores.length > 0) {
               const totalScore = numericScores.reduce((a, b) => a + b, 0);
               
-              // 取小數第一位 (回傳字串，所以需要 parseFloat 轉回數字作判斷，或直接用字串顯示)
+              // 取小數第一位
               const avgScoreStr = (totalScore / numericScores.length).toFixed(1);
-              avgScore = parseFloat(avgScoreStr); 
+              const avgScoreNum = parseFloat(avgScoreStr); 
               
-              // 依據平均分判斷結果 (1-3, 4-6, 7-9)
-              // 注意：因為有小數，邏輯微調為 < 4, < 7
-              if (avgScore < 4) {
+              // 依據平均分判斷結果
+              if (avgScoreNum < 4) {
                 resultLabel = '有待加強';
                 resultColor = 'bg-red-50 text-red-700 border-red-200';
-              } else if (avgScore < 7) {
+              } else if (avgScoreNum < 7) {
                 resultLabel = '達到預期標準';
                 resultColor = 'bg-blue-50 text-blue-700 border-blue-200';
               } else {
