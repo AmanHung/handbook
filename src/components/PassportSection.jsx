@@ -16,6 +16,7 @@ import PreTrainingAssessment from './PreTrainingAssessment';
 import EPAAssessment from './EPAAssessment';
 import DOPSAssessment from './DOPSAssessment'; 
 import MiniCEXAssessment from './MiniCEXAssessment';
+import OSCEAssessment from './OSCEAssessment';
 import KSAAssessment from './KSAAssessment';
 import WrittenTestAssessment from './WrittenTestAssessment';
 import FinalAssessment from './FinalAssessment'; // [新] 引入完訓評估
@@ -388,6 +389,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <button onClick={() => setAssessmentType('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Stethoscope className="w-4 h-4" /> Mini-CEX
                 </button>
+                {/* [新加入] OSCE 按鈕 */}
+                <button onClick={() => setAssessmentType('osce')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'osce' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <ClipboardList className="w-4 h-4" /> OSCE 評估
+                </button>
                 <button onClick={() => setAssessmentType('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <ClipboardCheck className="w-4 h-4" /> KSA 評估
                 </button>
@@ -402,6 +407,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             {assessmentType === 'epa' && <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
             {assessmentType === 'dops' && <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />}
             {assessmentType === 'minicex' && <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
+            {assessmentType === 'osce' && <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
             {assessmentType === 'ksa' && <KSAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
             {assessmentType === 'written_test' && <WrittenTestAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />}
           </div>
