@@ -8,11 +8,16 @@ import {
   arrayRemove, 
   deleteDoc,
   setDoc,
+  getDocs, // [新] 用於一次性抓取使用者清單給儀表板
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
-import { Paperclip, ExternalLink, Users, Shield, ShieldAlert, Crown, Edit, Calendar, Save, X } from 'lucide-react';
+import DashboardCharts from './DashboardCharts.jsx'; // [新] 引入圖表元件
+import { 
+  Paperclip, ExternalLink, Users, Shield, ShieldAlert, Crown, 
+  Edit, Calendar, Save, X, BarChart3, Search, Loader2 
+} from 'lucide-react';
 
 // --- 設定超級管理員 Email ---
 const SUPER_ADMIN_EMAILS = [
@@ -20,8 +25,12 @@ const SUPER_ADMIN_EMAILS = [
   'admin@example.com'
 ];
 
+// ★★★ 請替換成您的 GAS 網址 ★★★
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
+
 const AdminPage = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('resources'); 
+  // 導航狀態：'dashboard' | 'resources' | 'settings' | 'users'
+  const [activeTab, setActiveTab] = useState('dashboard'); 
   
   // 資料狀態
   const [sops, setSops] = useState([]);
@@ -40,6 +49,11 @@ const AdminPage = ({ user }) => {
   // 輸入狀態 (用於設定頁面)
   const [newKeyword, setNewKeyword] = useState('');
   const [newCategory, setNewCategory] = useState('');
+
+  // --- 儀表板專用狀態 ---
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [selectedStudentEmail, setSelectedStudentEmail] = useState('');
 
   // 1. 監聽 SOP 資料
   useEffect(() => {
@@ -77,8 +91,31 @@ const AdminPage = ({ user }) => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsersList(list);
+      
+      // 如果儀表板還沒選定學生，預設選第一個學生
+      const students = list.filter(u => u.role === 'student');
+      if (students.length > 0 && !selectedStudentEmail) {
+        setSelectedStudentEmail(students[0].email);
+      }
     });
     return () => unsubscribe();
+  }, [selectedStudentEmail]);
+
+  // 5. [新] 讀取儀表板聚合資料 (從 GAS 抓全部資料)
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoadingDashboard(true);
+      try {
+        const res = await fetch(`${GAS_API_URL}?type=getDashboardData&studentEmail=ALL`);
+        const data = await res.json();
+        setDashboardData(data);
+      } catch (error) {
+        console.error("Dashboard fetch error:", error);
+      } finally {
+        setLoadingDashboard(false);
+      }
+    };
+    fetchDashboardData();
   }, []);
 
   // 處理資源刪除/編輯 (SOP/Video)
@@ -90,6 +127,7 @@ const AdminPage = ({ user }) => {
       } catch (error) { alert('刪除失敗'); }
     }
   };
+  
   const handleEditResource = (item, type) => {
     setEditingItem({ ...item, type });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,8 +165,8 @@ const AdminPage = ({ user }) => {
     if (!editingUser) return;
     
     // 超級管理員保護
-    if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'teacher') {
-       alert("超級管理員必須保留指導藥師(或更高)權限");
+    if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'admin') {
+       alert("超級管理員必須保留最高權限");
        return;
     }
 
@@ -146,32 +184,91 @@ const AdminPage = ({ user }) => {
     }
   };
 
+  // 過濾學生選單
+  const studentsOnly = usersList.filter(u => u.role === 'student');
+
   return (
-    // 修正：手機版 p-0 (滿版)，電腦版 p-6
     <div className="bg-gray-50 min-h-screen p-0 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4 md:space-y-8">
         
-        {/* Header */}
-        {/* 修正：手機版無圓角、p-4、增加 border-b 以區隔內容 */}
-        <div className="flex justify-between items-center bg-white p-4 md:p-6 md:rounded-lg shadow-sm border-b md:border-0 border-gray-100">
+        {/* Header 與 主要分頁導航 */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 md:p-6 md:rounded-lg shadow-sm border-b md:border-0 border-gray-100 gap-4">
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-800">後台管理</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <Shield className="w-6 h-6 text-indigo-600" /> 後台管理中心
+            </h1>
             <p className="text-gray-500 text-xs md:text-sm mt-1">
               狀態：{sops.length} SOP, {videos.length} 影片, {usersList.length} 用戶
             </p>
           </div>
-          <div className="space-x-2">
-            <button onClick={() => setActiveTab('resources')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>資源</button>
-            <button onClick={() => setActiveTab('settings')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600'}`}>參數</button>
+          <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            <button 
+              onClick={() => setActiveTab('dashboard')} 
+              className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              <BarChart3 className="w-4 h-4"/> 儀表板
+            </button>
+            <button 
+              onClick={() => setActiveTab('resources')} 
+              className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'resources' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              <Paperclip className="w-4 h-4"/> 資源
+            </button>
+            <button 
+              onClick={() => setActiveTab('settings')} 
+              className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              <Users className="w-4 h-4"/> 參數與權限
+            </button>
           </div>
         </div>
 
         {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold mx-4 md:mx-0">{error}</div>}
 
-        {/* TAB 1: 資源管理 */}
+        {/* TAB 0: 學習成效儀表板 [新功能] */}
+        {activeTab === 'dashboard' && (
+          <div className="animate-in fade-in space-y-6 mx-4 md:mx-0">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+              <div>
+                <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" /> 學習成效總覽
+                </h2>
+                <p className="text-sm text-indigo-700 mt-1">選取學員以檢視各項臨床評估的成長軌跡與雷達圖</p>
+              </div>
+              
+              {/* 學員選單 */}
+              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm w-full sm:w-auto">
+                <Users className="w-4 h-4 text-indigo-500" />
+                <select 
+                  value={selectedStudentEmail}
+                  onChange={(e) => setSelectedStudentEmail(e.target.value)}
+                  className="bg-transparent text-sm font-bold text-gray-700 outline-none w-full sm:w-48"
+                >
+                  <option value="" disabled>請選擇學員...</option>
+                  {studentsOnly.map(s => (
+                    <option key={s.email} value={s.email}>{s.displayName || s.email}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {loadingDashboard ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-gray-100">
+                <Loader2 className="w-10 h-10 animate-spin mb-4 text-indigo-500" />
+                <p className="font-medium">正在聚合學習數據，請稍候...</p>
+              </div>
+            ) : (
+              <DashboardCharts 
+                studentEmail={selectedStudentEmail} 
+                dashboardData={dashboardData} 
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB 1: 資源管理 (SOP / 影片) */}
         {activeTab === 'resources' && (
-          <div className="space-y-4 md:space-y-8">
-            {/* 上傳元件的外層容器樣式由 AdminUploader 內部控制，建議也需檢查 AdminUploader 是否有強制 Padding */}
+          <div className="space-y-4 md:space-y-8 animate-in fade-in">
             <AdminUploader 
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
@@ -179,11 +276,10 @@ const AdminPage = ({ user }) => {
               settings={settings}
             />
             
-            {/* ... SOP List ... */}
-            {/* 修正：手機版無圓角，電腦版有圓角 */}
+            {/* SOP List */}
             <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
-                <h3 className="font-bold text-blue-800 text-sm md:text-base">SOP 文件 ({sops.length})</h3>
+                <h3 className="font-bold text-blue-800 text-sm md:text-base flex items-center gap-2"><Paperclip className="w-4 h-4"/> SOP 文件 ({sops.length})</h3>
                </div>
                <div className="overflow-x-auto max-h-96">
                  <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
@@ -207,10 +303,10 @@ const AdminPage = ({ user }) => {
                </div>
             </div>
             
-            {/* ... Video List ... */}
+            {/* Video List */}
             <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
-                <h3 className="font-bold text-purple-800 text-sm md:text-base">教學影片 ({videos.length})</h3>
+                <h3 className="font-bold text-purple-800 text-sm md:text-base flex items-center gap-2"><ExternalLink className="w-4 h-4"/> 教學影片 ({videos.length})</h3>
                </div>
                <div className="overflow-x-auto max-h-96">
                  <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
@@ -237,18 +333,18 @@ const AdminPage = ({ user }) => {
 
         {/* TAB 2: 參數與人員 */}
         {activeTab === 'settings' && (
-          <div className="space-y-4 md:space-y-8">
+          <div className="space-y-4 md:space-y-8 animate-in fade-in mx-4 md:mx-0">
             <div className="grid md:grid-cols-2 gap-4 md:gap-8">
               {/* 常用關鍵字 */}
-              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm">
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-100">
                 <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
                 <div className="flex gap-2 mb-6">
-                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg text-sm"/>
-                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap">新增</button>
+                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"/>
+                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap hover:bg-teal-700">新增</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {settings.quickKeywords?.map((kw, idx) => (
-                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs md:text-sm flex items-center">
+                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs md:text-sm flex items-center border border-gray-200">
                       {kw}<button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
                     </span>
                   ))}
@@ -256,16 +352,16 @@ const AdminPage = ({ user }) => {
               </div>
 
               {/* 分類標籤 */}
-              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm">
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-100">
                 <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
                 <div className="flex gap-2 mb-6">
-                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg text-sm"/>
-                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap">新增</button>
+                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap hover:bg-blue-700">新增</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {settings.categories?.map((cat, idx) => (
-                    <div key={idx} className="flex justify-between bg-blue-50 px-3 py-2 rounded-lg text-sm">
-                      <span className="text-blue-800">{cat}</span>
+                    <div key={idx} className="flex justify-between bg-blue-50 px-3 py-2 rounded-lg text-sm border border-blue-100">
+                      <span className="text-blue-800 font-medium">{cat}</span>
                       <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600">刪除</button>
                     </div>
                   ))}
@@ -274,7 +370,7 @@ const AdminPage = ({ user }) => {
             </div>
 
             {/* 人員權限管理 */}
-            <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border-t md:border border-gray-200">
+            <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" /> 人員資料與權限管理
               </h3>
@@ -291,10 +387,10 @@ const AdminPage = ({ user }) => {
                   <tbody className="divide-y divide-gray-100">
                     {usersList.map((u) => {
                       const isTeacher = u.role === 'teacher';
-                      const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(u.email);
+                      const isSuperAdmin = u.role === 'admin' || SUPER_ADMIN_EMAILS.includes(u.email);
                       
                       return (
-                        <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/50' : ''}`}>
+                        <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/30' : ''}`}>
                           <td className="px-4 md:px-6 py-4">
                             <div className="flex items-center gap-2 font-medium text-gray-900">
                               <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
@@ -316,7 +412,7 @@ const AdminPage = ({ user }) => {
                                 指導藥師
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs border border-gray-200">
                                 PGY 學員
                               </span>
                             )}
@@ -324,7 +420,7 @@ const AdminPage = ({ user }) => {
                           <td className="px-4 md:px-6 py-4 text-right">
                              <button 
                                onClick={() => openEditUser(u)}
-                               className="px-3 py-1 bg-gray-100 hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-medium border border-gray-200 flex items-center gap-1 ml-auto"
+                               className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold border border-indigo-200 flex items-center gap-1 ml-auto shadow-sm"
                              >
                                <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
                              </button>
@@ -372,29 +468,37 @@ const AdminPage = ({ user }) => {
                  />
                </div>
                <div>
-                 <label className="block text-sm font-bold text-gray-700 mb-1">系統身分</label>
-                 <div className="flex gap-2">
+                 <label className="block text-sm font-bold text-gray-700 mb-2">系統身分</label>
+                 <div className="flex flex-wrap gap-2">
                    <button 
                      type="button"
                      onClick={() => setUserForm({...userForm, role: 'student'})}
-                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                    >
                      PGY 學員
                    </button>
                    <button 
                      type="button"
                      onClick={() => setUserForm({...userForm, role: 'teacher'})}
-                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'teacher' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'teacher' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                    >
                      指導藥師
                    </button>
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'admin'})}
+                     className={`flex-1 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'admin' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                   >
+                     管理員
+                   </button>
                  </div>
                  {SUPER_ADMIN_EMAILS.includes(editingUser.email) && (
-                   <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號建議維持最高權限</p>
+                   <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號無法降級</p>
                  )}
                </div>
-               <div className="pt-4">
-                 <button type="submit" className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700">儲存變更</button>
+               <div className="pt-4 flex gap-3">
+                 <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200">取消</button>
+                 <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-md">儲存變更</button>
                </div>
              </form>
            </div>
