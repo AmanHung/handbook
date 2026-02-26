@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
@@ -6,22 +6,46 @@ import {
 import { Target, TrendingUp, Award, Activity } from 'lucide-react';
 
 const DashboardCharts = ({ studentEmail, dashboardData }) => {
+
+  // 加入除錯日誌，方便我們在 F12 Console 觀察資料長怎樣
+  useEffect(() => {
+    console.log("📊 [儀表板除錯] 目前選定的學員 Email:", studentEmail);
+    console.log("📦 [儀表板除錯] 後端傳來的原始資料:", dashboardData);
+  }, [studentEmail, dashboardData]);
   
-  // 1. 資料過濾與預處理
+  // 資料過濾與預處理
   const processedData = useMemo(() => {
     if (!dashboardData || !studentEmail) return null;
 
+    // ★ 強化：比對 Email 時無視大小寫與前後空白
+    const isMatch = (email1, email2) => {
+      if (!email1 || !email2) return false;
+      return String(email1).toLowerCase().trim() === String(email2).toLowerCase().trim();
+    };
+
+    // 如果後端回傳的是 error (代表 GAS 沒更新成功)，就回傳 null
+    if (dashboardData.status === 'error') {
+      console.error("❌ 後端回傳錯誤，請確認 GAS 是否有確實「建立新版本」部署！");
+      return null;
+    }
+
     // 過濾該學員的資料
-    const studentDOPS = dashboardData.dops?.filter(d => d.email === studentEmail) || [];
-    const studentMiniCEX = dashboardData.minicex?.filter(d => d.email === studentEmail) || [];
-    const studentOSCE = dashboardData.osce?.filter(d => d.email === studentEmail) || [];
-    const studentKSA = dashboardData.ksa?.filter(d => d.email === studentEmail) || [];
-    const studentFinal = dashboardData.final?.[studentEmail] || null;
+    const studentDOPS = (dashboardData.dops || []).filter(d => isMatch(d.email, studentEmail));
+    const studentMiniCEX = (dashboardData.minicex || []).filter(d => isMatch(d.email, studentEmail));
+    const studentOSCE = (dashboardData.osce || []).filter(d => isMatch(d.email, studentEmail));
+    const studentKSA = (dashboardData.ksa || []).filter(d => isMatch(d.email, studentEmail));
+    
+    // 完訓進度 (Final 是以 email 當 key 的 object)
+    let studentFinal = null;
+    if (dashboardData.final) {
+      const matchedKey = Object.keys(dashboardData.final).find(k => isMatch(k, studentEmail));
+      if (matchedKey) studentFinal = dashboardData.final[matchedKey];
+    }
 
     // --- 計算 KPI ---
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
     
-    // DOPS 平均 (從 formData 中抓出所有數字型態的評分並平均)
+    // DOPS 平均 (嘗試從 formData 中抓出數字，如果您的 DOPS 不是數字評分，這裡會是 0)
     const allDopsScores = studentDOPS.flatMap(d => Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n)));
     const avgDops = calcAvg(allDopsScores);
 
@@ -29,7 +53,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const allCexScores = studentMiniCEX.flatMap(d => Object.values(d.scores || {}).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n)));
     const avgCex = calcAvg(allCexScores);
 
-    // OSCE 最新分數
+    // OSCE 最新分數 (因為有照日期排序，取 [0] 就是最新)
     const latestOSCE = studentOSCE.length > 0 ? studentOSCE[0].total_score : '無';
 
     // 完訓進度
@@ -37,7 +61,8 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     if (studentFinal && studentFinal.items) {
       const items = Object.values(studentFinal.items);
       const passedCount = items.filter(i => i.passed).length;
-      finalProgress = items.length > 0 ? Math.round((passedCount / 24) * 100) : 0; // 假設全部有 24 項
+      // 假設完訓大約 20 項，您可以根據您的實際數量修改分母 (這裡暫定 20)
+      finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / 20) * 100), 100) : 0; 
     }
 
     // --- KSA 雷達圖資料 (取最新一次的階段) ---
@@ -46,14 +71,16 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       { subject: '專業技能', score: 0, fullMark: 9 },
       { subject: '專業態度', score: 0, fullMark: 9 }
     ];
+    
     if (studentKSA.length > 0) {
-      // 找 phaseId 最大的 (最新)
       const latestKSA = studentKSA.reduce((prev, current) => (prev.phaseId > current.phaseId) ? prev : current);
       const scores = latestKSA.scores || {};
       
-      const kScores = ['k1','k2','k3','k4'].map(k => Number(scores[k])).filter(n => !isNaN(n));
-      const sScores = ['s1','s2','s3','s4'].map(k => Number(scores[k])).filter(n => !isNaN(n));
-      const aScores = ['a1','a2','a3','a4'].map(k => Number(scores[k])).filter(n => !isNaN(n));
+      // 注意：這裡假設您的 KSA 項目 ID 是包含 k, s, a 開頭的 (例如 k_1, s_1, a_1 或 item_k1)
+      // 自動抓取屬性名稱中包含 'k' / 's' / 'a' 的數值來平均
+      const kScores = Object.entries(scores).filter(([key]) => key.toLowerCase().includes('k')).map(e => Number(e[1])).filter(n => !isNaN(n));
+      const sScores = Object.entries(scores).filter(([key]) => key.toLowerCase().includes('s')).map(e => Number(e[1])).filter(n => !isNaN(n));
+      const aScores = Object.entries(scores).filter(([key]) => key.toLowerCase().includes('a')).map(e => Number(e[1])).filter(n => !isNaN(n));
 
       radarData = [
         { subject: '專業知識', score: parseFloat(calcAvg(kScores)) || 0, fullMark: 9 },
@@ -65,7 +92,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     // --- 歷程折線圖資料 (合併日期) ---
     const timelineMap = {};
     
-    // 整理 DOPS
     studentDOPS.forEach(d => {
       const scores = Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n));
       if (scores.length > 0) {
@@ -74,7 +100,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       }
     });
 
-    // 整理 Mini-CEX
     studentMiniCEX.forEach(d => {
       const scores = Object.values(d.scores || {}).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n));
       if (scores.length > 0) {
@@ -95,11 +120,13 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     return {
       kpi: { avgDops, avgCex, latestOSCE, finalProgress },
       radarData,
-      timelineData
+      timelineData,
+      hasData: studentDOPS.length || studentMiniCEX.length || studentOSCE.length || studentKSA.length
     };
   }, [dashboardData, studentEmail]);
 
-  if (!processedData) return <div className="text-gray-400 text-center py-8">請選擇學員以載入資料</div>;
+  if (!processedData) return <div className="text-gray-400 text-center py-8">正在載入或無法解析資料，請檢查網路狀態。</div>;
+  if (!processedData.hasData) return <div className="text-orange-500 bg-orange-50 p-6 rounded-xl text-center font-bold border border-orange-200">此學員目前沒有任何評估紀錄。</div>;
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -157,7 +184,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">尚無評估歷程資料</div>
+              <div className="h-full flex items-center justify-center text-gray-400">目前尚無 DOPS 或 Mini-CEX 的「數字型」評估分數</div>
             )}
           </div>
         </div>
