@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ReferenceLine
 } from 'recharts';
 import { Target, TrendingUp, Award, Activity, ClipboardList, CheckSquare } from 'lucide-react';
@@ -39,7 +39,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const isMatch = (e1, e2) => String(e1).toLowerCase().trim() === String(e2).toLowerCase().trim();
 
-    // 過濾資料
     const studentDOPS = (dashboardData.dops || []).filter(d => isMatch(d.email, studentEmail));
     const studentMiniCEX = (dashboardData.minicex || []).filter(d => isMatch(d.email, studentEmail));
     const studentOSCE = (dashboardData.osce || []).filter(d => isMatch(d.email, studentEmail));
@@ -52,7 +51,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       if (matchedKey) studentFinal = dashboardData.final[matchedKey];
     }
 
-    // 智慧分數提取器
     const extractValidScores = (obj) => {
       let scores = [];
       const traverse = (o) => {
@@ -66,7 +64,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
     
-    // 計算全域 KPI
     const allDopsScores = studentDOPS.flatMap(d => extractValidScores(d.formData));
     const avgDops = calcAvg(allDopsScores);
 
@@ -82,7 +79,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / 20) * 100), 100) : 0; 
     }
 
-    // KSA 雷達圖
     const radarData = [
       { subject: '專業知識', fullMark: 9 },
       { subject: '專業技能', fullMark: 9 },
@@ -104,38 +100,8 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       radarData[2][phaseName] = parseFloat(calcAvg(aScores)) || 0;
     });
 
-    // 防覆蓋時間軸
-    const buildTimelineData = (records, itemKeyField, scoreField) => {
-      const timeline = [];
-      const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
-      
-      sorted.forEach(r => {
-        const d = r.date.substring(5); // 取 MM-DD
-        const itemName = r[itemKeyField] || '綜合評估';
-        const score = r[scoreField]; 
-        
-        if (score !== undefined && score !== null && !isNaN(score)) {
-          let targetPoint = timeline.find(p => p.rawDate === r.date && p[itemName] === undefined);
-          
-          if (targetPoint) {
-            targetPoint[itemName] = score; 
-          } else {
-            const count = timeline.filter(p => p.rawDate === r.date).length;
-            const displayDate = count === 0 ? d : `${d} (${count + 1})`;
-            timeline.push({
-              date: displayDate,
-              rawDate: r.date,
-              [itemName]: score
-            });
-          }
-        }
-      });
-
-      const lines = [...new Set(sorted.map(r => r[itemKeyField] || '綜合評估'))];
-      return { chartData: timeline, lines };
-    };
-
-    // 1. EPA 折線圖
+    // --- 【新】長條圖資料處理器 (針對 EPA 與 DOPS) ---
+    // 1. EPA 長條圖資料
     const extractEpaLevelIndex = (levelStr) => {
       if (!levelStr) return null;
       const s = String(levelStr).toLowerCase();
@@ -149,36 +115,80 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return null;
     };
 
-    const epaWithNumLevel = studentEPA.map(d => ({
+    const epaMap = {};
+    let maxEpaAttempts = 0;
+    studentEPA.map(d => ({
       ...d,
       epaTitle: EPA_NAMES[d.epaId] || EPA_NAMES[String(d.epaId).toUpperCase().replace('_', '-')] || d.epaId,
       numericLevel: extractEpaLevelIndex(d.level)
-    })).filter(d => d.numericLevel !== null);
+    })).filter(d => d.numericLevel !== null)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .forEach(r => {
+        const title = r.epaTitle;
+        if (!epaMap[title]) epaMap[title] = { name: title, count: 0 };
+        epaMap[title].count += 1;
+        const attempt = `第${epaMap[title].count}次`;
+        epaMap[title][attempt] = r.numericLevel;
+        if (epaMap[title].count > maxEpaAttempts) maxEpaAttempts = epaMap[title].count;
+      });
+      
+    const epaBarData = Object.values(epaMap);
+    const epaAttempts = Array.from({length: maxEpaAttempts}, (_, i) => `第${i+1}次`);
 
-    const epaData = buildTimelineData(epaWithNumLevel, 'epaTitle', 'numericLevel');
-
-    // 2. DOPS 折線圖
-    const dopsWithScore = studentDOPS.map(d => {
+    // 2. DOPS 長條圖資料
+    const dopsMap = {};
+    let maxDopsAttempts = 0;
+    studentDOPS.map(d => {
       const validScores = extractValidScores(d.formData);
       return { 
         ...d, 
         dopsTitle: DOPS_NAMES[d.dopsId] || DOPS_NAMES[String(d.dopsId).toLowerCase()] || d.dopsId, 
         score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null 
       };
-    }).filter(d => d.score !== null);
-    
-    const dopsData = buildTimelineData(dopsWithScore, 'dopsTitle', 'score');
+    }).filter(d => d.score !== null)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .forEach(r => {
+        const title = r.dopsTitle;
+        if (!dopsMap[title]) dopsMap[title] = { name: title, count: 0 };
+        dopsMap[title].count += 1;
+        const attempt = `第${dopsMap[title].count}次`;
+        dopsMap[title][attempt] = r.score;
+        if (dopsMap[title].count > maxDopsAttempts) maxDopsAttempts = dopsMap[title].count;
+      });
+
+    const dopsBarData = Object.values(dopsMap);
+    const dopsAttempts = Array.from({length: maxDopsAttempts}, (_, i) => `第${i+1}次`);
+
+    // --- 保留折線圖時間軸 (針對 Mini-CEX 與 OSCE) ---
+    const buildTimelineData = (records, itemKeyField, scoreField) => {
+      const timeline = [];
+      const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      sorted.forEach(r => {
+        const d = r.date.substring(5); 
+        const itemName = r[itemKeyField] || '綜合評估';
+        const score = r[scoreField]; 
+        
+        if (score !== undefined && score !== null && !isNaN(score)) {
+          let targetPoint = timeline.find(p => p.rawDate === r.date && p[itemName] === undefined);
+          if (targetPoint) {
+            targetPoint[itemName] = score; 
+          } else {
+            const count = timeline.filter(p => p.rawDate === r.date).length;
+            const displayDate = count === 0 ? d : `${d} (${count + 1})`;
+            timeline.push({ date: displayDate, rawDate: r.date, [itemName]: score });
+          }
+        }
+      });
+      const lines = [...new Set(sorted.map(r => r[itemKeyField] || '綜合評估'))];
+      return { chartData: timeline, lines };
+    };
 
     // 3. Mini-CEX 折線圖
     const cexWithScore = studentMiniCEX.map(d => {
       const validScores = extractValidScores(d.scores);
-      return { 
-        ...d, 
-        topic: '門診病人藥品諮詢', 
-        score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null 
-      };
+      return { ...d, topic: '門診病人藥品諮詢', score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null };
     }).filter(d => d.score !== null);
-    
     const minicexData = buildTimelineData(cexWithScore, 'topic', 'score');
 
     // 4. OSCE 折線圖
@@ -187,12 +197,10 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     return {
       kpi: { avgDops, avgCex, latestOSCE, finalProgress },
-      radarData,
-      ksaPhases,
-      epaData,
-      dopsData,
-      minicexData,
-      osceData,
+      radarData, ksaPhases,
+      epaBarData, epaAttempts,
+      dopsBarData, dopsAttempts,
+      minicexData, osceData,
       hasData: studentDOPS.length || studentMiniCEX.length || studentOSCE.length || studentKSA.length || studentEPA.length
     };
   }, [dashboardData, studentEmail]);
@@ -222,7 +230,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         </div>
       </div>
 
-      {/* 2. KSA 雷達圖 (顯示各階段) */}
+      {/* 2. KSA 雷達圖 */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">KSA 核心能力演進雷達圖</h3>
         <div className="h-72 w-full">
@@ -249,22 +257,22 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         </div>
       </div>
 
-      {/* 3. 各項評估折線圖區塊 (2x2 Grid) */}
+      {/* 3. 各項評估圖表區塊 (2x2 Grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* EPA 歷程折線圖 */}
+        {/* ★ EPA 分組長條圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-indigo-500"/> EPA 信任等級軌跡
+            <Activity className="w-5 h-5 text-indigo-500"/> EPA 各項目歷次信任等級
           </h3>
-          <div className="h-64 w-full">
-            {processedData.epaData.chartData.length > 0 ? (
+          <div className="h-80 w-full">
+            {processedData.epaBarData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={processedData.epaData.chartData} margin={{ right: 20, left: -10, bottom: 5 }}>
+                <BarChart data={processedData.epaBarData} margin={{ top: 10, right: 10, left: -10, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, angle: -35, textAnchor: 'end' }} interval={0} />
                   <YAxis 
-                    domain={[1, 7]} 
+                    domain={[0, 7]} 
                     ticks={[1, 2, 3, 4, 5, 6, 7]} 
                     tickFormatter={(val) => EPA_LEVEL_LABELS[val]} 
                     tick={{ fontSize: 11, fontWeight: 'bold' }} 
@@ -272,41 +280,40 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <Tooltip 
                     formatter={(value, name) => [EPA_LEVEL_LABELS[value] || value, name]}
                     contentStyle={{ borderRadius: '8px', fontSize: '12px' }} 
+                    cursor={{fill: '#F3F4F6'}}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: '10px' }} />
-                  {/* 及格線 (Level 4) */}
+                  <Legend wrapperStyle={{ fontSize: 11, top: -10 }} />
                   <ReferenceLine y={6} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(4)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
                   
-                  {processedData.epaData.lines.map((line, idx) => (
-                    <Line key={line} type="monotone" dataKey={line} stroke={CHART_COLORS[idx % CHART_COLORS.length]} strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                  {processedData.epaAttempts.map((att, idx) => (
+                    <Bar key={att} dataKey={att} fill={CHART_COLORS[idx % CHART_COLORS.length]} radius={[2, 2, 0, 0]} maxBarSize={40} />
                   ))}
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             ) : <div className="h-full flex items-center justify-center text-gray-400 text-sm">尚無 EPA 資料</div>}
           </div>
         </div>
 
-        {/* DOPS 折線圖 */}
+        {/* ★ DOPS 分組長條圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-blue-500"/> DOPS 技能評量軌跡 (滿分 9分)
+            <CheckSquare className="w-5 h-5 text-blue-500"/> DOPS 各項目歷次分數 (滿分 9分)
           </h3>
-          <div className="h-64 w-full">
-            {processedData.dopsData.chartData.length > 0 ? (
+          <div className="h-80 w-full">
+            {processedData.dopsBarData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={processedData.dopsData.chartData} margin={{ right: 20, left: -20, bottom: 5 }}>
+                <BarChart data={processedData.dopsBarData} margin={{ top: 10, right: 10, left: -20, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, angle: -35, textAnchor: 'end' }} interval={0} />
                   <YAxis domain={[0, 9]} tick={{ fontSize: 12 }} tickCount={10} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: '10px' }} />
-                  {/* ★ DOPS 及格線 (8分) */}
+                  <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} cursor={{fill: '#F3F4F6'}} />
+                  <Legend wrapperStyle={{ fontSize: 11, top: -10 }} />
                   <ReferenceLine y={8} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(8分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
 
-                  {processedData.dopsData.lines.map((line, idx) => (
-                    <Line key={line} type="monotone" dataKey={line} stroke={CHART_COLORS[(idx+2) % CHART_COLORS.length]} strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                  {processedData.dopsAttempts.map((att, idx) => (
+                    <Bar key={att} dataKey={att} fill={CHART_COLORS[(idx + 2) % CHART_COLORS.length]} radius={[2, 2, 0, 0]} maxBarSize={40} />
                   ))}
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             ) : <div className="h-full flex items-center justify-center text-gray-400 text-sm">尚無 DOPS 資料</div>}
           </div>
@@ -315,9 +322,9 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         {/* Mini-CEX 折線圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Target className="w-5 h-5 text-teal-500"/> Mini-CEX 平均表現 (滿分 9分)
+            <Target className="w-5 h-5 text-teal-500"/> Mini-CEX 平均表現軌跡 (滿分 9分)
           </h3>
-          <div className="h-64 w-full">
+          <div className="h-64 w-full mt-8">
             {processedData.minicexData.chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={processedData.minicexData.chartData} margin={{ right: 20, left: -20, bottom: 5 }}>
@@ -326,7 +333,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <YAxis domain={[0, 9]} tick={{ fontSize: 12 }} tickCount={10} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
-                  {/* ★ Mini-CEX 及格線 (4分) */}
                   <ReferenceLine y={4} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(4分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
 
                   {processedData.minicexData.lines.map((line, idx) => (
@@ -341,9 +347,9 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         {/* OSCE 折線圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <ClipboardList className="w-5 h-5 text-yellow-500"/> OSCE 總分軌跡 (滿分 75分)
+            <ClipboardList className="w-5 h-5 text-yellow-500"/> OSCE 總分表現軌跡 (滿分 75分)
           </h3>
-          <div className="h-64 w-full">
+          <div className="h-64 w-full mt-8">
             {processedData.osceData.chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={processedData.osceData.chartData} margin={{ right: 20, left: -20, bottom: 5 }}>
@@ -352,7 +358,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <YAxis domain={[0, 75]} tick={{ fontSize: 12 }} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
-                  {/* ★ OSCE 及格線 (46分) */}
                   <ReferenceLine y={46} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(46分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
 
                   {processedData.osceData.lines.map((line, idx) => (
