@@ -62,9 +62,33 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return scores;
     };
 
+    // ★★★ [新] DOPS 專用：只提取「整體評估」分數 (1~10分) ★★★
+    const getDopsOverallScore = (formData) => {
+      if (!formData) return null;
+      
+      // 1. 優先找尋特定欄位名稱
+      for (const [key, val] of Object.entries(formData)) {
+        if (/(overall|global|整體|總評|總分)/i.test(key) && !isNaN(Number(val))) {
+          return Number(val);
+        }
+      }
+      
+      // 2. 找不到特定欄位時，抓取表單中「最後一個 1~10 之間的數字」
+      const values = [];
+      const traverse = (o) => {
+        if (typeof o === 'number' && o > 0 && o <= 10) values.push(o);
+        else if (typeof o === 'string' && !isNaN(Number(o)) && Number(o) > 0 && Number(o) <= 10) values.push(Number(o));
+        else if (typeof o === 'object' && o !== null) Object.values(o).forEach(traverse);
+      };
+      traverse(formData);
+      
+      return values.length > 0 ? values[values.length - 1] : null;
+    };
+
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
     
-    const allDopsScores = studentDOPS.flatMap(d => extractValidScores(d.formData));
+    // 計算 KPI (DOPS 改用整體分數)
+    const allDopsScores = studentDOPS.map(d => getDopsOverallScore(d.formData)).filter(n => n !== null);
     const avgDops = calcAvg(allDopsScores);
 
     const allCexScores = studentMiniCEX.flatMap(d => extractValidScores(d.scores));
@@ -100,7 +124,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       radarData[2][phaseName] = parseFloat(calcAvg(aScores)) || 0;
     });
 
-    // --- 【新】長條圖資料處理器 (針對 EPA 與 DOPS) ---
     // 1. EPA 長條圖資料
     const extractEpaLevelIndex = (levelStr) => {
       if (!levelStr) return null;
@@ -135,15 +158,14 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const epaBarData = Object.values(epaMap);
     const epaAttempts = Array.from({length: maxEpaAttempts}, (_, i) => `第${i+1}次`);
 
-    // 2. DOPS 長條圖資料
+    // 2. DOPS 長條圖資料 (改用整體評估分數)
     const dopsMap = {};
     let maxDopsAttempts = 0;
     studentDOPS.map(d => {
-      const validScores = extractValidScores(d.formData);
       return { 
         ...d, 
         dopsTitle: DOPS_NAMES[d.dopsId] || DOPS_NAMES[String(d.dopsId).toLowerCase()] || d.dopsId, 
-        score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null 
+        score: getDopsOverallScore(d.formData) 
       };
     }).filter(d => d.score !== null)
       .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -159,7 +181,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const dopsBarData = Object.values(dopsMap);
     const dopsAttempts = Array.from({length: maxDopsAttempts}, (_, i) => `第${i+1}次`);
 
-    // --- 保留折線圖時間軸 (針對 Mini-CEX 與 OSCE) ---
+    // --- 保留折線圖時間軸 ---
     const buildTimelineData = (records, itemKeyField, scoreField) => {
       const timeline = [];
       const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -260,7 +282,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       {/* 3. 各項評估圖表區塊 (2x2 Grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* ★ EPA 分組長條圖 */}
+        {/* EPA 分組長條圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
             <Activity className="w-5 h-5 text-indigo-500"/> EPA 各項目歷次信任等級
@@ -294,10 +316,10 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
           </div>
         </div>
 
-        {/* ★ DOPS 分組長條圖 */}
+        {/* ★ [修改] DOPS 分組長條圖 (滿分改為10分) */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-blue-500"/> DOPS 各項目歷次分數 (滿分 9分)
+            <CheckSquare className="w-5 h-5 text-blue-500"/> DOPS 各項目歷次分數 (滿分 10分)
           </h3>
           <div className="h-80 w-full">
             {processedData.dopsBarData.length > 0 ? (
@@ -305,7 +327,8 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                 <BarChart data={processedData.dopsBarData} margin={{ top: 10, right: 10, left: -20, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, angle: -35, textAnchor: 'end' }} interval={0} />
-                  <YAxis domain={[0, 9]} tick={{ fontSize: 12 }} tickCount={10} />
+                  {/* Y 軸改為最大到 10 */}
+                  <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} tickCount={11} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} cursor={{fill: '#F3F4F6'}} />
                   <Legend wrapperStyle={{ fontSize: 11, top: -10 }} />
                   <ReferenceLine y={8} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(8分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
