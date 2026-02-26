@@ -124,14 +124,15 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     // 5. 完訓進度 (抓取 FinalAssessment_Records 中打勾的必修項目比例)
     let finalProgress = 0;
     let finalPassedCount = 0;
-    let finalTotalCount = 24; // 預設如果有資料但是空的，當作 24 項
+    const finalTotalCount = 24; // ★ 強制固定總必修項目數為 24 (若您的表單是其他數量請修改這裡)
+    
     if (studentFinal && studentFinal.items) {
       const items = Object.values(studentFinal.items);
-      finalPassedCount = items.filter(i => i.passed).length; // 打勾的數量
-      finalTotalCount = items.length > 0 ? items.length : 24; // 總項目數量
-      finalProgress = items.length > 0 ? Math.min(Math.round((finalPassedCount / finalTotalCount) * 100), 100) : 0; 
+      // 計算有被打勾 (passed: true) 的數量
+      finalPassedCount = items.filter(i => i.passed === true || i === true).length; 
+      // 計算進度百分比
+      finalProgress = Math.min(Math.round((finalPassedCount / finalTotalCount) * 100), 100); 
     }
-
     const kpi = {
       epa: { rate: epaRate, text: `${epaPassedItems} / ${epaTotal} 項及格` },
       dops: { rate: dopsRate, text: `${dopsPassedItems} / ${dopsTotal} 項及格` },
