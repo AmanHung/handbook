@@ -1,14 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  BarChart, Bar, ReferenceLine // [新] 引入長條圖相關元件
 } from 'recharts';
 import { Target, TrendingUp, Award, Activity, ClipboardList, CheckSquare } from 'lucide-react';
 
 // 預設的折線圖顏色庫
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#F97316'];
 
+// EPA 等級對照表 (0代表未評估，1~7 對應實際等級)
+const EPA_LEVEL_LABELS = ['未評估', '2a', '2b', '3a', '3b', '3c', '4', '5'];
+
 const DashboardCharts = ({ studentEmail, dashboardData }) => {
+
+  useEffect(() => {
+    console.log("📊 [儀表板除錯] 目前選定的學員 Email:", studentEmail);
+  }, [studentEmail, dashboardData]);
   
   const processedData = useMemo(() => {
     if (!dashboardData || !studentEmail || dashboardData.status === 'error') return null;
@@ -46,7 +54,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / 20) * 100), 100) : 0; 
     }
 
-    // --- 準備 KSA 雷達圖 (多階段疊加) ---
+    // --- 準備 KSA 雷達圖 ---
     const radarData = [
       { subject: '專業知識', fullMark: 9 },
       { subject: '專業技能', fullMark: 9 },
@@ -54,7 +62,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     ];
     const ksaPhases = [];
 
-    // 依日期排序 KSA
     const sortedKSA = [...studentKSA].sort((a, b) => new Date(a.date) - new Date(b.date));
     sortedKSA.forEach(k => {
       const phaseName = `階段 ${k.phaseId}`;
@@ -72,11 +79,10 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     // --- 輔助函式：將紀錄轉換成折線圖的序列資料 ---
     const buildTimelineData = (records, itemKeyField, scoreField) => {
       const dateMap = {};
-      // 確保依日期排序
       const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
       
       sorted.forEach(r => {
-        const d = r.date.substring(5); // 顯示 MM-DD
+        const d = r.date.substring(5); 
         const itemName = r[itemKeyField] || '綜合評估';
         const score = Number(r[scoreField]) || 0;
         
@@ -88,18 +94,43 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return { chartData: Object.values(dateMap), lines };
     };
 
-    // 1. EPA 折線圖 (Y=Level)
-    const epaData = buildTimelineData(studentEPA, 'epaId', 'level');
+    // 1. [改寫] EPA 最新進度長條圖
+    const extractEpaLevelIndex = (levelStr) => {
+      if (!levelStr) return 0;
+      const s = String(levelStr).toLowerCase();
+      if (s.includes('2a')) return 1;
+      if (s.includes('2b')) return 2;
+      if (s.includes('3a')) return 3;
+      if (s.includes('3b')) return 4;
+      if (s.includes('3c')) return 5;
+      if (s.includes('4')) return 6;
+      if (s.includes('5')) return 7;
+      return 0; // 若都沒對應到則為 0
+    };
 
-    // 2. DOPS 折線圖 (Y=平均分)
-    // 需先算出每筆 DOPS 的平均分
+    const latestEpaMap = {};
+    studentEPA.forEach(r => {
+       const id = r.epaId;
+       // 抓取每個 EPA 項目的「最新」一筆紀錄
+       if (!latestEpaMap[id] || new Date(r.date) > new Date(latestEpaMap[id].date)) {
+           latestEpaMap[id] = r;
+       }
+    });
+    
+    const epaBarData = Object.values(latestEpaMap).map(r => ({
+       epaId: r.epaId,
+       levelIndex: extractEpaLevelIndex(r.level),
+       levelText: r.level
+    }));
+
+    // 2. DOPS 折線圖
     const dopsWithScore = studentDOPS.map(d => {
       const s = Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n));
       return { ...d, score: parseFloat(calcAvg(s)) };
     });
     const dopsData = buildTimelineData(dopsWithScore, 'dopsId', 'score');
 
-    // 3. Mini-CEX 折線圖 (通常只有一個主題，但仍可擴充)
+    // 3. Mini-CEX 折線圖
     const cexWithScore = studentMiniCEX.map(d => {
       const s = Object.values(d.scores || {}).filter(v => v !== 'NA').map(Number).filter(n => !isNaN(n));
       return { ...d, topic: '藥品諮詢演練', score: parseFloat(calcAvg(s)) };
@@ -114,7 +145,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       kpi: { avgDops, avgCex, latestOSCE, finalProgress },
       radarData,
       ksaPhases,
-      epaData,
+      epaBarData, // [新] EPA 長條圖資料
       dopsData,
       minicexData,
       osceData,
@@ -147,7 +178,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         </div>
       </div>
 
-      {/* 2. KSA 雷達圖 (顯示各階段) */}
+      {/* 2. KSA 雷達圖 */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">KSA 核心能力演進雷達圖</h3>
         <div className="h-72 w-full">
@@ -173,27 +204,40 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         </div>
       </div>
 
-      {/* 3. 評估折線圖區塊 (2x2 Grid) */}
+      {/* 3. 評估圖表區塊 (2x2 Grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* EPA 折線圖 */}
+        {/* [新] EPA 橫向長條圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-indigo-500"/> EPA 信任等級軌跡 (Level 1-5)
+            <Activity className="w-5 h-5 text-indigo-500"/> EPA 信任等級進度 (目前最高)
           </h3>
           <div className="h-64 w-full">
-            {processedData.epaData.chartData.length > 0 ? (
+            {processedData.epaBarData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={processedData.epaData.chartData} margin={{ right: 20, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis domain={[0, 5]} tick={{ fontSize: 12 }} tickCount={6} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
-                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
-                  {processedData.epaData.lines.map((line, idx) => (
-                    <Line key={line} type="monotone" dataKey={line} stroke={CHART_COLORS[idx % CHART_COLORS.length]} strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                  ))}
-                </LineChart>
+                <BarChart layout="vertical" data={processedData.epaBarData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E5E7EB" />
+                  <XAxis 
+                    type="number" 
+                    domain={[0, 7]} 
+                    tickCount={8} 
+                    tickFormatter={(val) => EPA_LEVEL_LABELS[val] || ''} 
+                    tick={{ fontSize: 12, fontWeight: 'bold' }}
+                  />
+                  {/* Y 軸顯示項目名稱，預留空間以免字被切掉 */}
+                  <YAxis type="category" dataKey="epaId" width={100} tick={{ fontSize: 12, fill: '#4B5563' }} />
+                  
+                  {/* 滑鼠移上去的提示框 */}
+                  <Tooltip 
+                    formatter={(value) => [EPA_LEVEL_LABELS[value] || '未評估', '目前等級']}
+                    contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                  />
+                  
+                  {/* 及格線設定在 Index 6 (也就是 Level 4) */}
+                  <ReferenceLine x={6} stroke="#EF4444" strokeDasharray="5 5" label={{ position: 'top', value: '及格線(4)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
+                  
+                  <Bar dataKey="levelIndex" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
               </ResponsiveContainer>
             ) : <div className="h-full flex items-center justify-center text-gray-400 text-sm">尚無 EPA 資料</div>}
           </div>
