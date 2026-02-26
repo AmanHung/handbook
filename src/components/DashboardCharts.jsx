@@ -95,7 +95,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
 
     // ==========================================
-    // ★★★ 【全新】KPI 達成率計算 (及格率) ★★★
+    // ★★★ KPI 達成率計算 (及格率) ★★★
     // ==========================================
     
     // 1. EPA (及格: Level 4 即 index 6) -> 統計及格的不重複項目數
@@ -123,12 +123,13 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     // 5. 完訓進度 (抓取 FinalAssessment_Records 中打勾的必修項目比例)
     let finalProgress = 0;
+    let finalPassedCount = 0;
+    let finalTotalCount = 24; // 預設如果有資料但是空的，當作 24 項
     if (studentFinal && studentFinal.items) {
       const items = Object.values(studentFinal.items);
-      const passedCount = items.filter(i => i.passed).length;
-      // 若有實際 items 數量則依據該數量，若無則預設抓 24 項當分母
-      const totalFinalItems = items.length > 0 ? items.length : 24; 
-      finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / totalFinalItems) * 100), 100) : 0; 
+      finalPassedCount = items.filter(i => i.passed).length; // 打勾的數量
+      finalTotalCount = items.length > 0 ? items.length : 24; // 總項目數量
+      finalProgress = items.length > 0 ? Math.min(Math.round((finalPassedCount / finalTotalCount) * 100), 100) : 0; 
     }
 
     const kpi = {
@@ -136,7 +137,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       dops: { rate: dopsRate, text: `${dopsPassedItems} / ${dopsTotal} 項及格` },
       cex: { rate: cexRate, text: `${cexPassedItems} / ${cexTotal} 項及格` },
       osce: { rate: osceRate, text: `${oscePassedItems} / ${osceTotal} 項及格` },
-      final: { rate: finalProgress, text: '護照完訓進度' }
+      final: { rate: finalProgress, text: `${finalPassedCount} / ${finalTotalCount} 項完成` }
     };
 
     // ==========================================
@@ -256,7 +257,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     <div className="space-y-6 animate-in fade-in mt-4">
       
       {/* ==========================================
-          1. ★ 全新設計：5格 KPI 達成率數據卡 ★
+          1. 5格 KPI 達成率數據卡
           ========================================== */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* EPA */}
@@ -311,7 +312,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-xl shadow-sm border border-purple-100 flex flex-col justify-between">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-purple-100 p-2 rounded-lg"><TrendingUp className="w-4 h-4 text-purple-600"/></div>
-            <p className="text-sm text-purple-800 font-bold">護照完訓進度</p>
+            <p className="text-sm text-purple-800 font-bold">完訓進度</p>
           </div>
           <div>
             <p className="text-3xl font-black text-purple-700">{processedData.kpi.final.rate}<span className="text-lg text-purple-400 ml-1">%</span></p>
