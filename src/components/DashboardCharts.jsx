@@ -39,6 +39,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const isMatch = (e1, e2) => String(e1).toLowerCase().trim() === String(e2).toLowerCase().trim();
 
+    // 1. 過濾該學員的資料
     const studentDOPS = (dashboardData.dops || []).filter(d => isMatch(d.email, studentEmail));
     const studentMiniCEX = (dashboardData.minicex || []).filter(d => isMatch(d.email, studentEmail));
     const studentOSCE = (dashboardData.osce || []).filter(d => isMatch(d.email, studentEmail));
@@ -51,6 +52,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       if (matchedKey) studentFinal = dashboardData.final[matchedKey];
     }
 
+    // --- 輔助函式區 ---
     const extractValidScores = (obj) => {
       let scores = [];
       const traverse = (o) => {
@@ -62,18 +64,11 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return scores;
     };
 
-    // ★★★ [新] DOPS 專用：只提取「整體評估」分數 (1~10分) ★★★
     const getDopsOverallScore = (formData) => {
       if (!formData) return null;
-      
-      // 1. 優先找尋特定欄位名稱
       for (const [key, val] of Object.entries(formData)) {
-        if (/(overall|global|整體|總評|總分)/i.test(key) && !isNaN(Number(val))) {
-          return Number(val);
-        }
+        if (/(overall|global|整體|總評|總分)/i.test(key) && !isNaN(Number(val))) return Number(val);
       }
-      
-      // 2. 找不到特定欄位時，抓取表單中「最後一個 1~10 之間的數字」
       const values = [];
       const traverse = (o) => {
         if (typeof o === 'number' && o > 0 && o <= 10) values.push(o);
@@ -81,28 +76,74 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
         else if (typeof o === 'object' && o !== null) Object.values(o).forEach(traverse);
       };
       traverse(formData);
-      
       return values.length > 0 ? values[values.length - 1] : null;
     };
 
+    const extractEpaLevelIndex = (levelStr) => {
+      if (!levelStr) return 0;
+      const s = String(levelStr).toLowerCase();
+      if (s.includes('2a')) return 1;
+      if (s.includes('2b')) return 2;
+      if (s.includes('3a')) return 3;
+      if (s.includes('3b')) return 4;
+      if (s.includes('3c')) return 5;
+      if (s.includes('4')) return 6;
+      if (s.includes('5')) return 7;
+      return 0;
+    };
+
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
+
+    // ==========================================
+    // ★★★ 【全新】KPI 達成率計算 (及格率) ★★★
+    // ==========================================
     
-    // 計算 KPI (DOPS 改用整體分數)
-    const allDopsScores = studentDOPS.map(d => getDopsOverallScore(d.formData)).filter(n => n !== null);
-    const avgDops = calcAvg(allDopsScores);
+    // 1. EPA (及格: Level 4 即 index 6) -> 統計及格的不重複項目數
+    const epaPassedItems = new Set(studentEPA.filter(d => extractEpaLevelIndex(d.level) >= 6).map(d => d.epaId)).size;
+    const epaTotal = 8; // EPA 總共 8 項
+    const epaRate = Math.round((epaPassedItems / epaTotal) * 100);
 
-    const allCexScores = studentMiniCEX.flatMap(d => extractValidScores(d.scores));
-    const avgCex = calcAvg(allCexScores);
+    // 2. DOPS (及格: 整體評估 8 分) -> 統計及格的不重複項目數
+    const dopsPassedItems = new Set(studentDOPS.filter(d => getDopsOverallScore(d.formData) >= 8).map(d => d.dopsId)).size;
+    const dopsTotal = 9; // DOPS 總共 9 項
+    const dopsRate = Math.round((dopsPassedItems / dopsTotal) * 100);
 
-    const latestOSCE = studentOSCE.length > 0 ? studentOSCE[0].total_score : '無';
+    // 3. Mini-CEX (及格: 平均 4 分) -> 目前僅1項，有及格紀錄就是 100%
+    const cexTotal = 1;
+    const cexPassedItems = studentMiniCEX.some(d => {
+      const s = extractValidScores(d.scores);
+      return s.length > 0 && parseFloat(calcAvg(s)) >= 4;
+    }) ? 1 : 0;
+    const cexRate = Math.round((cexPassedItems / cexTotal) * 100);
 
+    // 4. OSCE (及格: 總分 46 分) -> 目前僅1項，有及格紀錄就是 100%
+    const osceTotal = 1;
+    const oscePassedItems = studentOSCE.some(d => Number(d.total_score) >= 46) ? 1 : 0;
+    const osceRate = Math.round((oscePassedItems / osceTotal) * 100);
+
+    // 5. 完訓進度 (抓取 FinalAssessment_Records 中打勾的必修項目比例)
     let finalProgress = 0;
     if (studentFinal && studentFinal.items) {
       const items = Object.values(studentFinal.items);
       const passedCount = items.filter(i => i.passed).length;
-      finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / 20) * 100), 100) : 0; 
+      // 若有實際 items 數量則依據該數量，若無則預設抓 24 項當分母
+      const totalFinalItems = items.length > 0 ? items.length : 24; 
+      finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / totalFinalItems) * 100), 100) : 0; 
     }
 
+    const kpi = {
+      epa: { rate: epaRate, text: `${epaPassedItems} / ${epaTotal} 項及格` },
+      dops: { rate: dopsRate, text: `${dopsPassedItems} / ${dopsTotal} 項及格` },
+      cex: { rate: cexRate, text: `${cexPassedItems} / ${cexTotal} 項及格` },
+      osce: { rate: osceRate, text: `${oscePassedItems} / ${osceTotal} 項及格` },
+      final: { rate: finalProgress, text: '護照完訓進度' }
+    };
+
+    // ==========================================
+    // 圖表資料準備區
+    // ==========================================
+
+    // KSA 雷達圖
     const radarData = [
       { subject: '專業知識', fullMark: 9 },
       { subject: '專業技能', fullMark: 9 },
@@ -124,27 +165,14 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       radarData[2][phaseName] = parseFloat(calcAvg(aScores)) || 0;
     });
 
-    // 1. EPA 長條圖資料
-    const extractEpaLevelIndex = (levelStr) => {
-      if (!levelStr) return null;
-      const s = String(levelStr).toLowerCase();
-      if (s.includes('2a')) return 1;
-      if (s.includes('2b')) return 2;
-      if (s.includes('3a')) return 3;
-      if (s.includes('3b')) return 4;
-      if (s.includes('3c')) return 5;
-      if (s.includes('4')) return 6;
-      if (s.includes('5')) return 7;
-      return null;
-    };
-
+    // EPA 長條圖資料
     const epaMap = {};
     let maxEpaAttempts = 0;
     studentEPA.map(d => ({
       ...d,
       epaTitle: EPA_NAMES[d.epaId] || EPA_NAMES[String(d.epaId).toUpperCase().replace('_', '-')] || d.epaId,
       numericLevel: extractEpaLevelIndex(d.level)
-    })).filter(d => d.numericLevel !== null)
+    })).filter(d => d.numericLevel !== null && d.numericLevel > 0)
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .forEach(r => {
         const title = r.epaTitle;
@@ -158,7 +186,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const epaBarData = Object.values(epaMap);
     const epaAttempts = Array.from({length: maxEpaAttempts}, (_, i) => `第${i+1}次`);
 
-    // 2. DOPS 長條圖資料 (改用整體評估分數)
+    // DOPS 長條圖資料
     const dopsMap = {};
     let maxDopsAttempts = 0;
     studentDOPS.map(d => {
@@ -181,7 +209,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     const dopsBarData = Object.values(dopsMap);
     const dopsAttempts = Array.from({length: maxDopsAttempts}, (_, i) => `第${i+1}次`);
 
-    // --- 保留折線圖時間軸 ---
+    // Mini-CEX / OSCE 折線圖時間軸處理
     const buildTimelineData = (records, itemKeyField, scoreField) => {
       const timeline = [];
       const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -206,23 +234,17 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return { chartData: timeline, lines };
     };
 
-    // 3. Mini-CEX 折線圖
     const cexWithScore = studentMiniCEX.map(d => {
       const validScores = extractValidScores(d.scores);
       return { ...d, topic: '門診病人藥品諮詢', score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null };
     }).filter(d => d.score !== null);
     const minicexData = buildTimelineData(cexWithScore, 'topic', 'score');
 
-    // 4. OSCE 折線圖
     const osceWithTopic = studentOSCE.map(d => ({ ...d, topic: '醫療人員藥品諮詢' }));
     const osceData = buildTimelineData(osceWithTopic, 'topic', 'total_score');
 
     return {
-      kpi: { avgDops, avgCex, latestOSCE, finalProgress },
-      radarData, ksaPhases,
-      epaBarData, epaAttempts,
-      dopsBarData, dopsAttempts,
-      minicexData, osceData,
+      kpi, radarData, ksaPhases, epaBarData, epaAttempts, dopsBarData, dopsAttempts, minicexData, osceData,
       hasData: studentDOPS.length || studentMiniCEX.length || studentOSCE.length || studentKSA.length || studentEPA.length
     };
   }, [dashboardData, studentEmail]);
@@ -232,23 +254,69 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in mt-4">
-      {/* 1. KPI 數據卡 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-blue-100 p-3 rounded-lg"><Activity className="w-6 h-6 text-blue-600"/></div>
-          <div><p className="text-sm text-gray-500 font-bold">DOPS 平均</p><p className="text-2xl font-black text-gray-800">{processedData.kpi.avgDops}</p></div>
+      
+      {/* ==========================================
+          1. ★ 全新設計：5格 KPI 達成率數據卡 ★
+          ========================================== */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* EPA */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-indigo-100 p-2 rounded-lg"><Activity className="w-4 h-4 text-indigo-600"/></div>
+            <p className="text-sm text-gray-600 font-bold">EPA 完成率</p>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-800">{processedData.kpi.epa.rate}<span className="text-lg text-gray-400 ml-1">%</span></p>
+            <p className="text-xs font-medium text-indigo-600 mt-1">{processedData.kpi.epa.text}</p>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-teal-100 p-3 rounded-lg"><Target className="w-6 h-6 text-teal-600"/></div>
-          <div><p className="text-sm text-gray-500 font-bold">Mini-CEX 平均</p><p className="text-2xl font-black text-gray-800">{processedData.kpi.avgCex}</p></div>
+        
+        {/* DOPS */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-blue-100 p-2 rounded-lg"><CheckSquare className="w-4 h-4 text-blue-600"/></div>
+            <p className="text-sm text-gray-600 font-bold">DOPS 完成率</p>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-800">{processedData.kpi.dops.rate}<span className="text-lg text-gray-400 ml-1">%</span></p>
+            <p className="text-xs font-medium text-blue-600 mt-1">{processedData.kpi.dops.text}</p>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-yellow-100 p-3 rounded-lg"><Award className="w-6 h-6 text-yellow-600"/></div>
-          <div><p className="text-sm text-gray-500 font-bold">最新 OSCE</p><p className="text-2xl font-black text-gray-800">{processedData.kpi.latestOSCE}</p></div>
+
+        {/* Mini-CEX */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-teal-100 p-2 rounded-lg"><Target className="w-4 h-4 text-teal-600"/></div>
+            <p className="text-sm text-gray-600 font-bold">Mini-CEX 完成率</p>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-800">{processedData.kpi.cex.rate}<span className="text-lg text-gray-400 ml-1">%</span></p>
+            <p className="text-xs font-medium text-teal-600 mt-1">{processedData.kpi.cex.text}</p>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-purple-100 p-3 rounded-lg"><TrendingUp className="w-6 h-6 text-purple-600"/></div>
-          <div><p className="text-sm text-gray-500 font-bold">完訓進度</p><p className="text-2xl font-black text-gray-800">{processedData.kpi.finalProgress}%</p></div>
+
+        {/* OSCE */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-yellow-100 p-2 rounded-lg"><ClipboardList className="w-4 h-4 text-yellow-600"/></div>
+            <p className="text-sm text-gray-600 font-bold">OSCE 完成率</p>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-800">{processedData.kpi.osce.rate}<span className="text-lg text-gray-400 ml-1">%</span></p>
+            <p className="text-xs font-medium text-yellow-700 mt-1">{processedData.kpi.osce.text}</p>
+          </div>
+        </div>
+
+        {/* 完訓進度 */}
+        <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-xl shadow-sm border border-purple-100 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-purple-100 p-2 rounded-lg"><TrendingUp className="w-4 h-4 text-purple-600"/></div>
+            <p className="text-sm text-purple-800 font-bold">護照完訓進度</p>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-purple-700">{processedData.kpi.final.rate}<span className="text-lg text-purple-400 ml-1">%</span></p>
+            <p className="text-xs font-medium text-purple-600 mt-1">{processedData.kpi.final.text}</p>
+          </div>
         </div>
       </div>
 
@@ -316,7 +384,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
           </div>
         </div>
 
-        {/* ★ [修改] DOPS 分組長條圖 (滿分改為10分) */}
+        {/* DOPS 分組長條圖 */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
             <CheckSquare className="w-5 h-5 text-blue-500"/> DOPS 各項目歷次分數 (滿分 10分)
@@ -327,7 +395,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                 <BarChart data={processedData.dopsBarData} margin={{ top: 10, right: 10, left: -20, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, angle: -35, textAnchor: 'end' }} interval={0} />
-                  {/* Y 軸改為最大到 10 */}
                   <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} tickCount={11} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} cursor={{fill: '#F3F4F6'}} />
                   <Legend wrapperStyle={{ fontSize: 11, top: -10 }} />
