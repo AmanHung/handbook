@@ -5,10 +5,8 @@ import {
 } from 'recharts';
 import { Target, TrendingUp, Award, Activity, ClipboardList, CheckSquare } from 'lucide-react';
 
-// 預設的圖表顏色庫
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#F97316', '#475569', '#84CC16', '#6366F1'];
 
-// ★★★ 擴充版：EPA 名稱對照表 (涵蓋底線與橫線命名) ★★★
 const EPA_NAMES = {
   'EPA-01': '門診處方評估', 'EPA_01': '門診處方評估', 'epa_01': '門診處方評估',
   'EPA-02': '門診處方藥品交付', 'EPA_02': '門診處方藥品交付', 'epa_02': '門診處方藥品交付',
@@ -20,7 +18,6 @@ const EPA_NAMES = {
   'EPA-08': '管制藥品調劑與管理', 'EPA_08': '管制藥品調劑與管理', 'epa_08': '管制藥品調劑與管理'
 };
 
-// ★★★ 擴充版：DOPS 名稱對照表 (涵蓋資料庫實際儲存的英文代碼) ★★★
 const DOPS_NAMES = {
   'DOPS-01': '門診處方調劑作業', 'dops_op_dispensing': '門診處方調劑作業',
   'DOPS-02': '單一劑量藥車調配', 'dops_ud_cart': '單一劑量藥車調配',
@@ -33,7 +30,6 @@ const DOPS_NAMES = {
   'DOPS-09': '中藥調劑作業', 'dops_tcm_dispensing': '中藥調劑作業', 'dops_tcm': '中藥調劑作業'
 };
 
-// EPA 等級對照表 (Index 1~7 對應圖表 Y 軸)
 const EPA_LEVEL_LABELS = ['', '2a', '2b', '3a', '3b', '3c', '4', '5'];
 
 const DashboardCharts = ({ studentEmail, dashboardData }) => {
@@ -43,7 +39,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const isMatch = (e1, e2) => String(e1).toLowerCase().trim() === String(e2).toLowerCase().trim();
 
-    // 1. 過濾學員資料
+    // 過濾資料
     const studentDOPS = (dashboardData.dops || []).filter(d => isMatch(d.email, studentEmail));
     const studentMiniCEX = (dashboardData.minicex || []).filter(d => isMatch(d.email, studentEmail));
     const studentOSCE = (dashboardData.osce || []).filter(d => isMatch(d.email, studentEmail));
@@ -56,13 +52,25 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       if (matchedKey) studentFinal = dashboardData.final[matchedKey];
     }
 
-    // --- 計算 KPI 數字 ---
+    // 智慧分數提取器
+    const extractValidScores = (obj) => {
+      let scores = [];
+      const traverse = (o) => {
+        if (typeof o === 'number' && o > 0 && o <= 9) scores.push(o);
+        else if (typeof o === 'string' && !isNaN(Number(o)) && Number(o) > 0 && Number(o) <= 9) scores.push(Number(o));
+        else if (typeof o === 'object' && o !== null) Object.values(o).forEach(traverse);
+      };
+      traverse(obj);
+      return scores;
+    };
+
     const calcAvg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
     
-    const allDopsScores = studentDOPS.flatMap(d => Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n)));
+    // 計算全域 KPI
+    const allDopsScores = studentDOPS.flatMap(d => extractValidScores(d.formData));
     const avgDops = calcAvg(allDopsScores);
 
-    const allCexScores = studentMiniCEX.flatMap(d => Object.values(d.scores || {}).filter(s => s !== 'NA').map(Number).filter(n => !isNaN(n)));
+    const allCexScores = studentMiniCEX.flatMap(d => extractValidScores(d.scores));
     const avgCex = calcAvg(allCexScores);
 
     const latestOSCE = studentOSCE.length > 0 ? studentOSCE[0].total_score : '無';
@@ -74,7 +82,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       finalProgress = items.length > 0 ? Math.min(Math.round((passedCount / 20) * 100), 100) : 0; 
     }
 
-    // --- 準備 KSA 雷達圖 (多階段疊加) ---
+    // KSA 雷達圖
     const radarData = [
       { subject: '專業知識', fullMark: 9 },
       { subject: '專業技能', fullMark: 9 },
@@ -82,7 +90,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     ];
     const ksaPhases = [];
 
-    // 依日期排序，確保 Phase 1, Phase 2 順序疊加
     const sortedKSA = [...studentKSA].sort((a, b) => new Date(a.date) - new Date(b.date));
     sortedKSA.forEach(k => {
       const phaseName = `階段 ${k.phaseId}`;
@@ -97,27 +104,38 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       radarData[2][phaseName] = parseFloat(calcAvg(aScores)) || 0;
     });
 
-    // --- 輔助函式：將紀錄轉換成折線圖的序列資料 ---
+    // 防覆蓋時間軸
     const buildTimelineData = (records, itemKeyField, scoreField) => {
-      const dateMap = {};
+      const timeline = [];
       const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
       
       sorted.forEach(r => {
-        const d = r.date.substring(5); // 只顯示 MM-DD
+        const d = r.date.substring(5); // 取 MM-DD
         const itemName = r[itemKeyField] || '綜合評估';
         const score = r[scoreField]; 
         
-        if (score !== undefined && score !== null) {
-          if (!dateMap[d]) dateMap[d] = { date: d };
-          dateMap[d][itemName] = score;
+        if (score !== undefined && score !== null && !isNaN(score)) {
+          let targetPoint = timeline.find(p => p.rawDate === r.date && p[itemName] === undefined);
+          
+          if (targetPoint) {
+            targetPoint[itemName] = score; 
+          } else {
+            const count = timeline.filter(p => p.rawDate === r.date).length;
+            const displayDate = count === 0 ? d : `${d} (${count + 1})`;
+            timeline.push({
+              date: displayDate,
+              rawDate: r.date,
+              [itemName]: score
+            });
+          }
         }
       });
 
       const lines = [...new Set(sorted.map(r => r[itemKeyField] || '綜合評估'))];
-      return { chartData: Object.values(dateMap), lines };
+      return { chartData: timeline, lines };
     };
 
-    // 1. EPA 折線圖資料
+    // 1. EPA 折線圖
     const extractEpaLevelIndex = (levelStr) => {
       if (!levelStr) return null;
       const s = String(levelStr).toLowerCase();
@@ -133,32 +151,38 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const epaWithNumLevel = studentEPA.map(d => ({
       ...d,
-      epaTitle: EPA_NAMES[d.epaId] || EPA_NAMES[String(d.epaId).toUpperCase().replace('_', '-')] || d.epaId, // 容錯處理：轉成中文名稱
+      epaTitle: EPA_NAMES[d.epaId] || EPA_NAMES[String(d.epaId).toUpperCase().replace('_', '-')] || d.epaId,
       numericLevel: extractEpaLevelIndex(d.level)
     })).filter(d => d.numericLevel !== null);
 
     const epaData = buildTimelineData(epaWithNumLevel, 'epaTitle', 'numericLevel');
 
-    // 2. DOPS 折線圖資料
+    // 2. DOPS 折線圖
     const dopsWithScore = studentDOPS.map(d => {
-      const s = Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n));
+      const validScores = extractValidScores(d.formData);
       return { 
         ...d, 
-        dopsTitle: DOPS_NAMES[d.dopsId] || d.dopsId, // 容錯處理：轉成中文名稱
-        score: parseFloat(calcAvg(s)) 
+        dopsTitle: DOPS_NAMES[d.dopsId] || DOPS_NAMES[String(d.dopsId).toLowerCase()] || d.dopsId, 
+        score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null 
       };
-    });
+    }).filter(d => d.score !== null);
+    
     const dopsData = buildTimelineData(dopsWithScore, 'dopsTitle', 'score');
 
     // 3. Mini-CEX 折線圖
     const cexWithScore = studentMiniCEX.map(d => {
-      const s = Object.values(d.scores || {}).filter(v => v !== 'NA').map(Number).filter(n => !isNaN(n));
-      return { ...d, topic: '門診病人藥品諮詢', score: parseFloat(calcAvg(s)) }; // 中文正名
-    });
+      const validScores = extractValidScores(d.scores);
+      return { 
+        ...d, 
+        topic: '門診病人藥品諮詢', 
+        score: validScores.length > 0 ? parseFloat(calcAvg(validScores)) : null 
+      };
+    }).filter(d => d.score !== null);
+    
     const minicexData = buildTimelineData(cexWithScore, 'topic', 'score');
 
     // 4. OSCE 折線圖
-    const osceWithTopic = studentOSCE.map(d => ({ ...d, topic: '醫療人員藥品諮詢' })); // 中文正名
+    const osceWithTopic = studentOSCE.map(d => ({ ...d, topic: '醫療人員藥品諮詢' }));
     const osceData = buildTimelineData(osceWithTopic, 'topic', 'total_score');
 
     return {
@@ -250,8 +274,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                     contentStyle={{ borderRadius: '8px', fontSize: '12px' }} 
                   />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: '10px' }} />
-                  
-                  {/* 及格線 (Level 4 在我們內部是 Index 6) */}
+                  {/* 及格線 (Level 4) */}
                   <ReferenceLine y={6} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(4)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
                   
                   {processedData.epaData.lines.map((line, idx) => (
@@ -277,6 +300,9 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <YAxis domain={[0, 9]} tick={{ fontSize: 12 }} tickCount={10} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: '10px' }} />
+                  {/* ★ DOPS 及格線 (8分) */}
+                  <ReferenceLine y={8} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(8分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
+
                   {processedData.dopsData.lines.map((line, idx) => (
                     <Line key={line} type="monotone" dataKey={line} stroke={CHART_COLORS[(idx+2) % CHART_COLORS.length]} strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
                   ))}
@@ -300,6 +326,9 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <YAxis domain={[0, 9]} tick={{ fontSize: 12 }} tickCount={10} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
+                  {/* ★ Mini-CEX 及格線 (4分) */}
+                  <ReferenceLine y={4} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(4分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
+
                   {processedData.minicexData.lines.map((line, idx) => (
                     <Line key={line} type="monotone" dataKey={line} stroke="#14B8A6" strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
                   ))}
@@ -323,6 +352,9 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                   <YAxis domain={[0, 75]} tick={{ fontSize: 12 }} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
+                  {/* ★ OSCE 及格線 (46分) */}
+                  <ReferenceLine y={46} stroke="#EF4444" strokeDasharray="4 4" label={{ position: 'top', value: '及格線(46分)', fill: '#EF4444', fontSize: 11, fontWeight: 'bold' }} />
+
                   {processedData.osceData.lines.map((line, idx) => (
                     <Line key={line} type="monotone" dataKey={line} stroke="#F59E0B" strokeWidth={3} connectNulls dot={{ r: 4 }} activeDot={{ r: 6 }} />
                   ))}
