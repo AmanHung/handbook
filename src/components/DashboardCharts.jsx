@@ -1,36 +1,36 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ReferenceLine
 } from 'recharts';
 import { Target, TrendingUp, Award, Activity, ClipboardList, CheckSquare } from 'lucide-react';
 
-// 預設的圖表顏色庫 (增多顏色以應付多條線)
+// 預設的圖表顏色庫
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#F97316', '#475569', '#84CC16', '#6366F1'];
 
-// EPA 名稱對照表
+// ★★★ 擴充版：EPA 名稱對照表 (涵蓋底線與橫線命名) ★★★
 const EPA_NAMES = {
-  'EPA-01': '門診處方評估',
-  'EPA-02': '門診處方藥品交付',
-  'EPA-03': '門診病人藥品諮詢',
-  'EPA-04': '藥品不良反應',
-  'EPA-05': '住院病人用藥評估',
-  'EPA-06': '藥物治療監測(TDM)評估',
-  'EPA-07': '醫療人員藥品諮詢',
-  'EPA-08': '管制藥品調劑與管理'
+  'EPA-01': '門診處方評估', 'EPA_01': '門診處方評估', 'epa_01': '門診處方評估',
+  'EPA-02': '門診處方藥品交付', 'EPA_02': '門診處方藥品交付', 'epa_02': '門診處方藥品交付',
+  'EPA-03': '門診病人藥品諮詢', 'EPA_03': '門診病人藥品諮詢', 'epa_03': '門診病人藥品諮詢',
+  'EPA-04': '藥品不良反應', 'EPA_04': '藥品不良反應', 'epa_04': '藥品不良反應',
+  'EPA-05': '住院病人用藥評估', 'EPA_05': '住院病人用藥評估', 'epa_05': '住院病人用藥評估',
+  'EPA-06': '藥物治療監測(TDM)評估', 'EPA_06': '藥物治療監測(TDM)評估', 'epa_06': '藥物治療監測(TDM)評估',
+  'EPA-07': '醫療人員藥品諮詢', 'EPA_07': '醫療人員藥品諮詢', 'epa_07': '醫療人員藥品諮詢',
+  'EPA-08': '管制藥品調劑與管理', 'EPA_08': '管制藥品調劑與管理', 'epa_08': '管制藥品調劑與管理'
 };
 
-// DOPS 名稱對照表
+// ★★★ 擴充版：DOPS 名稱對照表 (涵蓋資料庫實際儲存的英文代碼) ★★★
 const DOPS_NAMES = {
-  'DOPS-01': '門診處方調劑作業',
-  'DOPS-02': '單一劑量藥車調配',
-  'DOPS-03': '門診藥品交付作業',
-  'DOPS-04': '門診處方核對作業',
-  'DOPS-05': '門診病人藥物諮詢',
-  'DOPS-06': '醫療人員藥物諮詢',
-  'DOPS-07': '抗腫瘤藥物環境安全維護',
-  'DOPS-08': '抗腫瘤藥物安全防護裝備',
-  'DOPS-09': '中藥調劑作業'
+  'DOPS-01': '門診處方調劑作業', 'dops_op_dispensing': '門診處方調劑作業',
+  'DOPS-02': '單一劑量藥車調配', 'dops_ud_cart': '單一劑量藥車調配',
+  'DOPS-03': '門診藥品交付作業', 'dops_op_delivery': '門診藥品交付作業',
+  'DOPS-04': '門診處方核對作業', 'dops_op_check': '門診處方核對作業',
+  'DOPS-05': '門診病人藥物諮詢', 'dops_op_counseling': '門診病人藥物諮詢',
+  'DOPS-06': '醫療人員藥物諮詢', 'dops_hc_counseling': '醫療人員藥物諮詢', 'dops_prof_counseling': '醫療人員藥物諮詢', 'dops_med_counseling': '醫療人員藥物諮詢',
+  'DOPS-07': '抗腫瘤藥物環境安全維護', 'dops_chemo_env': '抗腫瘤藥物環境安全維護',
+  'DOPS-08': '抗腫瘤藥物安全防護裝備', 'dops_chemo_ppe': '抗腫瘤藥物安全防護裝備',
+  'DOPS-09': '中藥調劑作業', 'dops_tcm_dispensing': '中藥調劑作業', 'dops_tcm': '中藥調劑作業'
 };
 
 // EPA 等級對照表 (Index 1~7 對應圖表 Y 軸)
@@ -117,7 +117,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       return { chartData: Object.values(dateMap), lines };
     };
 
-    // 1. [改寫] EPA 折線圖資料
+    // 1. EPA 折線圖資料
     const extractEpaLevelIndex = (levelStr) => {
       if (!levelStr) return null;
       const s = String(levelStr).toLowerCase();
@@ -133,7 +133,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     const epaWithNumLevel = studentEPA.map(d => ({
       ...d,
-      epaTitle: EPA_NAMES[d.epaId] || d.epaId, // 替換為實際中文名稱
+      epaTitle: EPA_NAMES[d.epaId] || EPA_NAMES[String(d.epaId).toUpperCase().replace('_', '-')] || d.epaId, // 容錯處理：轉成中文名稱
       numericLevel: extractEpaLevelIndex(d.level)
     })).filter(d => d.numericLevel !== null);
 
@@ -144,7 +144,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
       const s = Object.values(d.formData || {}).map(Number).filter(n => !isNaN(n));
       return { 
         ...d, 
-        dopsTitle: DOPS_NAMES[d.dopsId] || d.dopsId, // 替換為實際中文名稱
+        dopsTitle: DOPS_NAMES[d.dopsId] || d.dopsId, // 容錯處理：轉成中文名稱
         score: parseFloat(calcAvg(s)) 
       };
     });
@@ -153,12 +153,12 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
     // 3. Mini-CEX 折線圖
     const cexWithScore = studentMiniCEX.map(d => {
       const s = Object.values(d.scores || {}).filter(v => v !== 'NA').map(Number).filter(n => !isNaN(n));
-      return { ...d, topic: '藥品諮詢演練', score: parseFloat(calcAvg(s)) };
+      return { ...d, topic: '門診病人藥品諮詢', score: parseFloat(calcAvg(s)) }; // 中文正名
     });
     const minicexData = buildTimelineData(cexWithScore, 'topic', 'score');
 
     // 4. OSCE 折線圖
-    const osceWithTopic = studentOSCE.map(d => ({ ...d, topic: 'OSCE 總分' }));
+    const osceWithTopic = studentOSCE.map(d => ({ ...d, topic: '醫療人員藥品諮詢' })); // 中文正名
     const osceData = buildTimelineData(osceWithTopic, 'topic', 'total_score');
 
     return {
@@ -239,7 +239,6 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
                 <LineChart data={processedData.epaData.chartData} margin={{ right: 20, left: -10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  {/* Y 軸客製化，將數字 1~7 轉回 2a~5 */}
                   <YAxis 
                     domain={[1, 7]} 
                     ticks={[1, 2, 3, 4, 5, 6, 7]} 
