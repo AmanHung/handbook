@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, History, ChevronRight, Plus, 
-  User, CheckCircle2, AlertCircle, Search, Loader2, Send, HelpCircle 
+  User, CheckCircle2, AlertCircle, Search, Loader2, Send, HelpCircle, Clock, Calendar // [新增] 引入 Clock, Calendar 圖示
 } from 'lucide-react';
 // 引用您提供的 EPA_Config.js
 import { EPA_CONFIG, EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
@@ -49,8 +49,6 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     setIsSubmitting(true);
     try {
       // ★★★ 關鍵修正：欄位名稱對應轉換 (Mapping) ★★★
-      // 前端 FormModal 給的是 { checklist, feedback_content, ... }
-      // 後端 GAS 預期的是 { evaluation, feedback, ... }
       const payload = {
         action: 'save_epa_record',
         student_email: studentEmail,
@@ -58,6 +56,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
         epa_id: formData.epa_id,
         teacher_name: formData.teacher_name,
         date: formData.date,
+        observation_time: formData.observation_time, // ★ [新增] 觀測時間
         level: formData.level,
         
         // 將 checklist 轉名為 evaluation 傳給後端
@@ -311,8 +310,14 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
                          Level {record.level?.replace('Level ', '') || '?'}
                       </span>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                        <User className="w-3 h-3"/> {record.teacher_name}
+                    {/* ★ [新增] 顯示觀測時間 */}
+                    <div className="text-xs text-gray-500 mt-1 flex items-center flex-wrap gap-2">
+                        <span className="flex items-center gap-1"><User className="w-3 h-3"/> {record.teacher_name}</span>
+                        {record.observation_time && (
+                          <span className="flex items-center gap-1 text-indigo-500 bg-indigo-50 px-1.5 rounded">
+                            <Clock className="w-3 h-3"/> {record.observation_time}
+                          </span>
+                        )}
                     </div>
                   </button>
                 ))
@@ -325,6 +330,16 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
             {currentRecord ? (
               <div className="space-y-8">
                 
+                {/* ★ [新增] 日期與觀測時間區塊 */}
+                <div className="flex flex-wrap gap-4 p-4 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700 font-medium">
+                  <span className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400"/> 評估日期：{currentRecord.date}</span>
+                  {currentRecord.observation_time && (
+                    <span className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-3 py-0.5 rounded-full border border-indigo-100">
+                      <Clock className="w-4 h-4 text-indigo-500"/> 觀測時間：{currentRecord.observation_time}
+                    </span>
+                  )}
+                </div>
+
                 {/* 1. 評估結果 (Level) */}
                 <section>
                   <h4 className="text-sm font-bold text-gray-900 border-l-4 border-indigo-500 pl-3 mb-4">評估結果 (Entrustment Level)</h4>
