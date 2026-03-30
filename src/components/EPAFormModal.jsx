@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Save, Calendar, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Save, Calendar, User, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
 
 const EPAFormModal = ({ epa, studentName, teacherName, onClose, onSubmit, isSubmitting }) => {
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [observationTime, setObservationTime] = useState(''); // ★ [新增] 觀測時間狀態
   const [selectedLevel, setSelectedLevel] = useState('');
   const [checklistValues, setChecklistValues] = useState({});
   const [feedback, setFeedback] = useState('');
@@ -23,6 +24,7 @@ const EPAFormModal = ({ epa, studentName, teacherName, onClose, onSubmit, isSubm
       epa_id: epa.id,
       epa_title: epa.title, // 傳給後端寄信用
       date: evalDate,
+      observation_time: observationTime, // ★ [新增] 把觀測時間打包進 formData
       level: selectedLevel,
       checklist: checklistValues,
       feedback_content: feedback,
@@ -56,24 +58,44 @@ const EPAFormModal = ({ epa, studentName, teacherName, onClose, onSubmit, isSubm
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
           
-          {/* 日期與情境 */}
+          {/* 日期、時間與情境 */}
           <section className="bg-blue-50 p-4 rounded-xl border border-blue-100">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-indigo-600" />
-                  評估日期 (可修改)
-                </label>
-                <input 
-                  type="date" 
-                  value={evalDate}
-                  onChange={(e) => setEvalDate(e.target.value)}
-                  className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-gray-700"
-                />
+              
+              <div className="space-y-4">
+                {/* 評估日期 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-indigo-600" />
+                    評估日期 (可修改)
+                  </label>
+                  <input 
+                    type="date" 
+                    value={evalDate}
+                    onChange={(e) => setEvalDate(e.target.value)}
+                    className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-gray-700"
+                  />
+                </div>
+
+                {/* ★ [新增] 觀測時間 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-indigo-600" />
+                    觀測時間 (選填)
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="例如：30 分鐘，或 14:00 - 14:30"
+                    value={observationTime}
+                    onChange={(e) => setObservationTime(e.target.value)}
+                    className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-gray-700 placeholder:font-normal"
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">情境說明限制</label>
-                <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-blue-200">
+                <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-blue-200 h-[calc(100%-28px)] overflow-y-auto">
                   {epa.description}
                 </p>
               </div>
@@ -151,7 +173,7 @@ const EPAFormModal = ({ epa, studentName, teacherName, onClose, onSubmit, isSubm
             </div>
           </section>
 
-          {/* 教師回饋 (移除滿意度) */}
+          {/* 教師回饋 */}
           <section>
              <h4 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
                 <span className="w-1.5 h-6 bg-indigo-500 rounded-full"/>
