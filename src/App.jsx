@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { 
   signInWithPopup, 
@@ -18,7 +17,8 @@ import {
   Search,
   Calendar,
   Edit,
-  Save
+  Save,
+  Users // [新增] 引入群組圖示供訪客使用
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
@@ -42,7 +42,7 @@ function App() {
   // 輔助函式：判斷是否為教職人員 (包含 老師 與 管理員)
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
 
-  // 登入處理
+  // 登入處理 (Google 正式帳號)
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider()
@@ -55,10 +55,39 @@ function App() {
     }
   }
 
+  // ★★★ [新增] 訪客登入處理 ★★★
+  const handleGuestLogin = () => {
+    // 使用 localStorage 讓訪客重新整理也不會被登出
+    localStorage.setItem('isGuestMode', 'true');
+    
+    setUser({
+      uid: 'guest_user_12345',
+      email: 'guest@pharmacy.local',
+      displayName: '訪客 (Guest)',
+      photoURL: 'https://ui-avatars.com/api/?name=Guest&background=E0E7FF&color=4F46E5&bold=true'
+    });
+    
+    setUserProfile({
+      displayName: '訪客 (Guest)',
+      role: 'guest',
+      arrivalDate: ''
+    });
+    
+    setUserRole('guest');
+    setActiveTab('lookup'); // 預設導向 SOP
+  }
+
   // 登出處理
   const handleLogout = async () => {
     try {
-      await signOut(auth)
+      // 移除訪客狀態
+      localStorage.removeItem('isGuestMode');
+      
+      // 如果不是訪客，才去呼叫 Firebase 登出
+      if (userRole !== 'guest') {
+        await signOut(auth);
+      }
+      
       setUser(null)
       setUserProfile(null)
       setUserRole('student')
@@ -68,7 +97,7 @@ function App() {
     }
   }
 
-  // 定義超級管理員 Email (請換成您自己的 Email)
+  // 定義超級管理員 Email
   const SUPER_ADMIN_EMAILS = [
     "obm0304@gmail.com", 
     "另一個管理員@gmail.com"
@@ -78,6 +107,7 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true)
+      
       if (currentUser) {
         setUser(currentUser)
         
@@ -91,10 +121,9 @@ function App() {
             const data = userSnap.data();
             finalRole = data.role || 'student';
             
-            // ★★★ 強制鎖定超級管理員 ★★★
+            // 強制鎖定超級管理員
             if (SUPER_ADMIN_EMAILS.includes(currentUser.email) && finalRole !== 'admin') {
                finalRole = 'admin';
-               // 自動修復資料庫中的權限
                await updateDoc(userRef, { role: 'admin' });
                console.log("已自動提升為超級管理員權限");
             }
@@ -110,7 +139,7 @@ function App() {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
-              role: finalRole, // 使用判定後的權限
+              role: finalRole, 
               arrivalDate: '',
               createdAt: new Date().toISOString()
             };
@@ -118,15 +147,27 @@ function App() {
             setUserProfile(newUserData);
           }
           
-          setUserRole(finalRole); // 設定最終權限狀態
+          setUserRole(finalRole);
 
         } catch (error) {
           console.error("Error fetching user data:", error)
         }
       } else {
-        setUser(null)
-        setUserProfile(null)
-        setUserRole('student')
+        // 檢查是否為「訪客模式」
+        if (localStorage.getItem('isGuestMode') === 'true') {
+          setUser({
+            uid: 'guest_user_12345',
+            email: 'guest@pharmacy.local',
+            displayName: '訪客 (Guest)',
+            photoURL: 'https://ui-avatars.com/api/?name=Guest&background=E0E7FF&color=4F46E5&bold=true'
+          });
+          setUserProfile({ displayName: '訪客 (Guest)', role: 'guest', arrivalDate: '' });
+          setUserRole('guest');
+        } else {
+          setUser(null)
+          setUserProfile(null)
+          setUserRole('student')
+        }
       }
       setLoading(false)
     })
@@ -147,7 +188,7 @@ function App() {
   // 儲存個人資料
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || userRole === 'guest') return; // 阻擋訪客存檔
 
     try {
       const userRef = doc(db, 'users', user.uid);
@@ -172,13 +213,15 @@ function App() {
   const getRoleLabel = () => {
     if (userRole === 'admin') return '教學負責人';
     if (userRole === 'teacher') return '指導藥師';
+    if (userRole === 'guest') return '訪客體驗'; // ★ 新增訪客標籤
     return 'PGY 學員';
   };
 
   // 取得身分對應的顏色
   const getRoleColorClass = () => {
-    if (userRole === 'admin') return 'text-purple-600 font-bold'; // 管理員紫色
-    if (userRole === 'teacher') return 'text-emerald-600 font-bold'; // 老師綠色
+    if (userRole === 'admin') return 'text-purple-600 font-bold'; 
+    if (userRole === 'teacher') return 'text-emerald-600 font-bold'; 
+    if (userRole === 'guest') return 'text-indigo-500 font-bold'; // ★ 新增訪客顏色
     return 'text-gray-500';
   };
 
@@ -193,6 +236,7 @@ function App() {
     )
   }
 
+  // 登入畫面
   if (!user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
@@ -205,13 +249,25 @@ function App() {
             歡迎使用新進人員訓練平台<br/>
             請登入以存取 SOP、排班表與學習護照
           </p>
-          <button
-            onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow-md"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-            使用 Google 帳號登入
-          </button>
+          
+          <div className="space-y-3">
+            <button
+              onClick={handleLogin}
+              className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow-md"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+              使用 Google 帳號登入
+            </button>
+            
+            {/* ★★★ [新增] 訪客登入按鈕 ★★★ */}
+            <button
+              onClick={handleGuestLogin}
+              className="w-full flex items-center justify-center gap-3 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 font-medium py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow-md"
+            >
+              <Users className="w-5 h-5 text-indigo-600" />
+              訪客體驗登入 (僅供瀏覽)
+            </button>
+          </div>
         </div>
         <p className="mt-8 text-sm text-gray-400">
           © {new Date().getFullYear()} Pharmacy Department Training System
@@ -238,12 +294,14 @@ function App() {
             </div>
 
             <div className="hidden md:flex items-center gap-1">
+              {/* ★★★ 電腦版導覽列控管 (動態隱藏訪客不該看的) ★★★ */}
               {[
                 { id: 'lookup', label: 'SOP 速查', icon: Search },
                 { id: 'video', label: '影音教學', icon: BookOpen },
-                { id: 'shift', label: '排班表', icon: BookOpen },
-                { id: 'passport', label: '學習護照', icon: UserIcon },
-                // 只有管理員或老師看得到後台 (但可以保留給 admin 最高權限)
+                { id: 'shift', label: '排班表', icon: Calendar },
+                // 若「不是訪客」，才顯示學習護照
+                ...(userRole !== 'guest' ? [{ id: 'passport', label: '學習護照', icon: UserIcon }] : []),
+                // 若為「教師或管理員」，才顯示後台
                 ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
@@ -289,6 +347,7 @@ function App() {
           </div>
         </div>
 
+        {/* 手機版 / 個人選單 Modal */}
         {isMenuOpen && (
           <div className="absolute right-0 top-16 w-full md:w-64 bg-white shadow-lg border-b border-gray-100 md:rounded-bl-xl z-50 animate-in slide-in-from-top-2">
             <div className="px-4 py-3 border-b border-gray-100 md:hidden">
@@ -303,11 +362,12 @@ function App() {
 
             <div className="p-2 space-y-1">
               <div className="md:hidden space-y-1 pb-2 mb-2 border-b border-gray-100">
+                {/* ★★★ 手機版導覽列控管 (動態隱藏訪客不該看的) ★★★ */}
                 {[
                     { id: 'lookup', label: 'SOP 速查' },
                     { id: 'video', label: '影音教學' },
                     { id: 'shift', label: '排班表' },
-                    { id: 'passport', label: '學習護照' },
+                    ...(userRole !== 'guest' ? [{ id: 'passport', label: '學習護照' }] : []),
                     ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理' }] : []),
                 ].map(item => (
                     <button
@@ -327,14 +387,18 @@ function App() {
                 ))}
               </div>
 
-              <button
-                onClick={handleOpenProfile}
-                className="w-full text-left px-3 py-2 text-gray-700 font-medium flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors"
-              >
-                <UserIcon className="w-4 h-4" /> 個人資料設定
-              </button>
-              
-              <div className="border-t border-gray-100 my-1"></div>
+              {/* 訪客不顯示個人資料設定 */}
+              {userRole !== 'guest' && (
+                <>
+                  <button
+                    onClick={handleOpenProfile}
+                    className="w-full text-left px-3 py-2 text-gray-700 font-medium flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors"
+                  >
+                    <UserIcon className="w-4 h-4" /> 個人資料設定
+                  </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                </>
+              )}
               
               <button
                 onClick={handleLogout}
@@ -347,7 +411,8 @@ function App() {
         )}
       </nav>
 
-      {isProfileOpen && (
+      {/* 編輯個人資料 Modal */}
+      {isProfileOpen && userRole !== 'guest' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
@@ -407,16 +472,18 @@ function App() {
         </div>
       )}
 
-      {/* 修正：手機版 px-0 (完全無邊距)，電腦版 sm:px-6 保持留白 */}
+      {/* 主畫面區域 */}
       <main className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-8">
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
         {activeTab === 'shift' && <ShiftNavigator />}
-        {activeTab === 'passport' && (
+        
+        {/* ★★★ 路由雙重鎖：即使訪客改網址或變數，也渲染不出學習護照 ★★★ */}
+        {activeTab === 'passport' && userRole !== 'guest' && (
           <PassportSection 
             user={user} 
             userRole={userRole}
-            userProfile={userProfile} // 傳遞 userProfile
+            userProfile={userProfile} 
           />
         )}
         {activeTab === 'admin' && isTeacherOrAdmin && <AdminPage user={user} />}
