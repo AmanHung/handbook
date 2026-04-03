@@ -37,8 +37,31 @@ const HighlightText = ({ text, highlight }) => {
   );
 };
 
-// ★★★ [新增] 內文圖片解析器 ★★★
-// 自動解析 Markdown 圖片語法： ![圖片說明](圖片網址)
+// ★★★ [全新] 智慧圖片解析器 (支援 Google Drive 圖片直接顯示) ★★★
+const processImageUrl = (url) => {
+  if (!url) return { isImage: false, src: '' };
+  
+  const lowerUrl = url.toLowerCase();
+  
+  // 1. 判斷是否為結尾有 .jpg, .png 等的標準圖片網址，或 Firebase 圖片
+  const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || 
+                          (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
+  
+  // 2. 判斷是否為 Google Drive 分享連結
+  // 範例：https://drive.google.com/file/d/1XYZ.../view
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
+
+  if (isStandardImage) {
+    return { isImage: true, src: url };
+  } else if (driveMatch && driveMatch[1]) {
+    // 把 Google Drive 的預覽連結，強制轉換成直接讀取圖片的連結
+    return { isImage: true, src: `https://drive.google.com/uc?export=view&id=${driveMatch[1]}` };
+  }
+
+  return { isImage: false, src: url };
+};
+
+// 內文圖片解析器 (Markdown: ![說明](網址))
 const renderContentWithImages = (text, highlight) => {
   if (!text) return null;
   
@@ -51,7 +74,9 @@ const renderContentWithImages = (text, highlight) => {
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
     }
-    parts.push({ type: 'image', alt: match[1], url: match[2] });
+    // 透過智慧解析器處理 Markdown 裡的網址
+    const imgInfo = processImageUrl(match[2]);
+    parts.push({ type: 'image', alt: match[1], url: imgInfo.isImage ? imgInfo.src : match[2] });
     lastIndex = imgRegex.lastIndex;
   }
   
@@ -81,14 +106,6 @@ const renderContentWithImages = (text, highlight) => {
       })}
     </div>
   );
-};
-
-// ★★★ [新增] 判斷網址是否為圖片 ★★★
-const isImageUrl = (url) => {
-  if (!url) return false;
-  const lowerUrl = url.toLowerCase();
-  return lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || 
-         (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
 };
 
 const QuickLookup = () => {
@@ -259,47 +276,51 @@ const QuickLookup = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
-                {filteredSops.map((sop) => (
-                  <div
-                    key={sop.id}
-                    onClick={() => {
-                      if (sop.content && sop.content.trim() !== '') {
-                        setSelectedSop(sop);
-                      } else if (sop.attachmentUrl) {
-                        if (isImageUrl(sop.attachmentUrl)) {
-                          setSelectedSop(sop); // 如果附件是圖片，也可直接打開 Modal 預覽
+                {filteredSops.map((sop) => {
+                  const imgInfo = processImageUrl(sop.attachmentUrl);
+                  
+                  return (
+                    <div
+                      key={sop.id}
+                      onClick={() => {
+                        if (sop.content && sop.content.trim() !== '') {
+                          setSelectedSop(sop);
+                        } else if (sop.attachmentUrl) {
+                          if (imgInfo.isImage) {
+                            setSelectedSop(sop); // 如果附件是圖片，也可直接打開 Modal 預覽
+                          } else {
+                            window.open(sop.attachmentUrl, '_blank');
+                          }
                         } else {
-                          window.open(sop.attachmentUrl, '_blank');
+                          alert("此 SOP 僅有標題，暫無詳細內容。");
                         }
-                      } else {
-                        alert("此 SOP 僅有標題，暫無詳細內容。");
-                      }
-                    }}
-                    className="group relative bg-white p-4 md:p-5 rounded-lg md:rounded-xl shadow-sm md:border border-gray-100 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
-                  >
-                    <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
-                      {sop.category || '未分類'}
-                    </div>
+                      }}
+                      className="group relative bg-white p-4 md:p-5 rounded-lg md:rounded-xl shadow-sm md:border border-gray-100 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
+                    >
+                      <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
+                        {sop.category || '未分類'}
+                      </div>
 
-                    <div className="mt-6 flex items-start justify-between">
-                      <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
-                        <HighlightText text={sop.title} highlight={searchTerm} />
-                      </h4>
-                      <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-orange-500">
-                        {sop.content || isImageUrl(sop.attachmentUrl) ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                      <div className="mt-6 flex items-start justify-between">
+                        <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
+                          <HighlightText text={sop.title} highlight={searchTerm} />
+                        </h4>
+                        <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-orange-500">
+                          {sop.content || imgInfo.isImage ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
+                        {sop.attachmentUrl && (
+                          <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                            {imgInfo.isImage ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} 
+                            {imgInfo.isImage ? '包含圖片' : '包含附件'}
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
-                      {sop.attachmentUrl && (
-                        <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
-                          {isImageUrl(sop.attachmentUrl) ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} 
-                          {isImageUrl(sop.attachmentUrl) ? '包含圖片' : '包含附件'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -348,22 +369,22 @@ const QuickLookup = () => {
             </div>
             
             <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
-              {/* ★ 自動解析 Markdown 圖片與文字 */}
+              {/* 自動解析 Markdown 圖片與文字 */}
               {selectedSop.content ? (
                 renderContentWithImages(selectedSop.content, searchTerm)
               ) : (
-                !isImageUrl(selectedSop.attachmentUrl) && "暫無詳細文字內容。"
+                !processImageUrl(selectedSop.attachmentUrl).isImage && "暫無詳細文字內容。"
               )}
 
-              {/* ★ 如果有附件且是圖片，直接顯示在最下方 */}
-              {selectedSop.attachmentUrl && isImageUrl(selectedSop.attachmentUrl) && (
+              {/* 如果有附件且是圖片，直接顯示在最下方 */}
+              {selectedSop.attachmentUrl && processImageUrl(selectedSop.attachmentUrl).isImage && (
                 <div className="mt-8 border-t border-gray-100 pt-6">
                   <p className="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
                     <ImageIcon className="w-4 h-4"/> 附件預覽
                   </p>
                   <img 
-                    src={selectedSop.attachmentUrl} 
-                    alt="SOP 附件圖片" 
+                    src={processImageUrl(selectedSop.attachmentUrl).src} 
+                    alt="SOP 圖片" 
                     className="w-full h-auto rounded-lg shadow-sm border border-gray-200"
                   />
                 </div>
