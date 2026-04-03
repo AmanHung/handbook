@@ -15,6 +15,30 @@ import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 // 預設常用關鍵字
 const DEFAULT_KEYWORDS = ['門診', '住院', '行政', '臨床', '管制藥', '盤點', '急診'];
 
+// ★★★ [新增] 關鍵字螢光筆小元件 ★★★
+// 自動把文字中的關鍵字替換成帶有黃色背景的 <mark> 標籤
+const HighlightText = ({ text, highlight }) => {
+  if (!highlight || !text) return <>{text}</>;
+  
+  // 避免正則表達式因為特殊符號 (如 ?, (, *, 等) 而崩潰，先進行跳脫處理
+  const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escapedHighlight})`, 'gi'));
+  
+  return (
+    <>
+      {parts.map((part, i) => 
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-300 text-yellow-900 font-bold px-1 rounded shadow-sm">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
+
 const QuickLookup = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('sop'); 
@@ -89,17 +113,14 @@ const QuickLookup = () => {
     return dynamicColors[index];
   };
 
-  // ★ 將搜尋字詞轉為小寫，方便做不分大小寫比對
   const searchLower = searchTerm.toLowerCase();
 
-  // ★ 分機搜尋：加入 toLowerCase，讓搜尋更寬鬆
   const filteredExtensions = EXTENSION_DATA.filter(item => 
     (item.area && item.area.toLowerCase().includes(searchLower)) || 
     (item.ext && item.ext.toLowerCase().includes(searchLower)) || 
     (item.note && item.note.toLowerCase().includes(searchLower))
   );
 
-  // ★ SOP 搜尋：加入 sop.content 檢查 (標題、分類、內文 全面檢索)
   const filteredSops = sops
     .filter(sop => 
       (sop.title && sop.title.toLowerCase().includes(searchLower)) || 
@@ -109,7 +130,7 @@ const QuickLookup = () => {
     .sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
   return (
-    <div className="space-y-0 sm:space-y-6"> {/* 手機版無間距 */}
+    <div className="space-y-0 sm:space-y-6"> 
       
       {/* 搜尋區塊 */}
       <div className="bg-white p-4 md:p-6 md:rounded-xl md:shadow-sm md:border border-gray-100">
@@ -206,7 +227,8 @@ const QuickLookup = () => {
 
                     <div className="mt-6 flex items-start justify-between">
                       <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
-                        {sop.title}
+                        {/* ★ 列表標題加上螢光筆效果 */}
+                        <HighlightText text={sop.title} highlight={searchTerm} />
                       </h4>
                       <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-orange-500">
                         {sop.content ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
@@ -237,9 +259,20 @@ const QuickLookup = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
                 {filteredExtensions.map((item, idx) => (
                   <div key={idx} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
-                    <span className="text-gray-500 text-xs mb-1 font-medium">{item.area}</span>
-                    <span className="text-xl font-mono font-bold text-green-700 tracking-wider">{item.ext}</span>
-                    {item.note && <span className="text-[10px] text-gray-400 mt-1 bg-gray-50 px-1 rounded inline-block mx-auto">{item.note}</span>}
+                    <span className="text-gray-500 text-xs mb-1 font-medium">
+                      {/* ★ 分機單位加上螢光筆效果 */}
+                      <HighlightText text={item.area} highlight={searchTerm} />
+                    </span>
+                    <span className="text-xl font-mono font-bold text-green-700 tracking-wider">
+                      {/* ★ 分機號碼加上螢光筆效果 */}
+                      <HighlightText text={item.ext} highlight={searchTerm} />
+                    </span>
+                    {item.note && (
+                      <span className="text-[10px] text-gray-400 mt-1 bg-gray-50 px-1 rounded inline-block mx-auto">
+                        {/* ★ 分機備註加上螢光筆效果 */}
+                        <HighlightText text={item.note} highlight={searchTerm} />
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -248,18 +281,27 @@ const QuickLookup = () => {
         )}
       </div>
 
+      {/* 開啟 SOP 內文的 Modal */}
       {selectedSop && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedSop(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-fade-in text-left" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="text-lg font-bold text-gray-800">{selectedSop.title}</h3>
+              <h3 className="text-lg font-bold text-gray-800">
+                {/* ★ 標題加上螢光筆效果 */}
+                <HighlightText text={selectedSop.title} highlight={searchTerm} />
+              </h3>
               <button onClick={() => setSelectedSop(null)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
-              {selectedSop.content || "暫無詳細文字內容。"}
+              {/* ★ 內文加上螢光筆效果 */}
+              {selectedSop.content ? (
+                <HighlightText text={selectedSop.content} highlight={searchTerm} />
+              ) : (
+                "暫無詳細文字內容。"
+              )}
             </div>
 
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
