@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase.js';
+import { db, auth } from '../firebase.js'; // ★ [新增] 引入 auth 以抓取當前使用者
 
-// 修正重點：新增接收 settings prop，並處理 attachmentUrl
 const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { quickKeywords: [], categories: [] } }) => {
   const [loading, setLoading] = useState(false);
   const [resourceType, setResourceType] = useState('sop'); 
@@ -12,16 +11,14 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
     category: '',
     content: '',
     url: '',
-    attachmentUrl: '', // 新增附件欄位
+    attachmentUrl: '', 
     keywords: [],
     description: ''
   });
 
-  // 從 props 取得設定 (不再需要自己 fetch)
   const availableKeywords = settings.quickKeywords || [];
   const availableCategories = settings.categories || [];
 
-  // 初始化或當編輯資料改變時更新表單
   useEffect(() => {
     if (editData) {
       setResourceType(editData.type || 'sop');
@@ -30,7 +27,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         category: editData.category || '',
         content: editData.content || '',
         url: editData.url || '',
-        attachmentUrl: editData.attachmentUrl || '', // 載入附件連結
+        attachmentUrl: editData.attachmentUrl || '', 
         keywords: editData.keywords || [],
         description: editData.description || ''
       });
@@ -78,17 +75,22 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         return;
       }
 
+      // ★★★ [新增] 抓取當前登入者的名稱 (若無名稱則使用 Email，再無則顯示系統管理員) ★★★
+      const currentUser = auth?.currentUser;
+      const editorName = currentUser?.displayName || currentUser?.email || '系統管理員';
+
       const docData = {
         title: formData.title,
         category: formData.category,
         keywords: formData.keywords,
         description: formData.description,
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // (原本就有的更新時間)
+        updatedBy: editorName,        // ★ [新增] 紀錄更新者名稱
       };
 
       if (resourceType === 'sop') {
         docData.content = formData.content;
-        docData.attachmentUrl = formData.attachmentUrl; // 儲存附件連結
+        docData.attachmentUrl = formData.attachmentUrl; 
       } else {
         docData.url = formData.url;
       }
@@ -99,7 +101,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         await updateDoc(doc(db, collectionName, editData.id), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 更新成功！`);
       } else {
-        docData.createdAt = serverTimestamp();
+        docData.createdAt = serverTimestamp(); // 建立時也給一個初始時間
         await addDoc(collection(db, collectionName), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 新增成功！`);
       }
