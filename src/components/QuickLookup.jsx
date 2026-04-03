@@ -288,7 +288,7 @@ const QuickLookup = () => {
       <div className="bg-white p-4 md:p-6 md:rounded-xl md:shadow-sm md:border border-gray-100">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
           <Search className="w-5 h-5 md:w-6 md:h-6 text-orange-500" />
-          關鍵字與 Wiki 共編
+          關鍵字搜尋
         </h2>
         <div className="relative mb-4">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
