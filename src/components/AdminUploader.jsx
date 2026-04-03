@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase.js'; // ★ [新增] 引入 auth 以抓取當前使用者
+import { db, auth } from '../firebase.js'; 
+import { Loader2, Upload } from 'lucide-react'; // ★ [新增] 引入圖示
+
+// ★★★ 您的 GAS 網址 ★★★
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec";
 
 const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { quickKeywords: [], categories: [] } }) => {
   const [loading, setLoading] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false); // ★ [新增] 上傳狀態
   const [resourceType, setResourceType] = useState('sop'); 
   
   const [formData, setFormData] = useState({
@@ -59,6 +64,59 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
     });
   };
 
+  // ★★★ [新增] 處理檔案直接上傳 Google Drive ★★★
+  const handleFileUpload = async (e, targetField) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 安全限制：限制 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      alert("檔案太大！為了傳輸穩定，請上傳 5MB 以下的檔案/圖片。");
+      return;
+    }
+
+    setIsUploadingFiles(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const response = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'upload_to_drive',
+            fileName: file.name,
+            mimeType: file.type,
+            base64: reader.result
+          })
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+          const driveUrl = result.url;
+          
+          if (targetField === 'attachmentUrl') {
+             // 填入附件欄位
+             setFormData(prev => ({ ...prev, attachmentUrl: driveUrl }));
+          } else if (targetField === 'content') {
+             // 依照是否為圖片，安插 Markdown 語法進內文
+             const isImg = file.type.startsWith('image/');
+             const mdText = isImg ? `\n![${file.name}](${driveUrl})\n` : `\n[下載附件：${file.name}](${driveUrl})\n`;
+             setFormData(prev => ({ ...prev, content: prev.content + mdText }));
+          }
+        } else {
+          alert("上傳失敗：" + result.message);
+        }
+      } catch (error) {
+        console.error(error);
+        alert("上傳發生錯誤，請檢查網路！");
+      } finally {
+        setIsUploadingFiles(false);
+        e.target.value = ''; // 清除 input 記錄以便重複上傳相同檔案
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -75,7 +133,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         return;
       }
 
-      // ★★★ [新增] 抓取當前登入者的名稱 (若無名稱則使用 Email，再無則顯示系統管理員) ★★★
+      // 抓取當前登入者的名稱
       const currentUser = auth?.currentUser;
       const editorName = currentUser?.displayName || currentUser?.email || '系統管理員';
 
@@ -84,8 +142,8 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         category: formData.category,
         keywords: formData.keywords,
         description: formData.description,
-        updatedAt: serverTimestamp(), // (原本就有的更新時間)
-        updatedBy: editorName,        // ★ [新增] 紀錄更新者名稱
+        updatedAt: serverTimestamp(),
+        updatedBy: editorName,
       };
 
       if (resourceType === 'sop') {
@@ -101,7 +159,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         await updateDoc(doc(db, collectionName, editData.id), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 更新成功！`);
       } else {
-        docData.createdAt = serverTimestamp(); // 建立時也給一個初始時間
+        docData.createdAt = serverTimestamp();
         await addDoc(collection(db, collectionName), docData);
         alert(`${resourceType === 'sop' ? 'SOP' : '影片'} 新增成功！`);
       }
@@ -235,26 +293,45 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
         {resourceType === 'sop' && (
           <>
             <div>
-              <label className="block text-gray-700 font-bold mb-2">SOP 內容摘要</label>
+              {/* ★ 內文加上上傳按鈕 */}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-gray-700 font-bold">
+                    SOP 內容摘要 
+                    <span className="font-normal text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full ml-2 border border-blue-100">支援 Markdown 圖片語法</span>
+                </label>
+                <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 ${isUploadingFiles ? 'bg-gray-100 text-gray-400' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                    {isUploadingFiles ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                    {isUploadingFiles ? '上傳中...' : '上傳檔案至內文'}
+                    <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'content')} disabled={isUploadingFiles}/>
+                </label>
+              </div>
               <textarea
                 name="content"
                 value={formData.content}
                 onChange={handleChange}
-                rows="5"
-                placeholder="請輸入SOP詳細步驟..."
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                rows="8"
+                placeholder="請輸入SOP詳細步驟...\n(點擊右上角按鈕即可直接上傳圖片或檔案)"
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm leading-relaxed"
               ></textarea>
             </div>
             <div>
-              <label className="block text-gray-700 font-bold mb-2">
-                SOP 附件連結 <span className="text-gray-400 font-normal text-sm">(選填)</span>
-              </label>
+              {/* ★ 附件加上上傳按鈕 */}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-gray-700 font-bold">
+                  SOP 附件連結 <span className="text-gray-400 font-normal text-sm">(選填)</span>
+                </label>
+                <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 ${isUploadingFiles ? 'bg-gray-100 text-gray-400' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}>
+                    {isUploadingFiles ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                    {isUploadingFiles ? '上傳中...' : '直接上傳附件'}
+                    <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'attachmentUrl')} disabled={isUploadingFiles}/>
+                </label>
+              </div>
               <input
                 type="url"
                 name="attachmentUrl"
                 value={formData.attachmentUrl}
                 onChange={handleChange}
-                placeholder="例如：Google Drive 連結、PDF 網址..."
+                placeholder="亦可手動貼上 Google Drive 分享連結、圖片網址、PDF 連結"
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-gray-600"
               />
             </div>
@@ -315,8 +392,8 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
 
         <button
           type="submit"
-          disabled={loading}
-          className={`w-full py-3 rounded-lg font-bold text-lg text-white shadow-lg ${
+          disabled={loading || isUploadingFiles}
+          className={`w-full py-3 rounded-lg font-bold text-lg text-white shadow-lg disabled:opacity-60 flex items-center justify-center gap-2 ${
             resourceType === 'sop' 
               ? 'bg-blue-600 hover:bg-blue-700' 
               : 'bg-purple-600 hover:bg-purple-700'
