@@ -7,7 +7,9 @@ import {
   BookOpen,
   X,
   Paperclip,
-  Image as ImageIcon
+  Image as ImageIcon,
+  User,   // ★ 新增 User 圖示
+  Clock   // ★ 新增 Clock 圖示
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
@@ -37,7 +39,7 @@ const HighlightText = ({ text, highlight }) => {
   );
 };
 
-// ★★★ [升級版] 智慧圖片解析器 (完美繞過 Google Drive 防護機制) ★★★
+// 智慧圖片解析器 (支援 Google Drive 圖片直接顯示)
 const processImageUrl = (url) => {
   if (!url) return { isImage: false, src: '' };
   
@@ -59,7 +61,7 @@ const processImageUrl = (url) => {
   if (isStandardImage) {
     return { isImage: true, src: url };
   } else if (fileId) {
-    // ★ 關鍵修正：改用 thumbnail API，並將解析度拉高到 w1200 (1200px寬)，保證清晰且不會破圖
+    // 改用 thumbnail API，並將解析度拉高到 w1200 (1200px寬)，保證清晰且不會破圖
     return { isImage: true, src: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200` };
   }
 
@@ -111,6 +113,21 @@ const renderContentWithImages = (text, highlight) => {
       })}
     </div>
   );
+};
+
+// ★★★ [新增] 時間格式轉換器 ★★★
+const formatDateTime = (timestamp) => {
+  if (!timestamp) return '';
+  try {
+    // 支援 Firebase Timestamp (有 seconds) 或是 ISO 字串
+    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+    return date.toLocaleString('zh-TW', { 
+      year: 'numeric', month: '2-digit', day: '2-digit', 
+      hour: '2-digit', minute: '2-digit', hour12: false 
+    });
+  } catch (e) {
+    return '';
+  }
 };
 
 const QuickLookup = () => {
@@ -292,7 +309,7 @@ const QuickLookup = () => {
                           setSelectedSop(sop);
                         } else if (sop.attachmentUrl) {
                           if (imgInfo.isImage) {
-                            setSelectedSop(sop); // 如果附件是圖片，也可直接打開 Modal 預覽
+                            setSelectedSop(sop); 
                           } else {
                             window.open(sop.attachmentUrl, '_blank');
                           }
@@ -315,9 +332,14 @@ const QuickLookup = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
+                      {/* ★ 在卡片上也顯示更新時間 */}
+                      <div className="mt-3 flex flex-wrap items-center justify-between text-xs text-gray-400 h-5">
+                        <span className="truncate">
+                           {sop.updatedAt && `更新於: ${formatDateTime(sop.updatedAt).split(' ')[0]}`}
+                        </span>
+                        
                         {sop.attachmentUrl && (
-                          <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                          <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100 ml-auto">
                             {imgInfo.isImage ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} 
                             {imgInfo.isImage ? '包含圖片' : '包含附件'}
                           </span>
@@ -364,24 +386,43 @@ const QuickLookup = () => {
       {selectedSop && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedSop(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-fade-in text-left" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 flex-shrink-0">
-              <h3 className="text-lg font-bold text-gray-800">
-                <HighlightText text={selectedSop.title} highlight={searchTerm} />
-              </h3>
-              <button onClick={() => setSelectedSop(null)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-start bg-gray-50 flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  <HighlightText text={selectedSop.title} highlight={searchTerm} />
+                </h3>
+                
+                {/* ★★★ [新增] 顯示更新者與更新時間 ★★★ */}
+                {(selectedSop.updatedBy || selectedSop.updatedAt || selectedSop.createdAt) && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs font-medium text-gray-500">
+                    {selectedSop.updatedBy && (
+                      <span className="flex items-center gap-1 bg-gray-200/50 px-2 py-0.5 rounded text-gray-600">
+                        <User className="w-3 h-3 text-indigo-500" />
+                        編輯者：{selectedSop.updatedBy}
+                      </span>
+                    )}
+                    {(selectedSop.updatedAt || selectedSop.createdAt) && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-orange-400" />
+                        更新時間：{formatDateTime(selectedSop.updatedAt || selectedSop.createdAt)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => setSelectedSop(null)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors mt-0.5">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
-              {/* 自動解析 Markdown 圖片與文字 */}
               {selectedSop.content ? (
                 renderContentWithImages(selectedSop.content, searchTerm)
               ) : (
                 !processImageUrl(selectedSop.attachmentUrl).isImage && "暫無詳細文字內容。"
               )}
 
-              {/* 如果有附件且是圖片，直接顯示在最下方 */}
               {selectedSop.attachmentUrl && processImageUrl(selectedSop.attachmentUrl).isImage && (
                 <div className="mt-8 border-t border-gray-100 pt-6">
                   <p className="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
