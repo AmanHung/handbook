@@ -6,7 +6,8 @@ import {
   ExternalLink,
   BookOpen,
   X,
-  Paperclip
+  Paperclip,
+  Image as ImageIcon
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
@@ -15,12 +16,9 @@ import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 // 預設常用關鍵字
 const DEFAULT_KEYWORDS = ['門診', '住院', '行政', '臨床', '管制藥', '盤點', '急診'];
 
-// ★★★ [新增] 關鍵字螢光筆小元件 ★★★
-// 自動把文字中的關鍵字替換成帶有黃色背景的 <mark> 標籤
+// 關鍵字螢光筆小元件
 const HighlightText = ({ text, highlight }) => {
   if (!highlight || !text) return <>{text}</>;
-  
-  // 避免正則表達式因為特殊符號 (如 ?, (, *, 等) 而崩潰，先進行跳脫處理
   const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const parts = text.split(new RegExp(`(${escapedHighlight})`, 'gi'));
   
@@ -37,6 +35,60 @@ const HighlightText = ({ text, highlight }) => {
       )}
     </>
   );
+};
+
+// ★★★ [新增] 內文圖片解析器 ★★★
+// 自動解析 Markdown 圖片語法： ![圖片說明](圖片網址)
+const renderContentWithImages = (text, highlight) => {
+  if (!text) return null;
+  
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = imgRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+    }
+    parts.push({ type: 'image', alt: match[1], url: match[2] });
+    lastIndex = imgRegex.lastIndex;
+  }
+  
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.substring(lastIndex) });
+  }
+
+  return (
+    <div className="space-y-4">
+      {parts.map((part, index) => {
+        if (part.type === 'text') {
+          return <span key={index}><HighlightText text={part.content} highlight={highlight} /></span>;
+        } else if (part.type === 'image') {
+          return (
+            <div key={index} className="my-6">
+              <img 
+                src={part.url} 
+                alt={part.alt} 
+                className="max-w-full h-auto rounded-lg shadow-md border border-gray-200"
+                loading="lazy"
+              />
+              {part.alt && <p className="text-sm text-gray-500 text-center mt-2">{part.alt}</p>}
+            </div>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+};
+
+// ★★★ [新增] 判斷網址是否為圖片 ★★★
+const isImageUrl = (url) => {
+  if (!url) return false;
+  const lowerUrl = url.toLowerCase();
+  return lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || 
+         (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
 };
 
 const QuickLookup = () => {
@@ -214,7 +266,11 @@ const QuickLookup = () => {
                       if (sop.content && sop.content.trim() !== '') {
                         setSelectedSop(sop);
                       } else if (sop.attachmentUrl) {
-                        window.open(sop.attachmentUrl, '_blank');
+                        if (isImageUrl(sop.attachmentUrl)) {
+                          setSelectedSop(sop); // 如果附件是圖片，也可直接打開 Modal 預覽
+                        } else {
+                          window.open(sop.attachmentUrl, '_blank');
+                        }
                       } else {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
@@ -227,18 +283,18 @@ const QuickLookup = () => {
 
                     <div className="mt-6 flex items-start justify-between">
                       <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
-                        {/* ★ 列表標題加上螢光筆效果 */}
                         <HighlightText text={sop.title} highlight={searchTerm} />
                       </h4>
                       <div className="flex-shrink-0 ml-3 text-gray-400 group-hover:text-orange-500">
-                        {sop.content ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                        {sop.content || isImageUrl(sop.attachmentUrl) ? <BookOpen className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
                       </div>
                     </div>
 
                     <div className="mt-3 flex items-center justify-end text-xs text-gray-400 h-5">
                       {sop.attachmentUrl && (
                         <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
-                          <Paperclip className="w-3 h-3" /> 包含附件
+                          {isImageUrl(sop.attachmentUrl) ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} 
+                          {isImageUrl(sop.attachmentUrl) ? '包含圖片' : '包含附件'}
                         </span>
                       )}
                     </div>
@@ -260,16 +316,13 @@ const QuickLookup = () => {
                 {filteredExtensions.map((item, idx) => (
                   <div key={idx} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
                     <span className="text-gray-500 text-xs mb-1 font-medium">
-                      {/* ★ 分機單位加上螢光筆效果 */}
                       <HighlightText text={item.area} highlight={searchTerm} />
                     </span>
                     <span className="text-xl font-mono font-bold text-green-700 tracking-wider">
-                      {/* ★ 分機號碼加上螢光筆效果 */}
                       <HighlightText text={item.ext} highlight={searchTerm} />
                     </span>
                     {item.note && (
                       <span className="text-[10px] text-gray-400 mt-1 bg-gray-50 px-1 rounded inline-block mx-auto">
-                        {/* ★ 分機備註加上螢光筆效果 */}
                         <HighlightText text={item.note} highlight={searchTerm} />
                       </span>
                     )}
@@ -285,9 +338,8 @@ const QuickLookup = () => {
       {selectedSop && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedSop(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-fade-in text-left" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 flex-shrink-0">
               <h3 className="text-lg font-bold text-gray-800">
-                {/* ★ 標題加上螢光筆效果 */}
                 <HighlightText text={selectedSop.title} highlight={searchTerm} />
               </h3>
               <button onClick={() => setSelectedSop(null)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors">
@@ -296,15 +348,29 @@ const QuickLookup = () => {
             </div>
             
             <div className="p-6 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
-              {/* ★ 內文加上螢光筆效果 */}
+              {/* ★ 自動解析 Markdown 圖片與文字 */}
               {selectedSop.content ? (
-                <HighlightText text={selectedSop.content} highlight={searchTerm} />
+                renderContentWithImages(selectedSop.content, searchTerm)
               ) : (
-                "暫無詳細文字內容。"
+                !isImageUrl(selectedSop.attachmentUrl) && "暫無詳細文字內容。"
+              )}
+
+              {/* ★ 如果有附件且是圖片，直接顯示在最下方 */}
+              {selectedSop.attachmentUrl && isImageUrl(selectedSop.attachmentUrl) && (
+                <div className="mt-8 border-t border-gray-100 pt-6">
+                  <p className="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4"/> 附件預覽
+                  </p>
+                  <img 
+                    src={selectedSop.attachmentUrl} 
+                    alt="SOP 附件圖片" 
+                    className="w-full h-auto rounded-lg shadow-sm border border-gray-200"
+                  />
+                </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center flex-shrink-0">
                 <span className={`text-xs px-2 py-1 rounded ${getCategoryStyle(selectedSop.category)}`}>
                     {selectedSop.category}
                 </span>
@@ -312,7 +378,7 @@ const QuickLookup = () => {
                 <div className="flex gap-2">
                     {selectedSop.attachmentUrl && (
                         <a href={selectedSop.attachmentUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-sm hover:bg-orange-100 transition-colors flex items-center gap-1 font-medium">
-                            <ExternalLink className="w-4 h-4" /> 下載/開啟附件
+                            <ExternalLink className="w-4 h-4" /> 下載/開啟原檔
                         </a>
                     )}
                     <button onClick={() => setSelectedSop(null)} className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition-colors">
