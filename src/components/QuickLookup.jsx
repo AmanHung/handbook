@@ -89,18 +89,29 @@ const QuickLookup = () => {
     return dynamicColors[index];
   };
 
+  // ★ 將搜尋字詞轉為小寫，方便做不分大小寫比對
+  const searchLower = searchTerm.toLowerCase();
+
+  // ★ 分機搜尋：加入 toLowerCase，讓搜尋更寬鬆
   const filteredExtensions = EXTENSION_DATA.filter(item => 
-    item.area.includes(searchTerm) || item.ext.includes(searchTerm) || item.note.includes(searchTerm)
+    (item.area && item.area.toLowerCase().includes(searchLower)) || 
+    (item.ext && item.ext.toLowerCase().includes(searchLower)) || 
+    (item.note && item.note.toLowerCase().includes(searchLower))
   );
 
+  // ★ SOP 搜尋：加入 sop.content 檢查 (標題、分類、內文 全面檢索)
   const filteredSops = sops
-    .filter(sop => sop.title?.toLowerCase().includes(searchTerm.toLowerCase()) || sop.category?.includes(searchTerm))
+    .filter(sop => 
+      (sop.title && sop.title.toLowerCase().includes(searchLower)) || 
+      (sop.category && sop.category.toLowerCase().includes(searchLower)) ||
+      (sop.content && sop.content.toLowerCase().includes(searchLower))
+    )
     .sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
   return (
     <div className="space-y-0 sm:space-y-6"> {/* 手機版無間距 */}
       
-      {/* 修正：手機版無圓角無邊框，p-4 */}
+      {/* 搜尋區塊 */}
       <div className="bg-white p-4 md:p-6 md:rounded-xl md:shadow-sm md:border border-gray-100">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
           <Search className="w-5 h-5 md:w-6 md:h-6 text-orange-500" />
@@ -110,7 +121,7 @@ const QuickLookup = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="請輸入關鍵字：分機、SOP 名稱..."
+            placeholder="請輸入關鍵字：內文、分機、SOP 名稱..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-base md:text-lg shadow-inner bg-gray-50 md:bg-white"
@@ -174,7 +185,6 @@ const QuickLookup = () => {
                 無符合文件
               </div>
             ) : (
-              // 修正：手機版 gap-2
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
                 {filteredSops.map((sop) => (
                   <div
@@ -188,7 +198,6 @@ const QuickLookup = () => {
                         alert("此 SOP 僅有標題，暫無詳細內容。");
                       }
                     }}
-                    // 修正：手機版無邊框，陰影更小
                     className="group relative bg-white p-4 md:p-5 rounded-lg md:rounded-xl shadow-sm md:border border-gray-100 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left"
                   >
                     <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
