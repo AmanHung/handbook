@@ -37,7 +37,7 @@ const HighlightText = ({ text, highlight }) => {
   );
 };
 
-// ★★★ [全新] 智慧圖片解析器 (支援 Google Drive 圖片直接顯示) ★★★
+// ★★★ [升級版] 智慧圖片解析器 (完美繞過 Google Drive 防護機制) ★★★
 const processImageUrl = (url) => {
   if (!url) return { isImage: false, src: '' };
   
@@ -47,15 +47,20 @@ const processImageUrl = (url) => {
   const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || 
                           (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
   
-  // 2. 判斷是否為 Google Drive 分享連結
-  // 範例：https://drive.google.com/file/d/1XYZ.../view
-  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
+  // 2. 判斷是否為各種格式的 Google Drive 連結
+  const driveMatch1 = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/); // /file/d/ID/view
+  const driveMatch2 = url.match(/drive\.google\.com\/open\?id=([^&]+)/);   // /open?id=ID
+  const driveMatch3 = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);   // /uc?id=ID
+  
+  const fileId = (driveMatch1 && driveMatch1[1]) || 
+                 (driveMatch2 && driveMatch2[1]) || 
+                 (driveMatch3 && driveMatch3[1]);
 
   if (isStandardImage) {
     return { isImage: true, src: url };
-  } else if (driveMatch && driveMatch[1]) {
-    // 把 Google Drive 的預覽連結，強制轉換成直接讀取圖片的連結
-    return { isImage: true, src: `https://drive.google.com/uc?export=view&id=${driveMatch[1]}` };
+  } else if (fileId) {
+    // ★ 關鍵修正：改用 thumbnail API，並將解析度拉高到 w1200 (1200px寬)，保證清晰且不會破圖
+    return { isImage: true, src: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200` };
   }
 
   return { isImage: false, src: url };
