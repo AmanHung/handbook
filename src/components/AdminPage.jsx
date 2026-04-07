@@ -297,4 +297,230 @@ const AdminPage = ({ user }) => {
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
                 <h3 className="font-bold text-purple-800 text-sm md:text-base flex items-center gap-2"><ExternalLink className="w-4 h-4"/> 教學影片 ({videos.length})</h3>
                </div>
-               <div className="
+               <div className="overflow-x-auto max-h-96">
+                 <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
+                   <thead className="bg-gray-50 sticky top-0">
+                     <tr><th className="px-4 md:px-6 py-3">標題</th><th className="px-4 md:px-6 py-3">分類</th><th className="px-4 md:px-6 py-3 text-right">操作</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {videos.map(v => (
+                       <tr key={v.id} className="hover:bg-gray-50">
+                         <td className="px-4 md:px-6 py-4">{v.title}</td>
+                         <td className="px-4 md:px-6 py-4"><span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{v.category}</span></td>
+                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                           <button onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
+                           <button onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-4 md:space-y-8 animate-in fade-in mx-4 md:mx-0">
+            <div className="grid md:grid-cols-2 gap-4 md:gap-8">
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-100">
+                <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">🏷️ 常用關鍵字</h3>
+                <div className="flex gap-2 mb-6">
+                  <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="輸入新關鍵字..." className="flex-1 px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"/>
+                  <button onClick={() => { updateSettingArray('quickKeywords', 'add', newKeyword); setNewKeyword(''); }} className="bg-teal-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap hover:bg-teal-700">新增</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {settings.quickKeywords?.map((kw, idx) => (
+                    <span key={idx} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs md:text-sm flex items-center border border-gray-200">
+                      {kw}<button onClick={() => updateSettingArray('quickKeywords', 'remove', kw)} className="ml-2 text-gray-400 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-100">
+                <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4">📂 分類標籤</h3>
+                <div className="flex gap-2 mb-6">
+                  <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="輸入新分類..." className="flex-1 px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <button onClick={() => { updateSettingArray('categories', 'add', newCategory); setNewCategory(''); }} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap hover:bg-blue-700">新增</button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {settings.categories?.map((cat, idx) => (
+                    <div key={idx} className="flex justify-between bg-blue-50 px-3 py-2 rounded-lg text-sm border border-blue-100">
+                      <span className="text-blue-800 font-medium">{cat}</span>
+                      <button onClick={() => updateSettingArray('categories', 'remove', cat)} className="text-red-400 hover:text-red-600">刪除</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 md:p-6 md:rounded-lg shadow-sm border border-gray-200">
+              <h3 className="text-base md:text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" /> 人員資料與權限管理
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap md:whitespace-normal">
+                  <thead className="bg-gray-50 text-gray-600 uppercase border-b border-gray-100">
+                    <tr>
+                      <th className="px-4 md:px-6 py-3">使用者</th>
+                      <th className="px-4 md:px-6 py-3">到職日期</th>
+                      <th className="px-4 md:px-6 py-3">身分權限</th>
+                      <th className="px-4 md:px-6 py-3 text-right">管理</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {usersList.map((u) => {
+                      const isTeacher = u.role === 'teacher';
+                      const isMember = u.role === 'member'; // ★ [新增] 判斷是否為一般成員
+                      const isSuperAdmin = u.role === 'admin' || SUPER_ADMIN_EMAILS.includes(u.email);
+                      
+                      const isSelf = u.email === user?.email;
+                      const disableDelete = isSelf || isSuperAdmin;
+                      
+                      return (
+                        <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/30' : ''}`}>
+                          <td className="px-4 md:px-6 py-4">
+                            <div className="flex items-center gap-2 font-medium text-gray-900">
+                              <img src={u.photoURL || 'https://via.placeholder.com/32'} alt="" className="w-6 h-6 rounded-full" />
+                              {u.displayName || '未命名'}
+                              {isSuperAdmin && <Crown className="w-3 h-3 text-amber-500" />}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">{u.email}</div>
+                          </td>
+                          <td className="px-4 md:px-6 py-4 text-gray-600 font-mono">
+                            {u.arrivalDate || '-'}
+                          </td>
+                          <td className="px-4 md:px-6 py-4">
+                            {isSuperAdmin ? (
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-bold border border-purple-200">
+                                系統管理員
+                              </span>
+                            ) : isTeacher ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-bold border border-emerald-200">
+                                指導藥師
+                              </span>
+                            ) : isMember ? (
+                              // ★ [新增] 一般成員顯示標籤
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-bold border border-blue-200">
+                                一般成員
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs border border-gray-200 font-bold">
+                                PGY 學員
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 md:px-6 py-4">
+                             <div className="flex justify-end gap-2">
+                               <button 
+                                 onClick={() => openEditUser(u)}
+                                 className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold border border-indigo-200 flex items-center gap-1 shadow-sm"
+                               >
+                                 <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
+                               </button>
+                               <button 
+                                 onClick={() => handleDeleteUser(u)}
+                                 disabled={disableDelete}
+                                 title={isSelf ? '安全限制：無法刪除自己' : isSuperAdmin ? '安全限制：無法刪除超級管理員' : '徹底刪除此用戶'}
+                                 className={`px-3 py-1.5 rounded-md text-xs font-bold border flex items-center gap-1 shadow-sm transition-colors ${
+                                   disableDelete 
+                                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' 
+                                     : 'bg-white hover:bg-red-50 text-red-600 border-red-200'
+                                 }`}
+                               >
+                                 <Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">刪除</span>
+                               </button>
+                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {editingUser && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingUser(null)}>
+           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+               <h3 className="text-lg font-bold text-gray-800">編輯用戶資料</h3>
+               <button onClick={() => setEditingUser(null)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+             </div>
+             <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">Email (唯讀)</label>
+                 <input type="text" value={editingUser.email} disabled className="w-full px-4 py-2 border bg-gray-100 rounded-lg text-gray-500" />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">姓名</label>
+                 <input 
+                   type="text" 
+                   value={userForm.displayName} 
+                   onChange={e => setUserForm({...userForm, displayName: e.target.value})}
+                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                 />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
+                 <input 
+                   type="date" 
+                   value={userForm.arrivalDate} 
+                   onChange={e => setUserForm({...userForm, arrivalDate: e.target.value})}
+                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                 />
+               </div>
+               <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-2">系統身分</label>
+                 {/* ★ [修改] 加入一般成員按鈕選項，改為網格排列 */}
+                 <div className="grid grid-cols-2 gap-2">
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'student'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                   >
+                     PGY 學員
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'member'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'member' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-blue-600 border-gray-200 hover:bg-gray-50'}`}
+                   >
+                     一般成員
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'teacher'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'teacher' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-gray-200 hover:bg-gray-50'}`}
+                   >
+                     指導藥師
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={() => setUserForm({...userForm, role: 'admin'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'admin' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-gray-200 hover:bg-gray-50'}`}
+                   >
+                     管理員
+                   </button>
+                 </div>
+                 {SUPER_ADMIN_EMAILS.includes(editingUser.email) && (
+                   <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號無法降級</p>
+                 )}
+               </div>
+               <div className="pt-4 flex gap-3">
+                 <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200">取消</button>
+                 <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-md">儲存變更</button>
+               </div>
+             </form>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminPage;
