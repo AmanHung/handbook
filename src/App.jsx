@@ -18,7 +18,7 @@ import {
   Calendar,
   Edit,
   Save,
-  Users // [新增] 引入群組圖示供訪客使用
+  Users 
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
@@ -35,14 +35,11 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // 個人資料編輯 Modal 狀態
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [editForm, setEditForm] = useState({ displayName: '', arrivalDate: '' })
 
-  // 輔助函式：判斷是否為教職人員 (包含 老師 與 管理員)
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
 
-  // 登入處理 (Google 正式帳號)
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider()
@@ -55,9 +52,7 @@ function App() {
     }
   }
 
-  // ★★★ [新增] 訪客登入處理 ★★★
   const handleGuestLogin = () => {
-    // 使用 localStorage 讓訪客重新整理也不會被登出
     localStorage.setItem('isGuestMode', 'true');
     
     setUser({
@@ -74,20 +69,15 @@ function App() {
     });
     
     setUserRole('guest');
-    setActiveTab('lookup'); // 預設導向 SOP
+    setActiveTab('lookup'); 
   }
 
-  // 登出處理
   const handleLogout = async () => {
     try {
-      // 移除訪客狀態
       localStorage.removeItem('isGuestMode');
-      
-      // 如果不是訪客，才去呼叫 Firebase 登出
       if (userRole !== 'guest') {
         await signOut(auth);
       }
-      
       setUser(null)
       setUserProfile(null)
       setUserRole('student')
@@ -97,13 +87,11 @@ function App() {
     }
   }
 
-  // 定義超級管理員 Email
   const SUPER_ADMIN_EMAILS = [
     "obm0304@gmail.com", 
     "另一個管理員@gmail.com"
   ];
 
-  // 監聽登入狀態並同步使用者資料
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true)
@@ -115,13 +103,12 @@ function App() {
         try {
           const userSnap = await getDoc(userRef)
           
-          let finalRole = 'student'; // 預設
+          let finalRole = 'student'; 
 
           if (userSnap.exists()) {
             const data = userSnap.data();
             finalRole = data.role || 'student';
             
-            // 強制鎖定超級管理員
             if (SUPER_ADMIN_EMAILS.includes(currentUser.email) && finalRole !== 'admin') {
                finalRole = 'admin';
                await updateDoc(userRef, { role: 'admin' });
@@ -130,7 +117,6 @@ function App() {
 
             setUserProfile(data);
           } else {
-            // 新使用者註冊
             if (SUPER_ADMIN_EMAILS.includes(currentUser.email)) {
                finalRole = 'admin';
             }
@@ -153,7 +139,6 @@ function App() {
           console.error("Error fetching user data:", error)
         }
       } else {
-        // 檢查是否為「訪客模式」
         if (localStorage.getItem('isGuestMode') === 'true') {
           setUser({
             uid: 'guest_user_12345',
@@ -175,7 +160,6 @@ function App() {
     return () => unsubscribe()
   }, [])
 
-  // 開啟編輯視窗
   const handleOpenProfile = () => {
     setEditForm({
       displayName: userProfile?.displayName || user?.displayName || '',
@@ -185,10 +169,9 @@ function App() {
     setIsMenuOpen(false);
   }
 
-  // 儲存個人資料
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    if (!user || userRole === 'guest') return; // 阻擋訪客存檔
+    if (!user || userRole === 'guest') return; 
 
     try {
       const userRef = doc(db, 'users', user.uid);
@@ -209,19 +192,21 @@ function App() {
     }
   }
 
-  // 取得顯示的身分名稱
+  // ★ 取得顯示的身分名稱
   const getRoleLabel = () => {
     if (userRole === 'admin') return '教學負責人';
     if (userRole === 'teacher') return '指導藥師';
-    if (userRole === 'guest') return '訪客體驗'; // ★ 新增訪客標籤
+    if (userRole === 'member') return '一般成員'; // [新增] 一般成員
+    if (userRole === 'guest') return '訪客體驗'; 
     return 'PGY 學員';
   };
 
-  // 取得身分對應的顏色
+  // ★ 取得身分對應的顏色
   const getRoleColorClass = () => {
     if (userRole === 'admin') return 'text-purple-600 font-bold'; 
     if (userRole === 'teacher') return 'text-emerald-600 font-bold'; 
-    if (userRole === 'guest') return 'text-indigo-500 font-bold'; // ★ 新增訪客顏色
+    if (userRole === 'member') return 'text-blue-600 font-bold'; // [新增] 一般成員
+    if (userRole === 'guest') return 'text-indigo-500 font-bold'; 
     return 'text-gray-500';
   };
 
@@ -236,7 +221,6 @@ function App() {
     )
   }
 
-  // 登入畫面
   if (!user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
@@ -259,7 +243,6 @@ function App() {
               使用 Google 帳號登入
             </button>
             
-            {/* ★★★ [新增] 訪客登入按鈕 ★★★ */}
             <button
               onClick={handleGuestLogin}
               className="w-full flex items-center justify-center gap-3 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 font-medium py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow-md"
@@ -294,14 +277,12 @@ function App() {
             </div>
 
             <div className="hidden md:flex items-center gap-1">
-              {/* ★★★ 電腦版導覽列控管 (動態隱藏訪客不該看的) ★★★ */}
               {[
                 { id: 'lookup', label: 'SOP 速查', icon: Search },
                 { id: 'video', label: '影音教學', icon: BookOpen },
                 { id: 'shift', label: '排班表', icon: Calendar },
-                // 若「不是訪客」，才顯示學習護照
-                ...(userRole !== 'guest' ? [{ id: 'passport', label: '學習護照', icon: UserIcon }] : []),
-                // 若為「教師或管理員」，才顯示後台
+                // ★ [修改] 若不是訪客，且不是「一般成員」，才顯示學習護照
+                ...(userRole !== 'guest' && userRole !== 'member' ? [{ id: 'passport', label: '學習護照', icon: UserIcon }] : []),
                 ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
               ].map(item => (
                 <button
@@ -347,7 +328,6 @@ function App() {
           </div>
         </div>
 
-        {/* 手機版 / 個人選單 Modal */}
         {isMenuOpen && (
           <div className="absolute right-0 top-16 w-full md:w-64 bg-white shadow-lg border-b border-gray-100 md:rounded-bl-xl z-50 animate-in slide-in-from-top-2">
             <div className="px-4 py-3 border-b border-gray-100 md:hidden">
@@ -362,12 +342,12 @@ function App() {
 
             <div className="p-2 space-y-1">
               <div className="md:hidden space-y-1 pb-2 mb-2 border-b border-gray-100">
-                {/* ★★★ 手機版導覽列控管 (動態隱藏訪客不該看的) ★★★ */}
                 {[
                     { id: 'lookup', label: 'SOP 速查' },
                     { id: 'video', label: '影音教學' },
                     { id: 'shift', label: '排班表' },
-                    ...(userRole !== 'guest' ? [{ id: 'passport', label: '學習護照' }] : []),
+                    // ★ [修改] 手機版也加入排除一般成員的邏輯
+                    ...(userRole !== 'guest' && userRole !== 'member' ? [{ id: 'passport', label: '學習護照' }] : []),
                     ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理' }] : []),
                 ].map(item => (
                     <button
@@ -387,7 +367,6 @@ function App() {
                 ))}
               </div>
 
-              {/* 訪客不顯示個人資料設定 */}
               {userRole !== 'guest' && (
                 <>
                   <button
@@ -411,7 +390,6 @@ function App() {
         )}
       </nav>
 
-      {/* 編輯個人資料 Modal */}
       {isProfileOpen && userRole !== 'guest' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -472,14 +450,13 @@ function App() {
         </div>
       )}
 
-      {/* 主畫面區域 */}
       <main className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-8">
         {activeTab === 'lookup' && <QuickLookup />}
         {activeTab === 'video' && <VideoGallery />}
         {activeTab === 'shift' && <ShiftNavigator />}
         
-        {/* ★★★ 路由雙重鎖：即使訪客改網址或變數，也渲染不出學習護照 ★★★ */}
-        {activeTab === 'passport' && userRole !== 'guest' && (
+        {/* ★ [修改] 路由層保護：防止一般成員與訪客渲染學習護照元件 */}
+        {activeTab === 'passport' && userRole !== 'guest' && userRole !== 'member' && (
           <PassportSection 
             user={user} 
             userRole={userRole}
