@@ -8,49 +8,42 @@ import {
   arrayRemove, 
   deleteDoc,
   setDoc,
-  getDocs, // [新] 用於一次性抓取使用者清單給儀表板
+  getDocs, 
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
-import DashboardCharts from './DashboardCharts.jsx'; // [新] 引入圖表元件
+import DashboardCharts from './DashboardCharts.jsx'; 
 import { 
   Paperclip, ExternalLink, Users, Shield, ShieldAlert, Crown, 
-  Edit, Calendar, Save, X, BarChart3, Search, Loader2 
+  Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2 // ★ 新增 Trash2 圖示
 } from 'lucide-react';
 
 // --- 設定超級管理員 Email ---
 const SUPER_ADMIN_EMAILS = [
-  'amanhung0419@gmail.com', 
-  'admin@example.com'
+  'obm0304@gmail.com',
 ];
 
 // ★★★ 請替換成您的 GAS 網址 ★★★
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
 const AdminPage = ({ user }) => {
-  // 導航狀態：'dashboard' | 'resources' | 'settings' | 'users'
   const [activeTab, setActiveTab] = useState('dashboard'); 
   
-  // 資料狀態
   const [sops, setSops] = useState([]);
   const [videos, setVideos] = useState([]);
   const [usersList, setUsersList] = useState([]); 
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
-  // 錯誤與編輯狀態
   const [error, setError] = useState(null);
-  const [editingItem, setEditingItem] = useState(null); // SOP/Video 編輯
+  const [editingItem, setEditingItem] = useState(null); 
   
-  // 用戶編輯狀態
-  const [editingUser, setEditingUser] = useState(null); // User 編輯
+  const [editingUser, setEditingUser] = useState(null); 
   const [userForm, setUserForm] = useState({ displayName: '', arrivalDate: '', role: 'student' });
 
-  // 輸入狀態 (用於設定頁面)
   const [newKeyword, setNewKeyword] = useState('');
   const [newCategory, setNewCategory] = useState('');
 
-  // --- 儀表板專用狀態 ---
   const [dashboardData, setDashboardData] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState('');
@@ -92,7 +85,6 @@ const AdminPage = ({ user }) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsersList(list);
       
-      // 如果儀表板還沒選定學生，預設選第一個學生
       const students = list.filter(u => u.role === 'student');
       if (students.length > 0 && !selectedStudentEmail) {
         setSelectedStudentEmail(students[0].email);
@@ -101,7 +93,7 @@ const AdminPage = ({ user }) => {
     return () => unsubscribe();
   }, [selectedStudentEmail]);
 
-  // 5. [新] 讀取儀表板聚合資料 (從 GAS 抓全部資料)
+  // 5. 讀取儀表板聚合資料
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoadingDashboard(true);
@@ -118,7 +110,7 @@ const AdminPage = ({ user }) => {
     fetchDashboardData();
   }, []);
 
-  // 處理資源刪除/編輯 (SOP/Video)
+  // 處理資源刪除/編輯
   const handleDeleteResource = async (collectionName, id) => {
     if (window.confirm('確定要刪除此項目嗎？')) {
       try {
@@ -149,7 +141,6 @@ const AdminPage = ({ user }) => {
 
   // --- 用戶管理功能 ---
 
-  // 開啟編輯用戶 Modal
   const openEditUser = (u) => {
     setEditingUser(u);
     setUserForm({
@@ -159,12 +150,10 @@ const AdminPage = ({ user }) => {
     });
   };
 
-  // 儲存用戶資料
   const handleSaveUser = async (e) => {
     e.preventDefault();
     if (!editingUser) return;
     
-    // 超級管理員保護
     if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'admin') {
        alert("超級管理員必須保留最高權限");
        return;
@@ -184,7 +173,29 @@ const AdminPage = ({ user }) => {
     }
   };
 
-  // 過濾學生選單
+  // ★★★ [新增] 刪除用戶功能 ★★★
+  const handleDeleteUser = async (u) => {
+    // 1. 防護：不能刪除自己
+    if (u.email === user?.email) {
+      return alert("安全限制：您無法刪除自己的帳號！");
+    }
+    // 2. 防護：不能刪除超級管理員
+    if (SUPER_ADMIN_EMAILS.includes(u.email)) {
+      return alert("安全限制：無法刪除系統超級管理員！");
+    }
+    
+    // 3. 防呆確認
+    if (window.confirm(`⚠️ 警告：確定要徹底刪除用戶「${u.displayName || u.email}」嗎？\n此動作將從資料庫永久移除該帳號且無法復原！`)) {
+      try {
+        await deleteDoc(doc(db, 'users', u.id));
+        alert("✅ 用戶已成功刪除！");
+      } catch (error) {
+        console.error(error);
+        alert("❌ 刪除失敗：" + error.message);
+      }
+    }
+  };
+
   const studentsOnly = usersList.filter(u => u.role === 'student');
 
   return (
@@ -225,7 +236,7 @@ const AdminPage = ({ user }) => {
 
         {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold mx-4 md:mx-0">{error}</div>}
 
-        {/* TAB 0: 學習成效儀表板 [新功能] */}
+        {/* TAB 0: 學習成效儀表板 */}
         {activeTab === 'dashboard' && (
           <div className="animate-in fade-in space-y-6 mx-4 md:mx-0">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
@@ -236,7 +247,6 @@ const AdminPage = ({ user }) => {
                 <p className="text-sm text-indigo-700 mt-1">選取學員以檢視各項臨床評估的成長軌跡與雷達圖</p>
               </div>
               
-              {/* 學員選單 */}
               <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm w-full sm:w-auto">
                 <Users className="w-4 h-4 text-indigo-500" />
                 <select 
@@ -276,7 +286,6 @@ const AdminPage = ({ user }) => {
               settings={settings}
             />
             
-            {/* SOP List */}
             <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
                 <h3 className="font-bold text-blue-800 text-sm md:text-base flex items-center gap-2"><Paperclip className="w-4 h-4"/> SOP 文件 ({sops.length})</h3>
@@ -303,7 +312,6 @@ const AdminPage = ({ user }) => {
                </div>
             </div>
             
-            {/* Video List */}
             <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-purple-50 flex justify-between items-center">
                 <h3 className="font-bold text-purple-800 text-sm md:text-base flex items-center gap-2"><ExternalLink className="w-4 h-4"/> 教學影片 ({videos.length})</h3>
@@ -388,6 +396,9 @@ const AdminPage = ({ user }) => {
                     {usersList.map((u) => {
                       const isTeacher = u.role === 'teacher';
                       const isSuperAdmin = u.role === 'admin' || SUPER_ADMIN_EMAILS.includes(u.email);
+                      // 判斷是否為不能刪除的身分
+                      const isSelf = u.email === user?.email;
+                      const disableDelete = isSelf || isSuperAdmin;
                       
                       return (
                         <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${isSuperAdmin ? 'bg-indigo-50/30' : ''}`}>
@@ -417,13 +428,28 @@ const AdminPage = ({ user }) => {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 md:px-6 py-4 text-right">
-                             <button 
-                               onClick={() => openEditUser(u)}
-                               className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold border border-indigo-200 flex items-center gap-1 ml-auto shadow-sm"
-                             >
-                               <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
-                             </button>
+                          <td className="px-4 md:px-6 py-4">
+                             <div className="flex justify-end gap-2">
+                               <button 
+                                 onClick={() => openEditUser(u)}
+                                 className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold border border-indigo-200 flex items-center gap-1 shadow-sm"
+                               >
+                                 <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
+                               </button>
+                               {/* ★ 新增刪除按鈕 */}
+                               <button 
+                                 onClick={() => handleDeleteUser(u)}
+                                 disabled={disableDelete}
+                                 title={isSelf ? '安全限制：無法刪除自己' : isSuperAdmin ? '安全限制：無法刪除超級管理員' : '徹底刪除此用戶'}
+                                 className={`px-3 py-1.5 rounded-md text-xs font-bold border flex items-center gap-1 shadow-sm transition-colors ${
+                                   disableDelete 
+                                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' 
+                                     : 'bg-white hover:bg-red-50 text-red-600 border-red-200'
+                                 }`}
+                               >
+                                 <Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">刪除</span>
+                               </button>
+                             </div>
                           </td>
                         </tr>
                       );
