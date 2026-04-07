@@ -21,7 +21,6 @@ const COLOR_MAP = {
 };
 
 export default function ShiftNavigator() {
-  // --- State 定義 ---
   const [currentTime, setCurrentTime] = useState(new Date());
   const [expandedNoticeId, setExpandedNoticeId] = useState(null);
 
@@ -32,17 +31,15 @@ export default function ShiftNavigator() {
 
   // Firebase 狀態與 Wiki 共編相關 State
   const [dbData, setDbData] = useState(null);
-  const [editMode, setEditMode] = useState(null); // { type: 'shift'|'holiday'|'notice', key: string }
+  const [editMode, setEditMode] = useState(null); 
   const [editForm, setEditForm] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Effect: 每分鐘更新一次時間 ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // --- Effect: 監聽 Firebase 排班資料 ---
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'site_settings', 'shift_data_v1'), (docSnap) => {
       if (docSnap.exists()) {
@@ -52,11 +49,9 @@ export default function ShiftNavigator() {
     return () => unsub();
   }, []);
 
-  // --- 資料來源聚合 (Firebase 優先，若無則使用本地端預設資料) ---
   const currentShifts = dbData?.SHIFTS_DATA || SHIFTS_DATA;
   const currentHolidays = dbData?.HOLIDAY_DATA || HOLIDAY_DATA;
   
-  // 行政公告需要保留本地端的 Icon
   const currentNotices = ADMIN_NOTICES.map(localNotice => {
     const dbNotice = dbData?.ADMIN_NOTICES?.find(n => n.id === localNotice.id);
     return {
@@ -69,36 +64,25 @@ export default function ShiftNavigator() {
   const lastUpdatedBy = dbData?.updatedBy;
   const lastUpdatedAt = dbData?.updatedAt;
 
-  // --- 輔助函式: 判斷任務是否正在進行中 ---
   const isTaskActive = (timeStr) => {
     if (!timeStr || !timeStr.match(/[-~]/)) return false; 
-    
     const parts = timeStr.split(/[-~]/);
     const start = parts[0];
     const end = parts[1];
-    
     const now = currentTime;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    
     const getMinutes = (t) => {
       const [h, m] = t.split(':').map(Number);
       return (h || 0) * 60 + (m || 0);
     };
-
     const startMin = getMinutes(start);
     let endMin = getMinutes(end);
-    
     if (endMin < startMin) endMin += 24 * 60; 
-
     return currentMinutes >= startMin && currentMinutes < endMin;
   };
 
   const shift = selectedShift ? currentShifts[selectedShift] : null;
   const holidayShiftData = selectedHolidayShift ? currentHolidays[selectedHolidayShift] : null;
-
-  // =========================================================
-  // ★★★ 共編與資料庫操作邏輯 ★★★
-  // =========================================================
 
   // 封裝 Firebase 儲存邏輯
   const saveToFirebase = async (updates) => {
@@ -111,7 +95,6 @@ export default function ShiftNavigator() {
     }, { merge: true });
   };
 
-  // 1. 開啟編輯模式
   const startEdit = (type, key, data) => {
     setEditMode({ type, key });
     if (type === 'shift' || type === 'holiday') {
@@ -130,27 +113,38 @@ export default function ShiftNavigator() {
     setEditForm(null);
   };
 
-  // 2. 儲存編輯內容
+  // ★★★ [修正重點] 只針對使用者編輯的部分進行存檔，避免 React Symbol 報錯 ★★★
   const handleSave = async () => {
     setIsSubmitting(true);
     try {
-      const newShifts = JSON.parse(JSON.stringify(currentShifts));
-      const newHolidays = JSON.parse(JSON.stringify(currentHolidays));
-      let newNotices = currentNotices.map(n => ({ id: n.id, title: n.title, content: n.content }));
+      let updates = {};
 
       if (editMode.type === 'shift') {
+        const newShifts = JSON.parse(JSON.stringify(currentShifts));
         newShifts[editMode.key] = { ...newShifts[editMode.key], ...editForm };
-      } else if (editMode.type === 'holiday') {
+        updates.SHIFTS_DATA = newShifts;
+      } 
+      else if (editMode.type === 'holiday') {
+        const newHolidays = JSON.parse(JSON.stringify(currentHolidays));
         newHolidays[editMode.key] = { ...newHolidays[editMode.key], ...editForm };
-      } else if (editMode.type === 'notice') {
-        const idx = newNotices.findIndex(n => n.id === editMode.key);
-        if (idx !== -1) {
-          newNotices[idx].title = editForm.title;
-          newNotices[idx].content = editForm.content;
-        }
+        updates.HOLIDAY_DATA = newHolidays;
+      } 
+      else if (editMode.type === 'notice') {
+        const newNotices = currentNotices.map(n => {
+          if (n.id === editMode.key) {
+            return { id: n.id, title: editForm.title, content: editForm.content };
+          }
+          // 強制將未編輯的內容轉為字串，避免將本地的 JSX (Icon) 誤存入資料庫
+          return { 
+            id: n.id, 
+            title: typeof n.title === 'string' ? n.title : '', 
+            content: typeof n.content === 'string' ? n.content : '(請點擊編輯補上內容)' 
+          };
+        });
+        updates.ADMIN_NOTICES = newNotices;
       }
 
-      await saveToFirebase({ SHIFTS_DATA: newShifts, HOLIDAY_DATA: newHolidays, ADMIN_NOTICES: newNotices });
+      await saveToFirebase(updates);
       setEditMode(null);
     } catch (error) {
       alert('儲存失敗：' + error.message);
@@ -159,7 +153,6 @@ export default function ShiftNavigator() {
     }
   };
 
-  // 3. 新增班別 (Shift 或 Holiday)
   const handleAddShift = async (type) => {
     const shiftName = window.prompt(`請輸入新${type === 'shift' ? '班別' : '假日班'}的簡稱 (例如：小夜班、C班)：\n※ 此名稱將作為按鈕顯示名稱`);
     if (!shiftName || !shiftName.trim()) return;
@@ -184,7 +177,6 @@ export default function ShiftNavigator() {
         await saveToFirebase({ HOLIDAY_DATA: newData });
         setSelectedHolidayShift(cleanName);
       }
-      // 自動進入編輯模式
       startEdit(type, cleanName, newShiftObject);
     } catch (error) {
       alert("新增失敗：" + error.message);
@@ -193,7 +185,6 @@ export default function ShiftNavigator() {
     }
   };
 
-  // 4. 刪除班別
   const handleDeleteShift = async () => {
     if (!window.confirm(`⚠️ 警告：確定要徹底刪除「${editMode.key}」嗎？\n此動作無法復原！`)) return;
 
@@ -219,7 +210,6 @@ export default function ShiftNavigator() {
     }
   };
 
-  // 表單操作函式
   const handleTimelineChange = (index, field, value) => {
     const newTimeline = [...editForm.timeline];
     newTimeline[index][field] = value;
@@ -434,7 +424,6 @@ export default function ShiftNavigator() {
                 >{s}</button>
               ))}
 
-              {/* ★ 新增假日班別按鈕 */}
               <button 
                 onClick={() => handleAddShift('holiday')}
                 className="px-3 py-2 rounded-xl text-[11px] font-bold border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors flex items-center gap-1"
@@ -465,7 +454,6 @@ export default function ShiftNavigator() {
                     </div>
                   </div>
 
-                  {/* 編輯按鈕區 */}
                   {editMode?.key === selectedHolidayShift ? (
                     <div className="flex items-center gap-2">
                       <button onClick={handleDeleteShift} disabled={isSubmitting} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除此班別"><Trash2 className="w-5 h-5"/></button>
@@ -608,11 +596,11 @@ export default function ShiftNavigator() {
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-bold text-slate-500">公告標題</label>
-                        <input className="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none font-bold" value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} />
+                        <input className="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} />
                       </div>
                       <div>
                         <label className="text-xs font-bold text-slate-500">詳細內容</label>
-                        <textarea className="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none leading-relaxed h-32" value={editForm.content} onChange={e => setEditForm({...editForm, content: e.target.value})} />
+                        <textarea className="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none leading-relaxed" rows={4} value={editForm.content} onChange={e => setEditForm({...editForm, content: e.target.value})} />
                       </div>
                     </div>
                   </div>
