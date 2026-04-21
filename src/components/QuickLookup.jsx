@@ -12,8 +12,10 @@ import {
   Clock,
   Edit,
   Save,
+  Trash2,
   Loader2,
-  Upload // ★ 新增 Upload 圖示
+  Upload,
+  Link as LinkIcon // ★ 新增 Link 圖示
 } from 'lucide-react';
 import { db, auth } from '../firebase'; 
 import { collection, onSnapshot, query, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'; 
@@ -22,37 +24,27 @@ import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
 // ★★★ 請替換為您專案中實際的 GAS 網址 ★★★
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec";
 
-// 預設常用關鍵字
 const DEFAULT_KEYWORDS = ['門診', '住院', '行政', '臨床', '管制藥', '盤點', '急診'];
 
-// 關鍵字螢光筆小元件
 const HighlightText = ({ text, highlight }) => {
   if (!highlight || !text) return <>{text}</>;
   const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const parts = text.split(new RegExp(`(${escapedHighlight})`, 'gi'));
-  
   return (
     <>
       {parts.map((part, i) => 
         part.toLowerCase() === highlight.toLowerCase() ? (
-          <mark key={i} className="bg-yellow-300 text-yellow-900 font-bold px-1 rounded shadow-sm">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
+          <mark key={i} className="bg-yellow-300 text-yellow-900 font-bold px-1 rounded shadow-sm">{part}</mark>
+        ) : (part)
       )}
     </>
   );
 };
 
-// 智慧圖片解析器 (支援 Google Drive 圖片直接顯示)
 const processImageUrl = (url) => {
   if (!url) return { isImage: false, src: '' };
   const lowerUrl = url.toLowerCase();
-  const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || 
-                          (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
-  
+  const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
   const driveMatch1 = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/); 
   const driveMatch2 = url.match(/drive\.google\.com\/open\?id=([^&]+)/);   
   const driveMatch3 = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);   
@@ -64,34 +56,59 @@ const processImageUrl = (url) => {
   return { isImage: false, src: url };
 };
 
-// 內文圖片解析器 (Markdown: ![說明](網址))
-const renderContentWithImages = (text, highlight) => {
+// ★★★ [升級] 內文解析器 (支援圖片 ![說明](網址) 與 多重超連結 [文字](網址)) ★★★
+const renderMarkdownContent = (text, highlight) => {
   if (!text) return null;
-  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const regex = /(!?)\[([^\]]*)\]\(([^)]+)\)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
 
-  while ((match = imgRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
-    const imgInfo = processImageUrl(match[2]);
-    parts.push({ type: 'image', alt: match[1], url: imgInfo.isImage ? imgInfo.src : match[2] });
-    lastIndex = imgRegex.lastIndex;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+    }
+    const isImage = match[1] === '!';
+    const textOrAlt = match[2];
+    const url = match[3];
+
+    if (isImage) {
+      const imgInfo = processImageUrl(url);
+      parts.push({ type: 'image', alt: textOrAlt, url: imgInfo.isImage ? imgInfo.src : url });
+    } else {
+      parts.push({ type: 'link', text: textOrAlt || url, url: url });
+    }
+    lastIndex = regex.lastIndex;
   }
   
-  if (lastIndex < text.length) parts.push({ type: 'text', content: text.substring(lastIndex) });
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.substring(lastIndex) });
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="whitespace-pre-wrap leading-relaxed">
       {parts.map((part, index) => {
         if (part.type === 'text') {
           return <span key={index}><HighlightText text={part.content} highlight={highlight} /></span>;
         } else if (part.type === 'image') {
           return (
-            <div key={index} className="my-6">
+            <div key={index} className="my-6 block">
               <img src={part.url} alt={part.alt} className="max-w-full h-auto rounded-lg shadow-md border border-gray-200" loading="lazy" />
               {part.alt && <p className="text-sm text-gray-500 text-center mt-2">{part.alt}</p>}
             </div>
+          );
+        } else if (part.type === 'link') {
+          // 渲染成漂亮的按鈕式超連結
+          return (
+            <a 
+              key={index} 
+              href={part.url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-indigo-600 hover:text-indigo-800 underline font-bold inline-flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded mx-1 align-baseline transition-colors"
+            >
+              {part.text} <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           );
         }
         return null;
@@ -100,7 +117,6 @@ const renderContentWithImages = (text, highlight) => {
   );
 };
 
-// 時間格式轉換器
 const formatDateTime = (timestamp) => {
   if (!timestamp) return '';
   try {
@@ -123,7 +139,7 @@ const QuickLookup = () => {
   // Wiki 共編相關 State
   const [isEditingSop, setIsEditingSop] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false); // ★ 紀錄上傳狀態
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false); 
   const [editForm, setEditForm] = useState({ title: '', category: '', content: '', attachmentUrl: '' });
 
   useEffect(() => {
@@ -163,7 +179,6 @@ const QuickLookup = () => {
   };
 
   const searchLower = searchTerm.toLowerCase();
-
   const filteredExtensions = EXTENSION_DATA.filter(item => 
     (item.area && item.area.toLowerCase().includes(searchLower)) || 
     (item.ext && item.ext.toLowerCase().includes(searchLower)) || 
@@ -176,17 +191,10 @@ const QuickLookup = () => {
     (sop.content && sop.content.toLowerCase().includes(searchLower))
   ).sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
-  // ==========================================
-  // ★★★ Wiki 共編與檔案上傳邏輯 ★★★
-  // ==========================================
-  
   const handleStartEditSop = () => {
     if (!selectedSop) return;
     setEditForm({
-      title: selectedSop.title || '',
-      category: selectedSop.category || '',
-      content: selectedSop.content || '',
-      attachmentUrl: selectedSop.attachmentUrl || ''
+      title: selectedSop.title || '', category: selectedSop.category || '', content: selectedSop.content || '', attachmentUrl: selectedSop.attachmentUrl || ''
     });
     setIsEditingSop(true);
   };
@@ -206,20 +214,14 @@ const QuickLookup = () => {
       const sopRef = doc(db, 'sop_articles', selectedSop.id);
       
       const updateData = {
-        title: editForm.title,
-        category: editForm.category,
-        content: editForm.content,
-        attachmentUrl: editForm.attachmentUrl,
-        updatedBy: editorName,
-        updatedAt: serverTimestamp() 
+        title: editForm.title, category: editForm.category, content: editForm.content, attachmentUrl: editForm.attachmentUrl,
+        updatedBy: editorName, updatedAt: serverTimestamp() 
       };
 
       await updateDoc(sopRef, updateData);
       setSelectedSop(prev => ({ ...prev, ...updateData, updatedAt: new Date() }));
       setIsEditingSop(false);
-      alert("✅ SOP 已成功編修，Wiki 精神萬歲！");
     } catch (error) {
-      console.error("SOP 共編失敗:", error);
       alert(`⚠️ 儲存失敗：${error.message}`);
     } finally {
       setIsSubmitting(false);
@@ -228,12 +230,10 @@ const QuickLookup = () => {
 
   const handleFormChange = (e) => setEditForm({ ...editForm, [e.target.name]: e.target.value });
 
-  // ★ 處理檔案直接上傳 Google Drive
   const handleFileUpload = async (e, targetField) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 安全限制：避免傳輸過載，限制 5MB
     if (file.size > 5 * 1024 * 1024) {
       alert("檔案太大！為了傳輸穩定，請上傳 5MB 以下的檔案/圖片。");
       return;
@@ -246,24 +246,16 @@ const QuickLookup = () => {
         const response = await fetch(GAS_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            action: 'upload_to_drive',
-            fileName: file.name,
-            mimeType: file.type,
-            base64: reader.result
-          })
+          body: JSON.stringify({ action: 'upload_to_drive', fileName: file.name, mimeType: file.type, base64: reader.result })
         });
-        
         const result = await response.json();
         if (result.status === 'success') {
           const driveUrl = result.url;
-          
           if (targetField === 'attachmentUrl') {
-             // 填入附件欄位
              setEditForm(prev => ({ ...prev, attachmentUrl: driveUrl }));
           } else if (targetField === 'content') {
-             // 依照是否為圖片，安插 Markdown 語法進內文
              const isImg = file.type.startsWith('image/');
+             // ★ 上傳檔案後，自動產生對應的語法 (圖片為 ![]()，檔案為 []())
              const mdText = isImg ? `\n![${file.name}](${driveUrl})\n` : `\n[下載附件：${file.name}](${driveUrl})\n`;
              setEditForm(prev => ({ ...prev, content: prev.content + mdText }));
           }
@@ -271,11 +263,10 @@ const QuickLookup = () => {
           alert("上傳失敗：" + result.message);
         }
       } catch (error) {
-        console.error(error);
         alert("上傳發生錯誤，請檢查網路！");
       } finally {
         setIsUploadingFiles(false);
-        e.target.value = ''; // 清除 input 記錄以便重複上傳相同檔案
+        e.target.value = ''; 
       }
     };
     reader.readAsDataURL(file);
@@ -287,39 +278,22 @@ const QuickLookup = () => {
       {/* 搜尋區塊 */}
       <div className="bg-white p-4 md:p-6 md:rounded-xl md:shadow-sm md:border border-gray-100">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <Search className="w-5 h-5 md:w-6 md:h-6 text-orange-500" />
-          關鍵字搜尋
+          <Search className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> 關鍵字與 Wiki 共編
         </h2>
         <div className="relative mb-4">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
-            type="text"
-            placeholder="請輸入關鍵字：SOP名稱、內文..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            type="text" placeholder="請輸入關鍵字：內文、分機、SOP 名稱..."
+            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-base md:text-lg shadow-inner bg-gray-50 md:bg-white"
           />
         </div>
-        
         <div className="flex flex-wrap gap-2">
           <span className="text-sm text-gray-500 flex items-center mr-1">常用：</span>
           {keywords.map((keyword, idx) => (
-            <button
-              key={`${keyword}-${idx}`}
-              onClick={() => setSearchTerm(keyword)}
-              className="px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:text-orange-900 rounded-full text-xs transition-colors border border-orange-100"
-            >
-              {keyword}
-            </button>
+            <button key={idx} onClick={() => setSearchTerm(keyword)} className="px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:text-orange-900 rounded-full text-xs transition-colors border border-orange-100">{keyword}</button>
           ))}
-          {searchTerm && (
-            <button 
-              onClick={() => setSearchTerm('')}
-              className="px-3 py-1 bg-gray-100 text-gray-500 hover:bg-gray-200 rounded-full text-xs transition-colors border border-gray-200 ml-auto"
-            >
-              清除
-            </button>
-          )}
+          {searchTerm && <button onClick={() => setSearchTerm('')} className="px-3 py-1 bg-gray-100 text-gray-500 hover:bg-gray-200 rounded-full text-xs transition-colors border border-gray-200 ml-auto">清除</button>}
         </div>
       </div>
 
@@ -337,21 +311,13 @@ const QuickLookup = () => {
       <div className="min-h-[300px] bg-gray-50 p-2 md:bg-transparent md:p-0">
         {activeTab === 'sop' && (
           <div className="space-y-4 animate-fade-in">
-            {loading ? (
-              <p className="text-gray-500 text-center py-4">資料同步中...</p>
-            ) : filteredSops.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">
-                無符合文件
-              </div>
-            ) : (
+            {loading ? ( <p className="text-gray-500 text-center py-4">資料同步中...</p> ) : filteredSops.length === 0 ? ( <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">無符合文件</div> ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
                 {filteredSops.map((sop) => {
                   const imgInfo = processImageUrl(sop.attachmentUrl);
                   return (
                     <div key={sop.id} onClick={() => setSelectedSop(sop)} className="group relative bg-white p-4 md:p-5 rounded-lg md:rounded-xl shadow-sm md:border border-gray-100 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer overflow-hidden text-left">
-                      <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>
-                        {sop.category || '未分類'}
-                      </div>
+                      <div className={`absolute top-0 left-0 px-3 py-1 text-xs font-bold rounded-br-lg ${getCategoryStyle(sop.category)}`}>{sop.category || '未分類'}</div>
                       <div className="mt-6 flex items-start justify-between">
                         <h4 className="font-bold text-gray-800 text-lg group-hover:text-orange-600 leading-snug line-clamp-2">
                           <HighlightText text={sop.title} highlight={searchTerm} />
@@ -364,8 +330,7 @@ const QuickLookup = () => {
                         <span className="truncate">{sop.updatedAt && `更新於: ${formatDateTime(sop.updatedAt).split(' ')[0]}`}</span>
                         {sop.attachmentUrl && (
                           <span className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100 ml-auto flex-shrink-0">
-                            {imgInfo.isImage ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} 
-                            {imgInfo.isImage ? '包含圖片' : '包含附件'}
+                            {imgInfo.isImage ? <ImageIcon className="w-3 h-3" /> : <Paperclip className="w-3 h-3" />} {imgInfo.isImage ? '包含圖片' : '包含附件'}
                           </span>
                         )}
                       </div>
@@ -379,11 +344,7 @@ const QuickLookup = () => {
 
         {activeTab === 'extension' && (
           <div className="space-y-4 animate-fade-in">
-            {filteredExtensions.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">
-                無符合分機
-              </div>
-            ) : (
+            {filteredExtensions.length === 0 ? ( <div className="text-center py-12 text-gray-400 bg-white rounded-lg border border-dashed border-gray-200">無符合分機</div> ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
                 {filteredExtensions.map((item, idx) => (
                   <div key={idx} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex flex-col justify-center text-center hover:border-green-400 transition-colors">
@@ -403,43 +364,28 @@ const QuickLookup = () => {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => { if (!isEditingSop) setSelectedSop(null); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in text-left" onClick={e => e.stopPropagation()}>
             
-            {/* Modal Header */}
             <div className="p-5 border-b border-gray-100 flex justify-between items-start bg-gray-50/50 flex-shrink-0">
               {!isEditingSop ? (
                 <>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-800 leading-tight">
-                      <HighlightText text={selectedSop.title} highlight={searchTerm} />
-                    </h3>
+                    <h3 className="text-xl font-bold text-gray-800 leading-tight"><HighlightText text={selectedSop.title} highlight={searchTerm} /></h3>
                     {(selectedSop.updatedBy || selectedSop.updatedAt) && (
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs font-medium text-gray-500">
-                        {selectedSop.updatedBy && (
-                          <span className="flex items-center gap-1 bg-gray-200/50 px-2 py-0.5 rounded text-gray-600">
-                            <User className="w-3 h-3 text-indigo-500" /> Wiki 共編者：{selectedSop.updatedBy}
-                          </span>
-                        )}
-                        {selectedSop.updatedAt && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-orange-400" /> 更新：{formatDateTime(selectedSop.updatedAt)}
-                          </span>
-                        )}
+                        {selectedSop.updatedBy && <span className="flex items-center gap-1 bg-gray-200/50 px-2 py-0.5 rounded text-gray-600"><User className="w-3 h-3 text-indigo-500" /> Wiki 共編者：{selectedSop.updatedBy}</span>}
+                        {selectedSop.updatedAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-orange-400" /> 更新：{formatDateTime(selectedSop.updatedAt)}</span>}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                     {selectedSop.source !== 'local' && (
-                      <button onClick={handleStartEditSop} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold transition-colors shadow-inner">
-                        <Edit className="w-4 h-4"/> ✏️ 編輯文件
-                      </button>
+                      <button onClick={handleStartEditSop} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold transition-colors shadow-inner"><Edit className="w-4 h-4"/> ✏️ 編輯文件</button>
                     )}
                     <button onClick={() => setSelectedSop(null)} className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"><X className="w-6 h-6" /></button>
                   </div>
                 </>
               ) : (
                 <>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <Edit className="w-5 h-5 text-indigo-600" /> Wiki 共編中：<span className="font-normal text-gray-600">{selectedSop.title}</span>
-                  </h3>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Edit className="w-5 h-5 text-indigo-600" /> Wiki 共編中：<span className="font-normal text-gray-600">{selectedSop.title}</span></h3>
                   <div className="flex items-center gap-2">
                     <button onClick={handleCancelEditSop} disabled={isSubmitting || isUploadingFiles} className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-bold transition-colors">取消</button>
                     <button onClick={handleSaveWikiSop} disabled={isSubmitting || isUploadingFiles} className="px-5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors shadow-lg disabled:opacity-60">
@@ -450,22 +396,19 @@ const QuickLookup = () => {
               )}
             </div>
             
-            {/* Modal Body */}
-            <div className="flex-1 p-6 sm:p-8 overflow-y-auto whitespace-pre-wrap leading-relaxed text-gray-700 text-lg">
+            <div className="flex-1 p-6 sm:p-8 overflow-y-auto text-gray-700 text-lg">
               {!isEditingSop ? (
                 <>
-                  {selectedSop.content ? renderContentWithImages(selectedSop.content, searchTerm) : (!processImageUrl(selectedSop.attachmentUrl).isImage && <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">（此 SOP 暫無內文摘要，可能僅有附件或請點擊 Wiki 編輯補充）</div>)}
+                  {/* ★ 渲染帶有 Markdown 解析的內容 */}
+                  {selectedSop.content ? renderMarkdownContent(selectedSop.content, searchTerm) : (!processImageUrl(selectedSop.attachmentUrl).isImage && <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">（此 SOP 暫無內文摘要，可能僅有附件或請點擊 Wiki 編輯補充）</div>)}
                   {selectedSop.attachmentUrl && processImageUrl(selectedSop.attachmentUrl).isImage && (
                     <div className="mt-10 border-t border-gray-100 pt-8">
-                      <p className="text-sm font-bold text-gray-500 mb-5 flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                        <ImageIcon className="w-4 h-4 text-gray-400"/> 附件/圖片網址自動預覽
-                      </p>
+                      <p className="text-sm font-bold text-gray-500 mb-5 flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100"><ImageIcon className="w-4 h-4 text-gray-400"/> 附件/圖片網址自動預覽</p>
                       <img src={processImageUrl(selectedSop.attachmentUrl).src} alt="SOP 圖片" className="w-full h-auto rounded-xl shadow-lg border border-gray-200" loading="lazy" />
                     </div>
                   )}
                 </>
               ) : (
-                // ★★★ 表單編輯區域 ★★★
                 <form className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-2">
@@ -482,26 +425,38 @@ const QuickLookup = () => {
                   </div>
 
                   <div>
-                    {/* ★ 內文上傳按鈕 */}
-                    <div className="flex items-center justify-between mb-1.5">
+                    {/* ★ 內文上方加入「加入網址」按鈕 */}
+                    <div className="flex flex-wrap items-center justify-between mb-1.5 gap-2">
                       <label className="block text-sm font-bold text-gray-700">
                           SOP 詳細內文摘要與編修
                       </label>
-                      <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 ${isUploadingFiles ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}>
-                          {isUploadingFiles ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
-                          {isUploadingFiles ? '上傳中...' : '上傳檔案至內文'}
-                          <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'content')} disabled={isUploadingFiles}/>
-                      </label>
+                      <div className="flex gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const url = window.prompt("請貼上你要加入的網址 (例如：https://google.com)：");
+                            if (url) {
+                              const text = window.prompt("請輸入這個網址的顯示文字 (例如：點擊前往系統)：") || "連結";
+                              setEditForm(prev => ({ ...prev, content: prev.content + ` [${text}](${url}) ` }));
+                            }
+                          }}
+                          className="cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                        >
+                          <LinkIcon className="w-3 h-3" /> 加入網址
+                        </button>
+                        <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 ${isUploadingFiles ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}>
+                            {isUploadingFiles ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                            {isUploadingFiles ? '上傳中...' : '上傳檔案至內文'}
+                            <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'content')} disabled={isUploadingFiles}/>
+                        </label>
+                      </div>
                     </div>
-                    <textarea name="content" value={editForm.content} onChange={handleFormChange} rows="14" className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none font-mono text-sm leading-relaxed bg-gray-50 placeholder:text-gray-400" placeholder="請輸入 SOP 的詳細步驟、規範或補充資訊...\n(點擊右上角按鈕即可直接上傳圖片或檔案)"/>
+                    <textarea name="content" value={editForm.content} onChange={handleFormChange} rows="14" className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none font-mono text-sm leading-relaxed bg-gray-50 placeholder:text-gray-400" placeholder="請輸入 SOP 的詳細步驟、規範或補充資訊...\n(點擊右上角按鈕可直接上傳圖片檔案，或加入網址)"/>
                   </div>
 
                   <div>
-                    {/* ★ 附件上傳按鈕 */}
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-sm font-bold text-gray-700 flex items-center gap-2">
-                          <Paperclip className="w-4 h-4 text-gray-400"/> 附件連結 或 圖片網址 (選填)
-                      </label>
+                      <label className="block text-sm font-bold text-gray-700 flex items-center gap-2"><Paperclip className="w-4 h-4 text-gray-400"/> 附件連結 或 圖片網址 (選填)</label>
                       <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 ${isUploadingFiles ? 'bg-gray-100 text-gray-400' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}>
                           {isUploadingFiles ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
                           {isUploadingFiles ? '上傳中...' : '直接上傳附件'}
@@ -514,7 +469,6 @@ const QuickLookup = () => {
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center flex-shrink-0">
                 {!isEditingSop ? (
                     <>
@@ -530,7 +484,7 @@ const QuickLookup = () => {
                     </>
                 ) : (
                     <div className="flex-1 text-center text-sm text-gray-500 font-medium bg-indigo-50/50 p-2 rounded-lg border border-indigo-100">
-                        提示：可點擊欄位右上角的按鈕直接上傳檔案，系統會自動儲存至共用雲端並建立連結。
+                        提示：可利用右上角按鈕快速上傳檔案或插入多個網址。
                     </div>
                 )}
             </div>
