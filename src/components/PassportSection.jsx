@@ -8,7 +8,7 @@ import {
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
   Circle, Clock, ClipboardList, Activity, 
   GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
-  Award // [新] 學習成果圖示
+  Award, HeartHandshake // [新] 引入關懷圖示
 } from 'lucide-react';
 
 // 引入子元件
@@ -19,7 +19,8 @@ import MiniCEXAssessment from './MiniCEXAssessment';
 import OSCEAssessment from './OSCEAssessment';
 import KSAAssessment from './KSAAssessment';
 import WrittenTestAssessment from './WrittenTestAssessment';
-import FinalAssessment from './FinalAssessment'; // [新] 引入完訓評估
+import FinalAssessment from './FinalAssessment';
+import CareAssessment from './CareAssessment'; // [新] 引入關懷紀錄元件
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
@@ -36,7 +37,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [activeMainTab, setActiveMainTab] = useState('records'); 
   const [assessmentType, setAssessmentType] = useState('pre_training'); 
 
-  // ★★★ 新增：追蹤已經載入過的標籤 (達成秒切換) ★★★
+  // 追蹤已經載入過的標籤 (達成秒切換)
   const [mountedTabs, setMountedTabs] = useState(['pre_training']);
 
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
@@ -90,7 +91,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   }, [selectedStudentEmail, students, userRole, userProfile, user]);
 
-  // ★★★ 新增：當切換學員時，重置已載入的標籤，避免背景同時發出多個 API 請求 ★★★
+  // 當切換學員時，重置已載入的標籤
   useEffect(() => {
     setMountedTabs([assessmentType]);
   }, [selectedStudentEmail]);
@@ -182,7 +183,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  // ★★★ 新增：標籤點擊處理函式 ★★★
   const handleAssessmentTabClick = (tab) => {
     setAssessmentType(tab);
     if (!mountedTabs.includes(tab)) {
@@ -290,7 +290,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         </div>
 
-        {/* 主選單 (Main Tabs) - [新增] 學習成果 */}
+        {/* 主選單 */}
         <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
           <button
             onClick={() => setActiveMainTab('records')}
@@ -300,8 +300,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <ClipboardList className="w-5 h-5" />
-            訓練紀錄
+            <ClipboardList className="w-5 h-5" /> 訓練紀錄
           </button>
           <button
             onClick={() => setActiveMainTab('assessment')}
@@ -311,8 +310,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <GraduationCap className="w-5 h-5" />
-            學習評估
+            <GraduationCap className="w-5 h-5" /> 學習評估
           </button>
           <button
             onClick={() => setActiveMainTab('outcome')}
@@ -322,8 +320,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <Award className="w-5 h-5" />
-            學習成果
+            <Award className="w-5 h-5" /> 學習成果
           </button>
         </div>
 
@@ -390,35 +387,38 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         {/* 2. 學習評估 */}
         {activeMainTab === 'assessment' && (
           <div className="animate-in fade-in duration-300">
-            {/* 子選單 */}
+            {/* 子選單 - ★ 加入關懷紀錄 */}
             <div className="mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex items-center gap-3">
-                <button onClick={() => handleAssessmentTabClick('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('pre_training')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'pre_training' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Layout className="w-4 h-4" /> 學前評估
                 </button>
-                <button onClick={() => handleAssessmentTabClick('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('epa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'epa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Activity className="w-4 h-4" /> EPA 評估
                 </button>
-                <button onClick={() => handleAssessmentTabClick('dops')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'dops' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('dops')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'dops' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <CheckSquare className="w-4 h-4" /> DOPS 評估
                 </button>
-                <button onClick={() => handleAssessmentTabClick('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('minicex')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'minicex' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <Stethoscope className="w-4 h-4" /> Mini-CEX
                 </button>
-                {/* [新加入] OSCE 按鈕 */}
-                <button onClick={() => handleAssessmentTabClick('osce')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'osce' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                <ClipboardList className="w-4 h-4" /> OSCE 評估
+                <button onClick={() => handleAssessmentTabClick('osce')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'osce' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <ClipboardList className="w-4 h-4" /> OSCE 評估
                 </button>
-                <button onClick={() => handleAssessmentTabClick('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('ksa')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'ksa' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <ClipboardCheck className="w-4 h-4" /> KSA 評估
                 </button>
-                <button onClick={() => handleAssessmentTabClick('written_test')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border ${assessmentType === 'written_test' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <button onClick={() => handleAssessmentTabClick('written_test')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'written_test' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                   <FileEdit className="w-4 h-4" /> 筆試測驗
+                </button>
+                {/* ★ [新增] 關懷紀錄按鈕 */}
+                <button onClick={() => handleAssessmentTabClick('care')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all border whitespace-nowrap ${assessmentType === 'care' ? 'bg-pink-600 text-white border-pink-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-200'}`}>
+                  <HeartHandshake className="w-4 h-4" /> 關懷紀錄
                 </button>
               </div>
             </div>
 
-            {/* 內容 (使用 CSS 隱藏取代元件卸載，實現秒切換) */}
+            {/* 內容渲染 */}
             <div className="relative">
               <div className={assessmentType === 'pre_training' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('pre_training') && (
@@ -461,12 +461,25 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   <WrittenTestAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
                 )}
               </div>
+
+              {/* ★ [新增] 關懷紀錄元件渲染 */}
+              <div className={assessmentType === 'care' ? 'block animate-in fade-in' : 'hidden'}>
+                {mountedTabs.includes('care') && (
+                  <CareAssessment 
+                    studentEmail={selectedStudentEmail} 
+                    studentName={selectedStudentName} 
+                    isTeacher={isTeacherOrAdmin} 
+                    userProfile={userProfile} 
+                    apiUrl={GAS_API_URL} 
+                  />
+                )}
+              </div>
             </div>
 
           </div>
         )}
 
-        {/* 3. [新] 學習成果 */}
+        {/* 3. 學習成果 */}
         {activeMainTab === 'outcome' && (
           <div className="animate-in fade-in duration-300">
              <div className="bg-purple-50 p-4 rounded-lg mb-6 border border-purple-100 flex items-start gap-3">
