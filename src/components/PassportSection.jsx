@@ -256,12 +256,22 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                <BookOpen className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-800">新進人員學習護照</h2>
-              <p className="text-xs text-gray-500">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xl font-bold text-gray-800">新進人員學習護照</h2>
+                {/* 新增：二年期藥師訓練計畫 PDF 連結按鈕 */}
+                <a 
+                  href="https://drive.google.com/file/d/109SPzerKxndTUQXibbbn0cZE2P8FWvzJ/view?usp=drive_link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" /> 二年期藥師訓練計畫
+                </a>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
                 {isTeacherOrAdmin ? '請選擇學員以檢視紀錄或評估' : '您的學習進度總覽'}
               </p>
             </div>
-          </div>
 
           <div className="flex flex-col gap-2 items-end">
             {isTeacherOrAdmin ? (
