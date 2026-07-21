@@ -258,7 +258,6 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <div>
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-xl font-bold text-gray-800">新進人員學習護照</h2>
-                {/* 新增：二年期藥師訓練計畫 PDF 連結按鈕 */}
                 <a 
                   href="https://drive.google.com/file/d/109SPzerKxndTUQXibbbn0cZE2P8FWvzJ/view?usp=drive_link"
                   target="_blank"
@@ -272,6 +271,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 {isTeacherOrAdmin ? '請選擇學員以檢視紀錄或評估' : '您的學習進度總覽'}
               </p>
             </div>
+          </div>
 
           <div className="flex flex-col gap-2 items-end">
             {isTeacherOrAdmin ? (
