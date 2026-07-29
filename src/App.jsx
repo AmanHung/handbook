@@ -25,6 +25,7 @@ import VideoGallery from './components/VideoGallery'
 import ShiftNavigator from './components/ShiftNavigator'
 import PassportSection from './components/PassportSection'
 import AdminPage from './components/AdminPage'
+import { getEditorAuditFields } from './utils/editorIdentity'
 import './App.css'
 
 function App() {
@@ -87,11 +88,6 @@ function App() {
     }
   }
 
-  const SUPER_ADMIN_EMAILS = [
-    "obm0304@gmail.com", 
-    "另一個管理員@gmail.com"
-  ];
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true)
@@ -108,26 +104,17 @@ function App() {
           if (userSnap.exists()) {
             const data = userSnap.data();
             finalRole = data.role || 'student';
-            
-            if (SUPER_ADMIN_EMAILS.includes(currentUser.email) && finalRole !== 'admin') {
-               finalRole = 'admin';
-               await updateDoc(userRef, { role: 'admin' });
-               console.log("已自動提升為超級管理員權限");
-            }
 
             setUserProfile(data);
           } else {
-            if (SUPER_ADMIN_EMAILS.includes(currentUser.email)) {
-               finalRole = 'admin';
-            }
-
             const newUserData = {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
               role: finalRole, 
               arrivalDate: '',
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              ...getEditorAuditFields()
             };
             await setDoc(userRef, newUserData);
             setUserProfile(newUserData);
@@ -177,7 +164,8 @@ function App() {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         displayName: editForm.displayName,
-        arrivalDate: editForm.arrivalDate
+        arrivalDate: editForm.arrivalDate,
+        ...getEditorAuditFields()
       });
       setUserProfile(prev => ({ 
         ...prev, 
@@ -451,9 +439,9 @@ function App() {
       )}
 
       <main className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-8">
-        {activeTab === 'lookup' && <QuickLookup />}
+        {activeTab === 'lookup' && <QuickLookup canEdit={userRole !== 'guest'} />}
         {activeTab === 'video' && <VideoGallery />}
-        {activeTab === 'shift' && <ShiftNavigator />}
+        {activeTab === 'shift' && <ShiftNavigator canEdit={userRole !== 'guest'} />}
         
         {/* ★ [修改] 路由層保護：防止一般成員與訪客渲染學習護照元件 */}
         {activeTab === 'passport' && userRole !== 'guest' && userRole !== 'member' && (
@@ -463,7 +451,7 @@ function App() {
             userProfile={userProfile} 
           />
         )}
-        {activeTab === 'admin' && isTeacherOrAdmin && <AdminPage user={user} />}
+        {activeTab === 'admin' && isTeacherOrAdmin && <AdminPage user={user} userRole={userRole} />}
       </main>
     </div>
   )

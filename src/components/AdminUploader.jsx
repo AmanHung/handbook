@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase.js'; 
+import { db } from '../firebase.js';
 import { Loader2, Upload, Link as LinkIcon } from 'lucide-react'; // ★ 新增 LinkIcon
+import { getEditorAuditFields } from '../utils/editorIdentity.js';
 
 // ★★★ 您的 GAS 網址 ★★★
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec";
@@ -88,12 +89,9 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
       if (!formData.title || !formData.category) { alert('請填寫標題與分類'); setLoading(false); return; }
       if (resourceType === 'video' && !formData.url) { alert('請填寫影片連結'); setLoading(false); return; }
 
-      const currentUser = auth?.currentUser;
-      const editorName = currentUser?.displayName || currentUser?.email || '系統管理員';
-
       const docData = {
         title: formData.title, category: formData.category, keywords: formData.keywords, description: formData.description,
-        updatedAt: serverTimestamp(), updatedBy: editorName,
+        ...getEditorAuditFields(),
       };
 
       if (resourceType === 'sop') {

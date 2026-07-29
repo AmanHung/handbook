@@ -3,9 +3,10 @@ import {
   ChevronRight, ChevronDown, ChevronUp, Activity, CalendarDays, 
   Briefcase, AlertCircle, Clock, Edit, Save, Trash2, Plus, X, Loader2, User 
 } from 'lucide-react';
-import { db, auth } from '../firebase';
-import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { SHIFTS_DATA, HOLIDAY_DATA, ADMIN_NOTICES } from '../data/shiftData';
+import { getEditorAuditFields } from '../utils/editorIdentity';
 
 // 顏色對照表 (供自訂班別顏色使用)
 const COLOR_MAP = {
@@ -20,7 +21,7 @@ const COLOR_MAP = {
   teal: { label: '藍綠', hex: '#14b8a6' }
 };
 
-export default function ShiftNavigator() {
+export default function ShiftNavigator({ canEdit = false }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [expandedNoticeId, setExpandedNoticeId] = useState(null);
 
@@ -61,7 +62,8 @@ export default function ShiftNavigator() {
     };
   });
 
-  const lastUpdatedBy = dbData?.updatedBy;
+  const lastUpdatedBy = dbData?.updatedByName || dbData?.updatedBy;
+  const lastUpdatedByEmail = dbData?.updatedByEmail;
   const lastUpdatedAt = dbData?.updatedAt;
 
   const isTaskActive = (timeStr) => {
@@ -86,16 +88,17 @@ export default function ShiftNavigator() {
 
   // 封裝 Firebase 儲存邏輯
   const saveToFirebase = async (updates) => {
-    const currentUser = auth?.currentUser;
-    const editorName = currentUser?.displayName || currentUser?.email || '學員(未具名)';
+    if (!canEdit) {
+      throw new Error('訪客模式僅供瀏覽，請登入後再編輯排班資料。');
+    }
     await setDoc(doc(db, 'site_settings', 'shift_data_v1'), {
       ...updates,
-      updatedBy: editorName,
-      updatedAt: serverTimestamp()
+      ...getEditorAuditFields()
     }, { merge: true });
   };
 
   const startEdit = (type, key, data) => {
+    if (!canEdit) return;
     setEditMode({ type, key });
     if (type === 'shift' || type === 'holiday') {
       setEditForm({ 
@@ -115,6 +118,7 @@ export default function ShiftNavigator() {
 
   // ★★★ [修正重點] 只針對使用者編輯的部分進行存檔，避免 React Symbol 報錯 ★★★
   const handleSave = async () => {
+    if (!canEdit) return;
     setIsSubmitting(true);
     try {
       let updates = {};
@@ -154,6 +158,7 @@ export default function ShiftNavigator() {
   };
 
   const handleAddShift = async (type) => {
+    if (!canEdit) return;
     const shiftName = window.prompt(`請輸入新${type === 'shift' ? '班別' : '假日班'}的簡稱 (例如：小夜班、C班)：\n※ 此名稱將作為按鈕顯示名稱`);
     if (!shiftName || !shiftName.trim()) return;
 
@@ -186,6 +191,7 @@ export default function ShiftNavigator() {
   };
 
   const handleDeleteShift = async () => {
+    if (!canEdit) return;
     if (!window.confirm(`⚠️ 警告：確定要徹底刪除「${editMode.key}」嗎？\n此動作無法復原！`)) return;
 
     setIsSubmitting(true);
@@ -235,7 +241,7 @@ export default function ShiftNavigator() {
       ========================================================= */}
       {lastUpdatedBy && (
         <div className="flex items-center gap-2 text-xs font-medium text-gray-500 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100">
-          <User className="w-3.5 h-3.5 text-indigo-500" /> 排班表最新更新者：{lastUpdatedBy} 
+          <User className="w-3.5 h-3.5 text-indigo-500" /> 排班表最新更新者：{lastUpdatedBy}{lastUpdatedByEmail ? `（${lastUpdatedByEmail}）` : ''}
           <span className="text-gray-300">|</span> 
           <Clock className="w-3.5 h-3.5 text-orange-400" /> {formatTime(lastUpdatedAt)}
         </div>
@@ -273,13 +279,14 @@ export default function ShiftNavigator() {
                 >{s}</button>
               ))}
               
-              {/* ★ 新增班別按鈕 */}
-              <button 
-                onClick={() => handleAddShift('shift')}
-                className="px-3 py-2 rounded-xl text-[11px] font-bold border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> 新增班別
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => handleAddShift('shift')}
+                  className="px-3 py-2 rounded-xl text-[11px] font-bold border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 新增班別
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -308,18 +315,20 @@ export default function ShiftNavigator() {
             </div>
             
             {/* 編輯按鈕區 */}
-            {editMode?.key === selectedShift ? (
-              <div className="flex items-center gap-2">
-                <button onClick={handleDeleteShift} disabled={isSubmitting} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除此班別"><Trash2 className="w-5 h-5"/></button>
-                <button onClick={cancelEdit} disabled={isSubmitting} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X className="w-5 h-5"/></button>
-                <button onClick={handleSave} disabled={isSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-sm flex items-center gap-1">
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 儲存
+            {canEdit && (
+              editMode?.key === selectedShift ? (
+                <div className="flex items-center gap-2">
+                  <button onClick={handleDeleteShift} disabled={isSubmitting} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除此班別"><Trash2 className="w-5 h-5"/></button>
+                  <button onClick={cancelEdit} disabled={isSubmitting} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+                  <button onClick={handleSave} disabled={isSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-sm flex items-center gap-1">
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 儲存
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => startEdit('shift', selectedShift, shift)} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-bold transition-colors">
+                  <Edit className="w-4 h-4"/> 編輯
                 </button>
-              </div>
-            ) : (
-              <button onClick={() => startEdit('shift', selectedShift, shift)} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-bold transition-colors">
-                <Edit className="w-4 h-4"/> 編輯
-              </button>
+              )
             )}
           </div>
 
@@ -424,12 +433,14 @@ export default function ShiftNavigator() {
                 >{s}</button>
               ))}
 
-              <button 
-                onClick={() => handleAddShift('holiday')}
-                className="px-3 py-2 rounded-xl text-[11px] font-bold border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> 新增假日班別
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => handleAddShift('holiday')}
+                  className="px-3 py-2 rounded-xl text-[11px] font-bold border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 新增假日班別
+                </button>
+              )}
             </div>
 
             {holidayShiftData && (
@@ -454,18 +465,20 @@ export default function ShiftNavigator() {
                     </div>
                   </div>
 
-                  {editMode?.key === selectedHolidayShift ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={handleDeleteShift} disabled={isSubmitting} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除此班別"><Trash2 className="w-5 h-5"/></button>
-                      <button onClick={cancelEdit} disabled={isSubmitting} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X className="w-5 h-5"/></button>
-                      <button onClick={handleSave} disabled={isSubmitting} className="px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 shadow-sm flex items-center gap-1">
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 儲存
+                  {canEdit && (
+                    editMode?.key === selectedHolidayShift ? (
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleDeleteShift} disabled={isSubmitting} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除此班別"><Trash2 className="w-5 h-5"/></button>
+                        <button onClick={cancelEdit} disabled={isSubmitting} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+                        <button onClick={handleSave} disabled={isSubmitting} className="px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 shadow-sm flex items-center gap-1">
+                          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 儲存
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => startEdit('holiday', selectedHolidayShift, holidayShiftData)} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-lg text-sm font-bold transition-colors">
+                        <Edit className="w-4 h-4"/> 編輯
                       </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => startEdit('holiday', selectedHolidayShift, holidayShiftData)} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-lg text-sm font-bold transition-colors">
-                      <Edit className="w-4 h-4"/> 編輯
-                    </button>
+                    )
                   )}
                 </div>
                 
@@ -562,7 +575,7 @@ export default function ShiftNavigator() {
                         <h4 className={`font-bold text-sm ${isOpen ? 'text-slate-800' : 'text-slate-600'}`}>{notice.title}</h4>
                       </div>
                       <div className="flex items-center gap-4">
-                         {isOpen && (
+                         {isOpen && canEdit && (
                            <span 
                              onClick={(e) => { e.stopPropagation(); startEdit('notice', notice.id, notice); }} 
                              className="text-xs font-bold text-indigo-500 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded"

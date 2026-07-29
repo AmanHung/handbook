@@ -17,9 +17,10 @@ import {
   Upload,
   Link as LinkIcon // ★ 新增 Link 圖示
 } from 'lucide-react';
-import { db, auth } from '../firebase'; 
-import { collection, onSnapshot, query, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'; 
+import { db } from '../firebase';
+import { collection, onSnapshot, query, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { EXTENSION_DATA, sopData as localSopData } from '../data/sopData';
+import { getEditorAuditFields } from '../utils/editorIdentity';
 
 // ★★★ 請替換為您專案中實際的 GAS 網址 ★★★
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec";
@@ -45,7 +46,7 @@ const processImageUrl = (url) => {
   if (!url) return { isImage: false, src: '' };
   const lowerUrl = url.toLowerCase();
   const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/) || (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
-  const driveMatch1 = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/); 
+  const driveMatch1 = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
   const driveMatch2 = url.match(/drive\.google\.com\/open\?id=([^&]+)/);   
   const driveMatch3 = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);   
   const fileId = (driveMatch1 && driveMatch1[1]) || (driveMatch2 && driveMatch2[1]) || (driveMatch3 && driveMatch3[1]);
@@ -125,7 +126,7 @@ const formatDateTime = (timestamp) => {
   } catch (e) { return ''; }
 };
 
-const QuickLookup = () => {
+const QuickLookup = ({ canEdit = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('sop'); 
   
@@ -192,6 +193,7 @@ const QuickLookup = () => {
   ).sort((a, b) => (a.category || '').localeCompare(b.category || ''));
 
   const handleStartEditSop = () => {
+    if (!canEdit) return;
     if (!selectedSop) return;
     setEditForm({
       title: selectedSop.title || '', category: selectedSop.category || '', content: selectedSop.content || '', attachmentUrl: selectedSop.attachmentUrl || ''
@@ -203,19 +205,18 @@ const QuickLookup = () => {
 
   const handleSaveWikiSop = async (e) => {
     e.preventDefault();
+    if (!canEdit) return alert("訪客模式僅供瀏覽，請登入後再編輯文件。");
     if (!selectedSop || selectedSop.source === 'local') return alert("本地試用資料不支援共編功能，請確認連線。");
     if (isSubmitting) return;
     if (!editForm.title || !editForm.category) return alert("請確認標題與分類皆已填寫！");
 
     setIsSubmitting(true);
     try {
-      const currentUser = auth?.currentUser;
-      const editorName = currentUser?.displayName || currentUser?.email || '學員(未具名)';
       const sopRef = doc(db, 'sop_articles', selectedSop.id);
       
       const updateData = {
         title: editForm.title, category: editForm.category, content: editForm.content, attachmentUrl: editForm.attachmentUrl,
-        updatedBy: editorName, updatedAt: serverTimestamp() 
+        ...getEditorAuditFields()
       };
 
       await updateDoc(sopRef, updateData);
@@ -231,6 +232,7 @@ const QuickLookup = () => {
   const handleFormChange = (e) => setEditForm({ ...editForm, [e.target.name]: e.target.value });
 
   const handleFileUpload = async (e, targetField) => {
+    if (!canEdit) return alert("訪客模式不支援檔案上傳。");
     const file = e.target.files[0];
     if (!file) return;
 
@@ -369,15 +371,15 @@ const QuickLookup = () => {
                 <>
                   <div>
                     <h3 className="text-xl font-bold text-gray-800 leading-tight"><HighlightText text={selectedSop.title} highlight={searchTerm} /></h3>
-                    {(selectedSop.updatedBy || selectedSop.updatedAt) && (
+                    {(selectedSop.updatedByName || selectedSop.updatedBy || selectedSop.updatedAt) && (
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs font-medium text-gray-500">
-                        {selectedSop.updatedBy && <span className="flex items-center gap-1 bg-gray-200/50 px-2 py-0.5 rounded text-gray-600"><User className="w-3 h-3 text-indigo-500" /> Wiki 共編者：{selectedSop.updatedBy}</span>}
+                        {(selectedSop.updatedByName || selectedSop.updatedBy) && <span className="flex items-center gap-1 bg-gray-200/50 px-2 py-0.5 rounded text-gray-600"><User className="w-3 h-3 text-indigo-500" /> Wiki 共編者：{selectedSop.updatedByName || selectedSop.updatedBy}{selectedSop.updatedByEmail ? `（${selectedSop.updatedByEmail}）` : ''}</span>}
                         {selectedSop.updatedAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-orange-400" /> 更新：{formatDateTime(selectedSop.updatedAt)}</span>}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                    {selectedSop.source !== 'local' && (
+                    {canEdit && selectedSop.source !== 'local' && (
                       <button onClick={handleStartEditSop} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold transition-colors shadow-inner"><Edit className="w-4 h-4"/> ✏️ 編輯文件</button>
                     )}
                     <button onClick={() => setSelectedSop(null)} className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"><X className="w-6 h-6" /></button>

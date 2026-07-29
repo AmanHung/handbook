@@ -7,12 +7,12 @@ import {
   arrayUnion, 
   arrayRemove, 
   deleteDoc,
-  setDoc,
-  serverTimestamp
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
 import DashboardCharts from './DashboardCharts.jsx'; 
+import { getEditorAuditFields } from '../utils/editorIdentity.js';
 import { 
   Paperclip, ExternalLink, Users, Shield, Crown, 
   Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2 
@@ -24,7 +24,8 @@ const SUPER_ADMIN_EMAILS = [
 
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
-const AdminPage = ({ user }) => {
+const AdminPage = ({ user, userRole }) => {
+  const canManageRoles = userRole === 'admin' || SUPER_ADMIN_EMAILS.includes(user?.email);
   const [activeTab, setActiveTab] = useState('dashboard'); 
   
   const [sops, setSops] = useState([]);
@@ -32,7 +33,6 @@ const AdminPage = ({ user }) => {
   const [usersList, setUsersList] = useState([]); 
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
-  const [error, setError] = useState(null);
   const [editingItem, setEditingItem] = useState(null); 
   
   const [editingUser, setEditingUser] = useState(null); 
@@ -67,7 +67,7 @@ const AdminPage = ({ user }) => {
       if (docSnap.exists()) {
         setSettings(docSnap.data());
       } else {
-        setDoc(docRef, { quickKeywords: [], categories: [] });
+        setDoc(docRef, { quickKeywords: [], categories: [], ...getEditorAuditFields() });
       }
     });
     return () => unsubscribe();
@@ -122,14 +122,17 @@ const AdminPage = ({ user }) => {
     try {
       if (action === 'add') {
         if (settings[field]?.includes(value)) return alert('已存在');
-        await updateDoc(docRef, { [field]: arrayUnion(value) });
+        await updateDoc(docRef, { [field]: arrayUnion(value), ...getEditorAuditFields() });
       } else if (action === 'remove') {
-        if (window.confirm(`確定移除 "${value}"?`)) await updateDoc(docRef, { [field]: arrayRemove(value) });
+        if (window.confirm(`確定移除 "${value}"?`)) {
+          await updateDoc(docRef, { [field]: arrayRemove(value), ...getEditorAuditFields() });
+        }
       }
     } catch (error) { alert('更新失敗'); }
   };
 
   const openEditUser = (u) => {
+    if (!canManageRoles) return;
     setEditingUser(u);
     setUserForm({
       displayName: u.displayName || '',
@@ -140,6 +143,7 @@ const AdminPage = ({ user }) => {
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
+    if (!canManageRoles) return alert('只有系統管理員可以調整人員資料與角色。');
     if (!editingUser) return;
     
     if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'admin') {
@@ -151,7 +155,8 @@ const AdminPage = ({ user }) => {
       await updateDoc(doc(db, 'users', editingUser.id), {
         displayName: userForm.displayName,
         arrivalDate: userForm.arrivalDate,
-        role: userForm.role
+        role: userForm.role,
+        ...getEditorAuditFields()
       });
       setEditingUser(null);
       alert("用戶資料已更新");
@@ -162,6 +167,9 @@ const AdminPage = ({ user }) => {
   };
 
   const handleDeleteUser = async (u) => {
+    if (!canManageRoles) {
+      return alert('只有系統管理員可以刪除使用者資料。');
+    }
     if (u.email === user?.email) {
       return alert("安全限制：您無法刪除自己的帳號！");
     }
@@ -216,8 +224,6 @@ const AdminPage = ({ user }) => {
             </button>
           </div>
         </div>
-
-        {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 font-bold mx-4 md:mx-0">{error}</div>}
 
         {activeTab === 'dashboard' && (
           <div className="animate-in fade-in space-y-6 mx-4 md:mx-0">
@@ -413,18 +419,23 @@ const AdminPage = ({ user }) => {
                           </td>
                           <td className="px-4 md:px-6 py-4">
                              <div className="flex justify-end gap-2">
-                               <button 
+                               <button
                                  onClick={() => openEditUser(u)}
-                                 className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold border border-indigo-200 flex items-center gap-1 shadow-sm"
+                                 disabled={!canManageRoles}
+                                 className={`px-3 py-1.5 rounded-md text-xs font-bold border flex items-center gap-1 shadow-sm ${
+                                   canManageRoles
+                                     ? 'bg-white hover:bg-indigo-50 text-indigo-600 border-indigo-200'
+                                     : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                 }`}
                                >
                                  <Edit className="w-3 h-3" /> <span className="hidden sm:inline">編輯</span>
                                </button>
                                <button 
                                  onClick={() => handleDeleteUser(u)}
-                                 disabled={disableDelete}
+                                 disabled={disableDelete || !canManageRoles}
                                  title={isSelf ? '安全限制：無法刪除自己' : isSuperAdmin ? '安全限制：無法刪除超級管理員' : '徹底刪除此用戶'}
                                  className={`px-3 py-1.5 rounded-md text-xs font-bold border flex items-center gap-1 shadow-sm transition-colors ${
-                                   disableDelete 
+                                   disableDelete || !canManageRoles
                                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' 
                                      : 'bg-white hover:bg-red-50 text-red-600 border-red-200'
                                  }`}

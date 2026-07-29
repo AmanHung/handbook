@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Trash2, Plus, Save, X, Loader2, Youtube, ExternalLink, Video, Tag } from 'lucide-react';
+import { getEditorAuditFields } from '../utils/editorIdentity';
 
 export default function VideoManager() {
   const [videos, setVideos] = useState([]);
@@ -62,7 +63,7 @@ export default function VideoManager() {
         url: currentVideo.url,
         description: currentVideo.description || '',
         category: currentVideo.category || '未分類', // 新增分類欄位
-        updatedAt: new Date()
+        ...getEditorAuditFields()
       };
 
       if (currentVideo.id) {
