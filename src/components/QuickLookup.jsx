@@ -377,6 +377,12 @@ const QuickLookup = ({ canEdit = false }) => {
                         {selectedSop.updatedAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-orange-400" /> 更新：{formatDateTime(selectedSop.updatedAt)}</span>}
                       </div>
                     )}
+                    {selectedSop.sourceSystem === 'pharmacy-bot' && (
+                      <div className="mt-2 text-xs font-bold text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2.5 py-1 inline-flex items-center gap-1">
+                        由 LINE 資訊中心公告轉入
+                        {selectedSop.sourceRecordId ? `｜來源編號：${selectedSop.sourceRecordId}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                     {canEdit && selectedSop.source !== 'local' && (
