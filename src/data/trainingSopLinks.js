@@ -42,8 +42,52 @@ const ITEM_SOP_LINKS = {
   ud_15: ['hgVFnK99u1lYVhT4PApv'],
 };
 
+// SOP 速查的文件會持續新增，因此訓練「大分類」採用文件分類與標題規則動態歸類。
+// 規則由上而下判斷；較明確的標題規則優先於 SOP 分類的預設去向。
+const SOP_TITLE_CATEGORY_RULES = [
+  {
+    categoryId: 'UD',
+    keywords: ['住院 UD', '住院退藥', '病房藥品', '常備藥急救盤', '管制藥品減損'],
+  },
+  {
+    categoryId: 'MS',
+    keywords: ['疫苗管理', 'Paxlovid'],
+  },
+  {
+    categoryId: 'extra',
+    keywords: ['藥局開門', '藥局關門', '請假規定', '藥局升降梯', '颱風天宣布停班'],
+  },
+];
+
+const SOP_CATEGORY_TRAINING_LINKS = {
+  '行政流程': 'OPD',
+  '系統操作': 'OPD',
+  '教學訓練': 'extra',
+  '管制藥品智慧藥櫃': 'OPD',
+  '調劑規範': 'OPD',
+  '藥品諮詢': 'DI',
+};
+
 export const getTrainingSopIds = (item) => {
   const titleLinks = TITLE_SOP_LINKS[item?.title] || [];
   const itemLinks = ITEM_SOP_LINKS[item?.id] || [];
   return [...new Set([...titleLinks, ...itemLinks])];
 };
+
+export const getSopTrainingCategoryId = (sop) => {
+  const title = sop?.title || '';
+  const titleRule = SOP_TITLE_CATEGORY_RULES.find(rule =>
+    rule.keywords.some(keyword => title.includes(keyword))
+  );
+
+  if (titleRule) return titleRule.categoryId;
+
+  // 未知的新分類先放入「加強訓練項目」，避免任何 SOP 成為無法從護照開啟的孤立文件。
+  return SOP_CATEGORY_TRAINING_LINKS[sop?.category] || 'extra';
+};
+
+export const getCategorySopIds = (categoryId, sopsById) =>
+  Object.values(sopsById || {})
+    .filter(sop => getSopTrainingCategoryId(sop) === categoryId)
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-Hant'))
+    .map(sop => sop.id);

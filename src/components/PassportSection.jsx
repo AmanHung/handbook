@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   collection, getDocs, query, where
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ExternalLink, Paperclip } from 'lucide-react';
-import { getTrainingSopIds } from '../data/trainingSopLinks';
+import { getCategorySopIds, getTrainingSopIds } from '../data/trainingSopLinks';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
@@ -265,7 +265,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  const loadSops = async () => {
+  const loadSops = useCallback(async () => {
     if (sopsLoaded || sopLoading) return;
     setSopLoading(true);
     setSopError('');
@@ -283,7 +283,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     } finally {
       setSopLoading(false);
     }
-  };
+  }, [sopsLoaded, sopLoading]);
+
+  useEffect(() => {
+    if (activeMainTab === 'records' && selectedStudentEmail) {
+      loadSops();
+    }
+  }, [activeMainTab, selectedStudentEmail, loadSops]);
 
   const openRelatedSops = async (sopIds) => {
     if (sopIds.length === 0) return;
@@ -502,6 +508,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   const editPeriod = editPeriods[group.id] || serverPeriod;
                   const isSaving = savingPeriod === group.id;
                   const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
+                  const categorySopIds = getCategorySopIds(group.id, sopsById);
 
                   return (
                     <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -514,18 +521,32 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                           <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{progress}%</span>
                         </button>
                         
-                        <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm self-start sm:self-auto">
-                           <Clock className="w-3.5 h-3.5 text-gray-400" />
-                           {isTeacherOrAdmin ? (
-                              <>
-                                <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.startDate || ''} onChange={(e) => handlePeriodChange(group.id, 'startDate', e.target.value)} />
-                                <span className="text-gray-300">➜</span>
-                                <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.endDate || ''} onChange={(e) => handlePeriodChange(group.id, 'endDate', e.target.value)} />
-                                {(hasChanged || isSaving) && <button onClick={() => handleSavePeriod(group.id)} disabled={isSaving} className="ml-1 p-1 rounded-full bg-indigo-100 text-indigo-600">{isSaving ? <Loader2 className="w-3 h-3 animate-spin"/> : <Save className="w-3 h-3"/>}</button>}
-                              </>
-                           ) : (
-                              <span>{serverPeriod.startDate || '--'} ➜ {serverPeriod.endDate || '--'}</span>
-                           )}
+                        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                          {categorySopIds.length > 0 && (
+                            <button
+                              type="button"
+                              data-training-category-id={group.id}
+                              onClick={() => openRelatedSops(categorySopIds)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+                            >
+                              <BookOpen className="w-3.5 h-3.5" />
+                              分類 SOP
+                              <span className="bg-white/80 px-1.5 rounded-full">{categorySopIds.length}</span>
+                            </button>
+                          )}
+                          <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm">
+                            <Clock className="w-3.5 h-3.5 text-gray-400" />
+                            {isTeacherOrAdmin ? (
+                                <>
+                                  <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.startDate || ''} onChange={(e) => handlePeriodChange(group.id, 'startDate', e.target.value)} />
+                                  <span className="text-gray-300">➜</span>
+                                  <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.endDate || ''} onChange={(e) => handlePeriodChange(group.id, 'endDate', e.target.value)} />
+                                  {(hasChanged || isSaving) && <button onClick={() => handleSavePeriod(group.id)} disabled={isSaving} className="ml-1 p-1 rounded-full bg-indigo-100 text-indigo-600">{isSaving ? <Loader2 className="w-3 h-3 animate-spin"/> : <Save className="w-3 h-3"/>}</button>}
+                                </>
+                            ) : (
+                                <span>{serverPeriod.startDate || '--'} ➜ {serverPeriod.endDate || '--'}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       {isExpanded && <div className="bg-white p-3 border-t border-gray-100">{renderGroupContent(group.items)}</div>}
