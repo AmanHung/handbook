@@ -68,6 +68,17 @@ const SOP_CATEGORY_TRAINING_LINKS = {
   '藥品諮詢': 'DI',
 };
 
+const SOP_TRAINING_GROUP_RULES = [
+  {
+    trainingTitle: '藥品交付',
+    keywords: ['醫指付', '慢箋預約取消'],
+  },
+  {
+    trainingTitle: '急診調劑作業',
+    keywords: ['急診藥局如遇家屬'],
+  },
+];
+
 export const getTrainingSopIds = (item) => {
   const titleLinks = TITLE_SOP_LINKS[item?.title] || [];
   const itemLinks = ITEM_SOP_LINKS[item?.id] || [];
@@ -91,3 +102,17 @@ export const getCategorySopIds = (categoryId, sopsById) =>
     .filter(sop => getSopTrainingCategoryId(sop) === categoryId)
     .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-Hant'))
     .map(sop => sop.id);
+
+export const getTrainingGroupSopIds = (trainingTitle, items, sopsById) => {
+  const fixedSopIds = (items || []).flatMap(item => getTrainingSopIds(item));
+  const dynamicSopIds = Object.values(sopsById || {})
+    .filter(sop => {
+      const rule = SOP_TRAINING_GROUP_RULES.find(candidate =>
+        candidate.keywords.some(keyword => (sop.title || '').includes(keyword))
+      );
+      return rule?.trainingTitle === trainingTitle;
+    })
+    .map(sop => sop.id);
+
+  return [...new Set([...fixedSopIds, ...dynamicSopIds])];
+};

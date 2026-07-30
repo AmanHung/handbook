@@ -4,9 +4,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ExternalLink, Paperclip } from 'lucide-react';
-import { getCategorySopIds, getTrainingSopIds } from '../data/trainingSopLinks';
+import { getCategorySopIds, getTrainingGroupSopIds, getTrainingSopIds } from '../data/trainingSopLinks';
 import { 
-  CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
+  CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, UserCheck,
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
   Circle, Clock, ClipboardList, Activity, 
   GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
@@ -299,6 +299,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     await loadSops();
   };
 
+  const activeSopIndex = selectedSopIds.indexOf(activeSopId);
+  const selectRelativeSop = (offset) => {
+    const nextIndex = activeSopIndex + offset;
+    if (nextIndex >= 0 && nextIndex < selectedSopIds.length) {
+      setActiveSopId(selectedSopIds[nextIndex]);
+    }
+  };
+
   const handleAssessmentTabClick = (tab) => {
     setAssessmentType(tab);
     if (!mountedTabs.includes(tab)) {
@@ -355,6 +363,21 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     );
   };
 
+  const getSecondLevelSopIds = (items) => {
+    const itemGroups = {};
+    items.forEach(item => {
+      if (!itemGroups[item.title]) itemGroups[item.title] = [];
+      itemGroups[item.title].push(item);
+    });
+
+    return [...new Set(Object.entries(itemGroups).flatMap(([mainTitle, subItems]) => {
+      const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
+      return isGroup
+        ? getTrainingGroupSopIds(mainTitle, subItems, sopsById)
+        : getTrainingSopIds(subItems[0]);
+    }))];
+  };
+
   const renderGroupContent = (items) => {
     const groups = {};
     const groupOrder = []; 
@@ -366,7 +389,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       const subItems = groups[mainTitle];
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
       const groupSopIds = isGroup
-        ? [...new Set(subItems.flatMap(item => getTrainingSopIds(item)))]
+        ? getTrainingGroupSopIds(mainTitle, subItems, sopsById)
         : [];
       return (
         <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
@@ -508,7 +531,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                   const editPeriod = editPeriods[group.id] || serverPeriod;
                   const isSaving = savingPeriod === group.id;
                   const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
-                  const categorySopIds = getCategorySopIds(group.id, sopsById);
+                  const secondLevelSopIds = new Set(getSecondLevelSopIds(group.items));
+                  const categorySopIds = getCategorySopIds(group.id, sopsById)
+                    .filter(sopId => !secondLevelSopIds.has(sopId));
 
                   return (
                     <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -680,8 +705,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
       {/* Related SOP Modal */}
       {isSopModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-black/55 backdrop-blur-sm" onClick={() => setIsSopModalOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" onClick={event => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-6 bg-black/55 backdrop-blur-sm" onClick={() => setIsSopModalOpen(false)}>
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full max-w-5xl h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col" onClick={event => event.stopPropagation()}>
             <div className="px-4 sm:px-6 py-4 border-b border-gray-100 bg-indigo-50 flex justify-between items-start gap-4">
               <div>
                 <h3 className="font-bold text-indigo-900 flex items-center gap-2">
@@ -702,66 +727,112 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             ) : sopError ? (
               <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{sopError}</div>
             ) : (
-              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+              <div className="flex-1 min-h-0 flex flex-col">
                 {selectedSopIds.length > 1 && (
-                  <aside className="md:w-72 border-b md:border-b-0 md:border-r border-gray-100 p-3 bg-gray-50 overflow-x-auto md:overflow-y-auto">
-                    <div className="flex md:flex-col gap-2 min-w-max md:min-w-0">
-                      {selectedSopIds.map(sopId => {
-                        const sop = sopsById[sopId];
-                        return (
-                          <button
-                            type="button"
-                            key={sopId}
-                            onClick={() => setActiveSopId(sopId)}
-                            className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${activeSopId === sopId ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'}`}
-                          >
-                            {sop?.title || 'SOP 文件載入中'}
-                          </button>
-                        );
-                      })}
+                  <div className="md:hidden px-4 py-3 border-b border-gray-100 bg-white">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <label htmlFor="mobile-sop-selector" className="text-xs font-bold text-gray-500">選擇 SOP 文件</label>
+                      <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-full">
+                        第 {activeSopIndex + 1}／{selectedSopIds.length} 份
+                      </span>
                     </div>
-                  </aside>
+                    <select
+                      id="mobile-sop-selector"
+                      value={activeSopId}
+                      onChange={event => setActiveSopId(event.target.value)}
+                      className="w-full px-3 py-2.5 border border-indigo-200 rounded-xl bg-indigo-50 text-indigo-900 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+                    >
+                      {selectedSopIds.map(sopId => (
+                        <option key={sopId} value={sopId}>
+                          {sopsById[sopId]?.title || 'SOP 文件載入中'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
 
-                <section className="flex-1 overflow-y-auto p-4 sm:p-6">
-                  {(() => {
-                    const activeSop = sopsById[activeSopId];
-                    if (!activeSop) {
-                      return <div className="text-center py-16 text-gray-400">找不到這份 SOP，請通知管理者檢查連結。</div>;
-                    }
-                    const attachment = processSopImageUrl(activeSop.attachmentUrl);
-                    return (
-                      <>
-                        <div className="mb-5 pb-4 border-b border-gray-100">
-                          <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">{activeSop.category || '未分類'}</span>
-                            {activeSop.updatedAt && <span className="text-xs text-gray-500">更新日期：{formatSopDate(activeSop.updatedAt)}</span>}
-                            {(activeSop.updatedByName || activeSop.updatedBy) && <span className="text-xs text-gray-500">編修者：{activeSop.updatedByName || activeSop.updatedBy}</span>}
+                <div className="flex-1 min-h-0 flex">
+                  {selectedSopIds.length > 1 && (
+                    <aside className="hidden md:block w-72 border-r border-gray-100 p-3 bg-gray-50 overflow-y-auto">
+                      <div className="flex flex-col gap-2">
+                        {selectedSopIds.map(sopId => {
+                          const sop = sopsById[sopId];
+                          return (
+                            <button
+                              type="button"
+                              key={sopId}
+                              onClick={() => setActiveSopId(sopId)}
+                              className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${activeSopId === sopId ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'}`}
+                            >
+                              {sop?.title || 'SOP 文件載入中'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </aside>
+                  )}
+
+                  <section className="flex-1 overflow-y-auto p-4 sm:p-6">
+                    {(() => {
+                      const activeSop = sopsById[activeSopId];
+                      if (!activeSop) {
+                        return <div className="text-center py-16 text-gray-400">找不到這份 SOP，請通知管理者檢查連結。</div>;
+                      }
+                      const attachment = processSopImageUrl(activeSop.attachmentUrl);
+                      return (
+                        <>
+                          <div className="mb-5 pb-4 border-b border-gray-100">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">{activeSop.category || '未分類'}</span>
+                              {activeSop.updatedAt && <span className="text-xs text-gray-500">更新日期：{formatSopDate(activeSop.updatedAt)}</span>}
+                              {(activeSop.updatedByName || activeSop.updatedBy) && <span className="text-xs text-gray-500">編修者：{activeSop.updatedByName || activeSop.updatedBy}</span>}
+                            </div>
+                            <h4 className="text-xl font-bold text-gray-900 leading-snug break-words">{activeSop.title}</h4>
                           </div>
-                          <h4 className="text-xl font-bold text-gray-900">{activeSop.title}</h4>
-                        </div>
 
-                        {activeSop.content
-                          ? renderSopContent(activeSop.content)
-                          : <div className="text-gray-400 py-8 text-center">這份 SOP 目前沒有文字內容。</div>}
+                          {activeSop.content
+                            ? renderSopContent(activeSop.content)
+                            : <div className="text-gray-400 py-8 text-center">這份 SOP 目前沒有文字內容。</div>}
 
-                        {activeSop.attachmentUrl && attachment.isImage && (
-                          <figure className="mt-6">
-                            <img src={attachment.src} alt={`${activeSop.title} 附件`} className="max-w-full h-auto rounded-xl border border-gray-200 shadow-sm" loading="lazy" />
-                          </figure>
-                        )}
+                          {activeSop.attachmentUrl && attachment.isImage && (
+                            <figure className="mt-6">
+                              <img src={attachment.src} alt={`${activeSop.title} 附件`} className="max-w-full h-auto rounded-xl border border-gray-200 shadow-sm" loading="lazy" />
+                            </figure>
+                          )}
 
-                        {activeSop.attachmentUrl && (
-                          <a href={activeSop.attachmentUrl} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-sm font-bold hover:bg-orange-100">
-                            <Paperclip className="w-4 h-4" />
-                            開啟或下載附件
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                      </>
-                    );
-                  })()}
-                </section>
+                          {activeSop.attachmentUrl && (
+                            <a href={activeSop.attachmentUrl} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-sm font-bold hover:bg-orange-100">
+                              <Paperclip className="w-4 h-4" />
+                              開啟或下載附件
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </section>
+                </div>
+
+                {selectedSopIds.length > 1 && (
+                  <div className="md:hidden shrink-0 px-4 py-3 border-t border-gray-100 bg-white flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => selectRelativeSop(-1)}
+                      disabled={activeSopIndex <= 0}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-sm disabled:opacity-35 disabled:bg-gray-50"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> 上一份
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectRelativeSop(1)}
+                      disabled={activeSopIndex >= selectedSopIds.length - 1}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-35"
+                    >
+                      下一份 <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
