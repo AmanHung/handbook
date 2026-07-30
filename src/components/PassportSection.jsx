@@ -327,6 +327,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           {relatedSopIds.length > 0 && (
             <button
               type="button"
+              data-training-item-id={item.id}
               onClick={() => openRelatedSops(item)}
               className="mt-2 ml-6 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
             >
