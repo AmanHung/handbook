@@ -70,12 +70,24 @@ const SOP_CATEGORY_TRAINING_LINKS = {
 
 const SOP_TRAINING_GROUP_RULES = [
   {
+    trainingTitle: '外用藥與自動藥包機',
+    keywords: ['預包規範與夾鏈袋管理'],
+  },
+  {
     trainingTitle: '藥品交付',
-    keywords: ['醫指付', '慢箋預約取消'],
+    keywords: ['醫指付', '慢箋預約取消', '慢箋預約說明', '營養保健食品開立流程'],
+  },
+  {
+    trainingTitle: '處方評估與疑義處方處理',
+    keywords: ['病人拿過期的處方箋'],
   },
   {
     trainingTitle: '急診調劑作業',
     keywords: ['急診藥局如遇家屬'],
+  },
+  {
+    trainingTitle: '病房常備藥品查核(急救盤、管制藥)',
+    keywords: ['病房藥品破損、結晶、遺失及污染處理'],
   },
 ];
 
