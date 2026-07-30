@@ -18,7 +18,8 @@ import {
   Calendar,
   Edit,
   Save,
-  Users 
+  Users,
+  Radio
 } from 'lucide-react'
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
@@ -27,6 +28,10 @@ import PassportSection from './components/PassportSection'
 import AdminPage from './components/AdminPage'
 import { getEditorAuditFields } from './utils/editorIdentity'
 import './App.css'
+
+const PHARMACY_INFO_CENTER_URL =
+  import.meta.env.VITE_PHARMACY_INFO_CENTER_URL ||
+  'https://pharmacy-bot-gamma.vercel.app/liff'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -286,6 +291,16 @@ function App() {
                   {item.label}
                 </button>
               ))}
+              <a
+                href={PHARMACY_INFO_CENTER_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 text-teal-700 hover:text-teal-900 hover:bg-teal-50"
+                title="開啟 LINE 群組即時資訊中心"
+              >
+                <Radio className="w-4 h-4" />
+                即時資訊
+              </a>
             </div>
 
             <div className="flex items-center gap-4">
@@ -353,6 +368,15 @@ function App() {
                     {item.label}
                     </button>
                 ))}
+                <a
+                  href={PHARMACY_INFO_CENTER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-teal-700 hover:text-teal-900 hover:bg-teal-50"
+                >
+                  即時資訊中心
+                </a>
               </div>
 
               {userRole !== 'guest' && (
