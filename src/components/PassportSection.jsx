@@ -285,8 +285,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     }
   };
 
-  const openRelatedSops = async (item) => {
-    const sopIds = getTrainingSopIds(item);
+  const openRelatedSops = async (sopIds) => {
     if (sopIds.length === 0) return;
     setSelectedSopIds(sopIds);
     setActiveSopId(sopIds[0]);
@@ -310,7 +309,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
-    const relatedSopIds = getTrainingSopIds(item);
+    const relatedSopIds = isMainItem ? getTrainingSopIds(item) : [];
     return (
       <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
         <div className="flex-1">
@@ -328,7 +327,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <button
               type="button"
               data-training-item-id={item.id}
-              onClick={() => openRelatedSops(item)}
+              onClick={() => openRelatedSops(relatedSopIds)}
               className="mt-2 ml-6 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
             >
               <BookOpen className="w-3.5 h-3.5" />
@@ -360,9 +359,31 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return groupOrder.map((mainTitle, idx) => {
       const subItems = groups[mainTitle];
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
+      const groupSopIds = isGroup
+        ? [...new Set(subItems.flatMap(item => getTrainingSopIds(item)))]
+        : [];
       return (
         <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-          {isGroup && <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 text-sm flex items-center gap-2"><List className="w-4 h-4 text-gray-500" />{mainTitle}</div>}
+          {isGroup && (
+            <div className="bg-gray-100 px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="font-bold text-gray-700 text-sm flex items-center gap-2">
+                <List className="w-4 h-4 text-gray-500" />
+                {mainTitle}
+              </div>
+              {groupSopIds.length > 0 && (
+                <button
+                  type="button"
+                  data-training-group-title={mainTitle}
+                  onClick={() => openRelatedSops(groupSopIds)}
+                  className="self-start sm:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  相關 SOP
+                  <span className="bg-white/80 px-1.5 rounded-full">{groupSopIds.length}</span>
+                </button>
+              )}
+            </div>
+          )}
           <div className="bg-white">{subItems.map(item => renderItemRow(item, !isGroup))}</div>
         </div>
       );
