@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ExternalLink, Paperclip } from 'lucide-react';
-import { getCategorySopIds, getTrainingGroupSopIds, getTrainingSopIds } from '../data/trainingSopLinks';
+import { getCategorySopIds, getTrainingGroupSopIds } from '../data/trainingSopLinks';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, UserCheck,
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
@@ -323,7 +323,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
-    const relatedSopIds = isMainItem ? getTrainingSopIds(item) : [];
+    const relatedSopIds = isMainItem
+      ? getTrainingGroupSopIds(item.title, [item], sopsById)
+      : [];
     return (
       <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
         <div className="flex-1">
@@ -374,7 +376,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
       return isGroup
         ? getTrainingGroupSopIds(mainTitle, subItems, sopsById)
-        : getTrainingSopIds(subItems[0]);
+        : getTrainingGroupSopIds(mainTitle, subItems, sopsById);
     }))];
   };
 
