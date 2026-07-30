@@ -3,6 +3,8 @@ import {
   collection, getDocs, query, where
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { ExternalLink, Paperclip } from 'lucide-react';
+import { getTrainingSopIds } from '../data/trainingSopLinks';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronRight, UserCheck, 
   BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
@@ -24,6 +26,79 @@ import CareAssessment from './CareAssessment'; // [新] 引入關懷紀錄元件
 
 // Google Apps Script API 網址
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
+
+const processSopImageUrl = (url) => {
+  if (!url) return { isImage: false, src: '' };
+  const lowerUrl = url.toLowerCase();
+  const isStandardImage = lowerUrl.match(/\.(jpeg|jpg|gif|png|webp|bmp)($|\?)/)
+    || (lowerUrl.includes('firebasestorage') && lowerUrl.includes('alt=media'));
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+    || url.match(/drive\.google\.com\/open\?id=([^&]+)/)
+    || url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);
+  const fileId = driveMatch?.[1];
+
+  if (isStandardImage) return { isImage: true, src: url };
+  if (fileId) {
+    return {
+      isImage: true,
+      src: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`,
+    };
+  }
+  return { isImage: false, src: url };
+};
+
+const renderSopContent = (text) => {
+  if (!text) return null;
+  const regex = /(!?)\[([^\]]*)\]\(([^)]+)\)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+    }
+    const isImage = match[1] === '!';
+    const label = match[2];
+    const url = match[3];
+    const imageInfo = processSopImageUrl(url);
+    parts.push(isImage
+      ? { type: 'image', alt: label, url: imageInfo.isImage ? imageInfo.src : url }
+      : { type: 'link', label: label || url, url });
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.substring(lastIndex) });
+  }
+
+  return (
+    <div className="whitespace-pre-wrap leading-relaxed text-gray-700">
+      {parts.map((part, index) => {
+        if (part.type === 'text') return <span key={index}>{part.content}</span>;
+        if (part.type === 'image') {
+          return (
+            <figure key={index} className="my-5">
+              <img src={part.url} alt={part.alt} className="max-w-full h-auto rounded-xl border border-gray-200 shadow-sm" loading="lazy" />
+              {part.alt && <figcaption className="text-xs text-gray-500 text-center mt-2">{part.alt}</figcaption>}
+            </figure>
+          );
+        }
+        return (
+          <a key={index} href={part.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline font-bold inline-flex items-center gap-1">
+            {part.label}<ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        );
+      })}
+    </div>
+  );
+};
+
+const formatSopDate = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-TW');
+};
 
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
@@ -50,6 +125,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
   const [savingPeriod, setSavingPeriod] = useState(null);
+  const [sopsById, setSopsById] = useState({});
+  const [sopsLoaded, setSopsLoaded] = useState(false);
+  const [sopLoading, setSopLoading] = useState(false);
+  const [sopError, setSopError] = useState('');
+  const [selectedSopIds, setSelectedSopIds] = useState([]);
+  const [activeSopId, setActiveSopId] = useState('');
+  const [isSopModalOpen, setIsSopModalOpen] = useState(false);
 
   // 初始化學員名單
   useEffect(() => {
@@ -183,6 +265,35 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const loadSops = async () => {
+    if (sopsLoaded || sopLoading) return;
+    setSopLoading(true);
+    setSopError('');
+    try {
+      const snapshot = await getDocs(collection(db, 'sop_articles'));
+      const nextSops = {};
+      snapshot.forEach(sopDoc => {
+        nextSops[sopDoc.id] = { id: sopDoc.id, ...sopDoc.data() };
+      });
+      setSopsById(nextSops);
+      setSopsLoaded(true);
+    } catch (error) {
+      console.error('讀取相關 SOP 失敗：', error);
+      setSopError('無法讀取相關 SOP，請稍後再試。');
+    } finally {
+      setSopLoading(false);
+    }
+  };
+
+  const openRelatedSops = async (item) => {
+    const sopIds = getTrainingSopIds(item);
+    if (sopIds.length === 0) return;
+    setSelectedSopIds(sopIds);
+    setActiveSopId(sopIds[0]);
+    setIsSopModalOpen(true);
+    await loadSops();
+  };
+
   const handleAssessmentTabClick = (tab) => {
     setAssessmentType(tab);
     if (!mountedTabs.includes(tab)) {
@@ -199,6 +310,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
+    const relatedSopIds = getTrainingSopIds(item);
     return (
       <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
         <div className="flex-1">
@@ -211,6 +323,17 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               <UserCheck className="w-3 h-3" /> {record.teacher} ({new Date(record.date).toLocaleDateString()})
               {record.note && <span className="text-gray-400"> - {record.note}</span>}
             </p>
+          )}
+          {relatedSopIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => openRelatedSops(item)}
+              className="mt-2 ml-6 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              相關 SOP
+              <span className="bg-white/80 px-1.5 rounded-full">{relatedSopIds.length}</span>
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2 ml-6 sm:ml-0">
@@ -511,6 +634,96 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         )}
 
       </div>
+
+      {/* Related SOP Modal */}
+      {isSopModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-black/55 backdrop-blur-sm" onClick={() => setIsSopModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" onClick={event => event.stopPropagation()}>
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-100 bg-indigo-50 flex justify-between items-start gap-4">
+              <div>
+                <h3 className="font-bold text-indigo-900 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" /> 相關 SOP
+                </h3>
+                <p className="text-xs text-indigo-600 mt-1">閱讀 SOP 後，仍須由教師依實際操作完成訓練評核。</p>
+              </div>
+              <button type="button" onClick={() => setIsSopModalOpen(false)} className="p-1.5 rounded-full hover:bg-white text-gray-500" aria-label="關閉相關 SOP">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {sopLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-20 text-gray-500">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
+                正在載入 SOP…
+              </div>
+            ) : sopError ? (
+              <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{sopError}</div>
+            ) : (
+              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+                {selectedSopIds.length > 1 && (
+                  <aside className="md:w-72 border-b md:border-b-0 md:border-r border-gray-100 p-3 bg-gray-50 overflow-x-auto md:overflow-y-auto">
+                    <div className="flex md:flex-col gap-2 min-w-max md:min-w-0">
+                      {selectedSopIds.map(sopId => {
+                        const sop = sopsById[sopId];
+                        return (
+                          <button
+                            type="button"
+                            key={sopId}
+                            onClick={() => setActiveSopId(sopId)}
+                            className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${activeSopId === sopId ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'}`}
+                          >
+                            {sop?.title || 'SOP 文件載入中'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+                )}
+
+                <section className="flex-1 overflow-y-auto p-4 sm:p-6">
+                  {(() => {
+                    const activeSop = sopsById[activeSopId];
+                    if (!activeSop) {
+                      return <div className="text-center py-16 text-gray-400">找不到這份 SOP，請通知管理者檢查連結。</div>;
+                    }
+                    const attachment = processSopImageUrl(activeSop.attachmentUrl);
+                    return (
+                      <>
+                        <div className="mb-5 pb-4 border-b border-gray-100">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">{activeSop.category || '未分類'}</span>
+                            {activeSop.updatedAt && <span className="text-xs text-gray-500">更新日期：{formatSopDate(activeSop.updatedAt)}</span>}
+                            {(activeSop.updatedByName || activeSop.updatedBy) && <span className="text-xs text-gray-500">編修者：{activeSop.updatedByName || activeSop.updatedBy}</span>}
+                          </div>
+                          <h4 className="text-xl font-bold text-gray-900">{activeSop.title}</h4>
+                        </div>
+
+                        {activeSop.content
+                          ? renderSopContent(activeSop.content)
+                          : <div className="text-gray-400 py-8 text-center">這份 SOP 目前沒有文字內容。</div>}
+
+                        {activeSop.attachmentUrl && attachment.isImage && (
+                          <figure className="mt-6">
+                            <img src={attachment.src} alt={`${activeSop.title} 附件`} className="max-w-full h-auto rounded-xl border border-gray-200 shadow-sm" loading="lazy" />
+                          </figure>
+                        )}
+
+                        {activeSop.attachmentUrl && (
+                          <a href={activeSop.attachmentUrl} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-sm font-bold hover:bg-orange-100">
+                            <Paperclip className="w-4 h-4" />
+                            開啟或下載附件
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </>
+                    );
+                  })()}
+                </section>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Evaluate Modal */}
       {isModalOpen && (
