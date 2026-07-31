@@ -119,6 +119,14 @@ const getVideoEmbedUrl = (url) => {
   return '';
 };
 
+const getVideoSequence = (title) => {
+  const match = (title || '').match(/[-－](\d{1,2})/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+const compareVideos = (a, b) => getVideoSequence(a.title) - getVideoSequence(b.title)
+  || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true });
+
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
@@ -414,9 +422,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return configuredLink ? (configuredLink.sopIds || []) : fallbackSopIds;
   };
 
-  const resolveTrainingVideoIds = (targetId) => (
-    configuredLinksByTargetId[targetId]?.videoIds || []
-  );
+  const resolveTrainingVideoIds = (targetId) => Object.values(videosById)
+    .filter(video => (video.trainingItemIds || []).includes(targetId))
+    .sort(compareVideos)
+    .map(video => video.id);
 
   const getSopReadState = (sopId) => {
     const receipt = sopReadReceipts[sopId];

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import {
+  arrayRemove, arrayUnion, collection, doc, onSnapshot, setDoc, writeBatch,
+} from 'firebase/firestore';
 import { BookOpen, Check, Film, Link2, Loader2, Save, Search, Sparkles } from 'lucide-react';
 import { db } from '../firebase';
 import { getEditorAuditFields } from '../utils/editorIdentity';
@@ -103,9 +105,12 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
 
   useEffect(() => {
     setSelectedSopIds(savedLink?.sopIds || []);
-    setSelectedVideoIds(savedLink?.videoIds || []);
+    setSelectedVideoIds((videos || [])
+      .filter(video => (video.trainingItemIds || []).includes(selectedTargetId))
+      .sort(compareVideos)
+      .map(video => video.id));
     setMessage('');
-  }, [selectedTargetId, savedLink]);
+  }, [selectedTargetId, savedLink, videos]);
 
   const recommendedSopIds = useMemo(() => {
     if (!selectedTarget) return [];
@@ -154,15 +159,35 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
     setMessage('');
     try {
       const selectedIds = resourceType === 'sop' ? selectedSopIds : selectedVideoIds;
-      const resourceField = resourceType === 'sop' ? 'sopIds' : 'videoIds';
-      await setDoc(doc(db, 'training_sop_links', selectedTarget.id), {
-        trainingItemId: selectedTarget.id,
-        trainingTitle: selectedTarget.title,
-        categoryId: selectedTarget.categoryId,
-        categoryName: selectedTarget.categoryName,
-        [resourceField]: selectedIds,
-        ...getEditorAuditFields(),
-      }, { merge: true });
+      if (resourceType === 'sop') {
+        await setDoc(doc(db, 'training_sop_links', selectedTarget.id), {
+          trainingItemId: selectedTarget.id,
+          trainingTitle: selectedTarget.title,
+          categoryId: selectedTarget.categoryId,
+          categoryName: selectedTarget.categoryName,
+          sopIds: selectedIds,
+          ...getEditorAuditFields(),
+        }, { merge: true });
+      } else {
+        const selectedSet = new Set(selectedIds);
+        const changedVideos = (videos || []).filter(video => {
+          const wasSelected = (video.trainingItemIds || []).includes(selectedTarget.id);
+          return wasSelected !== selectedSet.has(video.id);
+        });
+        if (changedVideos.length > 0) {
+          const batch = writeBatch(db);
+          changedVideos.forEach(video => {
+            const shouldLink = selectedSet.has(video.id);
+            batch.update(doc(db, 'training_videos', video.id), {
+              trainingItemIds: shouldLink
+                ? arrayUnion(selectedTarget.id)
+                : arrayRemove(selectedTarget.id),
+              ...getEditorAuditFields(),
+            });
+          });
+          await batch.commit();
+        }
+      }
       setMessage(`已儲存 ${selectedIds.length} 份${resourceType === 'sop' ? ' SOP' : '教學影片'}連結。`);
     } catch (error) {
       console.error('儲存訓練資源連結失敗：', error);
