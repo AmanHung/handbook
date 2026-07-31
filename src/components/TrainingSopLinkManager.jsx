@@ -29,6 +29,14 @@ const normalizeText = (value) => (value || '')
   .toLowerCase()
   .replace(/[\s、，。／/（）()：:・\-─_]/g, '');
 
+const getVideoSequence = (title) => {
+  const match = (title || '').match(/[-－](\d{1,2})/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+const compareVideos = (a, b) => getVideoSequence(a.title) - getVideoSequence(b.title)
+  || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true });
+
 const getRecommendedVideoIds = (target, videos) => {
   if (!target) return [];
   const targetTitle = normalizeText(target.title);
@@ -128,7 +136,9 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
         || (resource.title || '').toLowerCase().includes(keyword)
         || (resource.category || '').toLowerCase().includes(keyword))
       .sort((a, b) => (a.category || '').localeCompare(b.category || '', 'zh-Hant')
-        || (a.title || '').localeCompare(b.title || '', 'zh-Hant'));
+        || (resourceType === 'video'
+          ? compareVideos(a, b)
+          : (a.title || '').localeCompare(b.title || '', 'zh-Hant')));
   }, [resourceType, searchTerm, sops, videos]);
 
   const toggleResource = (resourceId) => {
@@ -223,7 +233,7 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
               {videoCategories.map(category => {
                 const categoryVideoIds = (videos || [])
                   .filter(video => (video.category || '未分類') === category)
-                  .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true }))
+                  .sort(compareVideos)
                   .map(video => video.id);
                 const allSelected = categoryVideoIds.length > 0
                   && categoryVideoIds.every(id => selectedVideoIds.includes(id));

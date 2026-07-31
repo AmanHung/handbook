@@ -3,6 +3,11 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import { Search, Play, Film, ExternalLink, Video } from 'lucide-react';
 
+const getVideoSequence = (title) => {
+  const match = (title || '').match(/[-－](\d{1,2})/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
 const VideoGallery = () => {
   const [activeCategory, setActiveCategory] = useState('全部');
   const [videos, setVideos] = useState([]);
@@ -66,6 +71,7 @@ const VideoGallery = () => {
     .slice()
     .sort((a, b) => categoryRank(a.category) - categoryRank(b.category)
       || (a.category || '').localeCompare(b.category || '', 'zh-Hant')
+      || getVideoSequence(a.title) - getVideoSequence(b.title)
       || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true }));
 
   return (
