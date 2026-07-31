@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Check, Link2, Loader2, Save, Search, Sparkles } from 'lucide-react';
+import { BookOpen, Check, Film, Link2, Loader2, Save, Search, Sparkles } from 'lucide-react';
 import { db } from '../firebase';
 import { getEditorAuditFields } from '../utils/editorIdentity';
 import { getTrainingGroupSopIds } from '../data/trainingSopLinks';
@@ -25,11 +25,37 @@ const buildTrainingTargets = (items) => {
   return [...groups.values()].filter(target => target.title !== '未命名訓練項目');
 };
 
-const TrainingSopLinkManager = ({ user, sops }) => {
+const normalizeText = (value) => (value || '')
+  .toLowerCase()
+  .replace(/[\s、，。／/（）()：:・\-─_]/g, '');
+
+const getRecommendedVideoIds = (target, videos) => {
+  if (!target) return [];
+  const targetTitle = normalizeText(target.title);
+  const targetCategory = normalizeText(target.categoryName);
+  const targetDetails = normalizeText(target.items.map(item => item.sub_item || '').join(' '));
+
+  return (videos || [])
+    .filter(video => {
+      const videoTitle = normalizeText(video.title);
+      const videoCategory = normalizeText(video.category);
+      if (!videoTitle) return false;
+      return (videoCategory && targetCategory
+          && (videoCategory.includes(targetCategory) || targetCategory.includes(videoCategory)))
+        || targetTitle.includes(videoTitle)
+        || videoTitle.includes(targetTitle)
+        || targetDetails.includes(videoTitle);
+    })
+    .map(video => video.id);
+};
+
+const TrainingSopLinkManager = ({ user, sops, videos }) => {
   const [targets, setTargets] = useState([]);
   const [linksByTargetId, setLinksByTargetId] = useState({});
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [selectedSopIds, setSelectedSopIds] = useState([]);
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
+  const [resourceType, setResourceType] = useState('sop');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +95,7 @@ const TrainingSopLinkManager = ({ user, sops }) => {
 
   useEffect(() => {
     setSelectedSopIds(savedLink?.sopIds || []);
+    setSelectedVideoIds(savedLink?.videoIds || []);
     setMessage('');
   }, [selectedTargetId, savedLink]);
 
@@ -82,20 +109,33 @@ const TrainingSopLinkManager = ({ user, sops }) => {
     return [...new Set([...fixedRecommendations, ...categoryRecommendations])];
   }, [selectedTarget, sops]);
 
-  const filteredSops = useMemo(() => {
+  const recommendedVideoIds = useMemo(
+    () => getRecommendedVideoIds(selectedTarget, videos),
+    [selectedTarget, videos]
+  );
+
+  const videoCategories = useMemo(
+    () => [...new Set((videos || []).map(video => video.category || '未分類'))]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hant')),
+    [videos]
+  );
+
+  const filteredResources = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
-    return [...(sops || [])]
-      .filter(sop => !keyword
-        || (sop.title || '').toLowerCase().includes(keyword)
-        || (sop.category || '').toLowerCase().includes(keyword))
+    const resources = resourceType === 'sop' ? sops : videos;
+    return [...(resources || [])]
+      .filter(resource => !keyword
+        || (resource.title || '').toLowerCase().includes(keyword)
+        || (resource.category || '').toLowerCase().includes(keyword))
       .sort((a, b) => (a.category || '').localeCompare(b.category || '', 'zh-Hant')
         || (a.title || '').localeCompare(b.title || '', 'zh-Hant'));
-  }, [sops, searchTerm]);
+  }, [resourceType, searchTerm, sops, videos]);
 
-  const toggleSop = (sopId) => {
-    setSelectedSopIds(current => current.includes(sopId)
-      ? current.filter(id => id !== sopId)
-      : [...current, sopId]);
+  const toggleResource = (resourceId) => {
+    const setter = resourceType === 'sop' ? setSelectedSopIds : setSelectedVideoIds;
+    setter(current => current.includes(resourceId)
+      ? current.filter(id => id !== resourceId)
+      : [...current, resourceId]);
   };
 
   const saveLinks = async () => {
@@ -103,17 +143,19 @@ const TrainingSopLinkManager = ({ user, sops }) => {
     setSaving(true);
     setMessage('');
     try {
+      const selectedIds = resourceType === 'sop' ? selectedSopIds : selectedVideoIds;
+      const resourceField = resourceType === 'sop' ? 'sopIds' : 'videoIds';
       await setDoc(doc(db, 'training_sop_links', selectedTarget.id), {
         trainingItemId: selectedTarget.id,
         trainingTitle: selectedTarget.title,
         categoryId: selectedTarget.categoryId,
         categoryName: selectedTarget.categoryName,
-        sopIds: selectedSopIds,
+        [resourceField]: selectedIds,
         ...getEditorAuditFields(),
-      });
-      setMessage(`已儲存 ${selectedSopIds.length} 份 SOP 連結。`);
+      }, { merge: true });
+      setMessage(`已儲存 ${selectedIds.length} 份${resourceType === 'sop' ? ' SOP' : '教學影片'}連結。`);
     } catch (error) {
-      console.error('儲存 SOP 連結失敗：', error);
+      console.error('儲存訓練資源連結失敗：', error);
       setMessage(`儲存失敗：${error.message}`);
     } finally {
       setSaving(false);
@@ -127,8 +169,8 @@ const TrainingSopLinkManager = ({ user, sops }) => {
   return (
     <div className="bg-white md:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="p-4 md:p-6 border-b border-gray-100 bg-indigo-50">
-        <h2 className="font-bold text-indigo-900 flex items-center gap-2"><Link2 className="w-5 h-5" />訓練項目與 SOP 連結管理</h2>
-        <p className="text-sm text-indigo-700 mt-1">連結以固定訓練項目 ID 與 SOP 文件 ID 儲存，標題修改後仍然有效。</p>
+        <h2 className="font-bold text-indigo-900 flex items-center gap-2"><Link2 className="w-5 h-5" />訓練項目與學習資源連結管理</h2>
+        <p className="text-sm text-indigo-700 mt-1">連結以固定訓練項目 ID、SOP 文件 ID 與影片 ID 儲存，標題修改後仍然有效。</p>
       </div>
 
       <div className="p-4 md:p-6 space-y-5">
@@ -142,38 +184,99 @@ const TrainingSopLinkManager = ({ user, sops }) => {
           <p className="text-xs text-gray-500 mt-1">固定識別碼：{selectedTargetId || '—'}</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-          <label className="text-sm font-bold text-gray-700">2．勾選相關 SOP</label>
-          <button type="button" onClick={() => setSelectedSopIds(recommendedSopIds)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold">
-            <Sparkles className="w-4 h-4" />套用系統推薦（{recommendedSopIds.length}）
+        <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+          <button
+            type="button"
+            onClick={() => { setResourceType('sop'); setSearchTerm(''); setMessage(''); }}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold ${resourceType === 'sop' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}`}
+          >
+            <BookOpen className="w-4 h-4" /> SOP 文件
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs">{selectedSopIds.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setResourceType('video'); setSearchTerm(''); setMessage(''); }}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold ${resourceType === 'video' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500'}`}
+          >
+            <Film className="w-4 h-4" /> 教學影片
+            <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs">{selectedVideoIds.length}</span>
           </button>
         </div>
 
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+          <label className="text-sm font-bold text-gray-700">2．勾選相關{resourceType === 'sop' ? ' SOP' : '教學影片'}</label>
+          <button
+            type="button"
+            onClick={() => resourceType === 'sop'
+              ? setSelectedSopIds(recommendedSopIds)
+              : setSelectedVideoIds(recommendedVideoIds)}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold"
+          >
+            <Sparkles className="w-4 h-4" />套用系統推薦（{resourceType === 'sop' ? recommendedSopIds.length : recommendedVideoIds.length}）
+          </button>
+        </div>
+
+        {resourceType === 'video' && videoCategories.length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-bold text-gray-500">快速加入整個影片系列</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {videoCategories.map(category => {
+                const categoryVideoIds = (videos || [])
+                  .filter(video => (video.category || '未分類') === category)
+                  .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true }))
+                  .map(video => video.id);
+                const allSelected = categoryVideoIds.length > 0
+                  && categoryVideoIds.every(id => selectedVideoIds.includes(id));
+                return (
+                  <button
+                    type="button"
+                    key={category}
+                    onClick={() => setSelectedVideoIds(current => allSelected
+                      ? current.filter(id => !categoryVideoIds.includes(id))
+                      : [...new Set([...current, ...categoryVideoIds])])}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${allSelected ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700'}`}
+                  >
+                    {category}（{categoryVideoIds.length}）
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="relative">
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3.5" />
-          <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="搜尋 SOP 標題或分類…" className="w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl" />
+          <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={`搜尋${resourceType === 'sop' ? ' SOP' : '影片'}標題或分類…`} className="w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl" />
         </div>
 
         <div className="border border-gray-200 rounded-xl max-h-[28rem] overflow-y-auto divide-y divide-gray-100">
-          {filteredSops.map(sop => {
-            const checked = selectedSopIds.includes(sop.id);
-            const recommended = recommendedSopIds.includes(sop.id);
+          {filteredResources.map(resource => {
+            const selectedIds = resourceType === 'sop' ? selectedSopIds : selectedVideoIds;
+            const recommendedIds = resourceType === 'sop' ? recommendedSopIds : recommendedVideoIds;
+            const checked = selectedIds.includes(resource.id);
+            const recommended = recommendedIds.includes(resource.id);
             return (
-              <label key={sop.id} className={`flex items-start gap-3 p-3 cursor-pointer ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                <input type="checkbox" checked={checked} onChange={() => toggleSop(sop.id)} className="mt-1 w-4 h-4 accent-indigo-600" />
+              <label key={resource.id} className={`flex items-start gap-3 p-3 cursor-pointer ${checked ? (resourceType === 'sop' ? 'bg-indigo-50' : 'bg-purple-50') : 'hover:bg-gray-50'}`}>
+                <input type="checkbox" checked={checked} onChange={() => toggleResource(resource.id)} className={`mt-1 w-4 h-4 ${resourceType === 'sop' ? 'accent-indigo-600' : 'accent-purple-600'}`} />
                 <span className="flex-1 min-w-0">
-                  <span className="font-bold text-sm text-gray-800 block">{sop.title}</span>
-                  <span className="text-xs text-gray-500">{sop.category || '未分類'}｜文件 ID：{sop.id}</span>
+                  <span className="font-bold text-sm text-gray-800 block">{resource.title}</span>
+                  <span className="text-xs text-gray-500">{resource.category || '未分類'}｜{resourceType === 'sop' ? '文件' : '影片'} ID：{resource.id}</span>
                 </span>
                 {recommended && <span className="text-[11px] bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-bold">推薦</span>}
               </label>
             );
           })}
+          {filteredResources.length === 0 && (
+            <p className="p-8 text-center text-sm text-gray-400">找不到符合條件的{resourceType === 'sop' ? ' SOP' : '教學影片'}。</p>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <p className="text-sm text-gray-600">已選擇 <strong className="text-indigo-700">{selectedSopIds.length}</strong> 份；未勾選任何文件時，護照會顯示「尚無相關 SOP」。</p>
-          <button type="button" onClick={saveLinks} disabled={saving} className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white font-bold disabled:opacity-50">
+          <p className="text-sm text-gray-600">
+            已選擇 <strong className={resourceType === 'sop' ? 'text-indigo-700' : 'text-purple-700'}>{resourceType === 'sop' ? selectedSopIds.length : selectedVideoIds.length}</strong> 份；
+            {resourceType === 'sop' ? '未勾選文件時，護照會顯示「尚無相關 SOP」。' : '影片推薦僅供參考，仍須由管理者確認後儲存。'}
+          </p>
+          <button type="button" onClick={saveLinks} disabled={saving} className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-white font-bold disabled:opacity-50 ${resourceType === 'sop' ? 'bg-indigo-600' : 'bg-purple-600'}`}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             儲存連結
           </button>

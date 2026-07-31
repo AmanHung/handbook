@@ -7,7 +7,7 @@ import { ExternalLink, Paperclip } from 'lucide-react';
 import { getCategorySopIds, getTrainingGroupSopIds } from '../data/trainingSopLinks';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, UserCheck,
-  BookOpen, Calendar, Loader2, User, Save, X, List, FileText, 
+  BookOpen, Calendar, Film, Loader2, PlayCircle, User, Save, X, List, FileText,
   Circle, Clock, ClipboardList, Activity, 
   GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
   Award, HeartHandshake // [新] 引入關懷圖示
@@ -109,6 +109,16 @@ const getSopVersion = (sop) => {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 };
 
+const getVideoEmbedUrl = (url) => {
+  if (!url) return '';
+  const youtubeMatch = url.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (youtubeMatch?.[1]) return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+    || url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if (driveMatch?.[1]) return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+  return '';
+};
+
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
@@ -144,6 +154,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [configuredLinksByTargetId, setConfiguredLinksByTargetId] = useState({});
   const [sopReadReceipts, setSopReadReceipts] = useState({});
   const [savingReadReceipt, setSavingReadReceipt] = useState(false);
+  const [videosById, setVideosById] = useState({});
+  const [videosLoaded, setVideosLoaded] = useState(false);
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
+  const [activeVideoId, setActiveVideoId] = useState('');
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
 
   // 初始化學員名單
   useEffect(() => {
@@ -205,6 +220,21 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       });
       setConfiguredLinksByTargetId(nextLinks);
     }, error => console.error('讀取訓練 SOP 連結失敗：', error));
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'training_videos'), snapshot => {
+      const nextVideos = {};
+      snapshot.forEach(videoDoc => {
+        nextVideos[videoDoc.id] = { id: videoDoc.id, ...videoDoc.data() };
+      });
+      setVideosById(nextVideos);
+      setVideosLoaded(true);
+    }, error => {
+      console.error('讀取相關教學影片失敗：', error);
+      setVideosLoaded(true);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -342,11 +372,27 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     await loadSops();
   };
 
+  const openRelatedVideos = (videoIds) => {
+    const availableVideoIds = videoIds.filter(videoId => videosById[videoId]);
+    if (availableVideoIds.length === 0) return;
+    setSelectedVideoIds(availableVideoIds);
+    setActiveVideoId(availableVideoIds[0]);
+    setIsVideoModalOpen(true);
+  };
+
   const activeSopIndex = selectedSopIds.indexOf(activeSopId);
   const selectRelativeSop = (offset) => {
     const nextIndex = activeSopIndex + offset;
     if (nextIndex >= 0 && nextIndex < selectedSopIds.length) {
       setActiveSopId(selectedSopIds[nextIndex]);
+    }
+  };
+
+  const activeVideoIndex = selectedVideoIds.indexOf(activeVideoId);
+  const selectRelativeVideo = (offset) => {
+    const nextIndex = activeVideoIndex + offset;
+    if (nextIndex >= 0 && nextIndex < selectedVideoIds.length) {
+      setActiveVideoId(selectedVideoIds[nextIndex]);
     }
   };
 
@@ -367,6 +413,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     const configuredLink = configuredLinksByTargetId[targetId];
     return configuredLink ? (configuredLink.sopIds || []) : fallbackSopIds;
   };
+
+  const resolveTrainingVideoIds = (targetId) => (
+    configuredLinksByTargetId[targetId]?.videoIds || []
+  );
 
   const getSopReadState = (sopId) => {
     const receipt = sopReadReceipts[sopId];
@@ -419,6 +469,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     const relatedSopIds = isMainItem
       ? resolveTrainingSopIds(item.id, getTrainingGroupSopIds(item.title, [item], sopsById))
       : [];
+    const relatedVideoIds = isMainItem ? resolveTrainingVideoIds(item.id) : [];
     return (
       <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
         <div className="flex-1">
@@ -432,22 +483,38 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               {record.note && <span className="text-gray-400"> - {record.note}</span>}
             </p>
           )}
-          {relatedSopIds.length > 0 ? (
+          {isMainItem && (relatedSopIds.length > 0 || relatedVideoIds.length > 0 || sopsLoaded) ? (
             <div className="mt-2 ml-6 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                data-training-item-id={item.id}
-                onClick={() => openRelatedSops(relatedSopIds)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                相關 SOP
-                <span className="bg-white/80 px-1.5 rounded-full">{relatedSopIds.length}</span>
-              </button>
-              {renderReadStatus(relatedSopIds)}
+              {relatedSopIds.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    data-training-item-id={item.id}
+                    onClick={() => openRelatedSops(relatedSopIds)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    相關 SOP
+                    <span className="bg-white/80 px-1.5 rounded-full">{relatedSopIds.length}</span>
+                  </button>
+                  {renderReadStatus(relatedSopIds)}
+                </>
+              ) : (
+                <span className="text-xs font-bold text-gray-400">尚無相關 SOP</span>
+              )}
+              {videosLoaded && relatedVideoIds.length > 0 && (
+                <button
+                  type="button"
+                  data-training-video-item-id={item.id}
+                  onClick={() => openRelatedVideos(relatedVideoIds)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100 text-xs font-bold transition-colors"
+                >
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  相關影片
+                  <span className="bg-white/80 px-1.5 rounded-full">{relatedVideoIds.length}</span>
+                </button>
+              )}
             </div>
-          ) : isMainItem && sopsLoaded ? (
-            <p className="mt-2 ml-6 text-xs font-bold text-gray-400">尚無相關 SOP</p>
           ) : null}
         </div>
         <div className="flex items-center gap-2 ml-6 sm:ml-0">
@@ -495,6 +562,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             getTrainingGroupSopIds(mainTitle, subItems, sopsById)
           )
         : [];
+      const groupVideoIds = isGroup ? resolveTrainingVideoIds(subItems[0].id) : [];
       return (
         <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
           {isGroup && (
@@ -503,19 +571,37 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <List className="w-4 h-4 text-gray-500" />
                 {mainTitle}
               </div>
-              {groupSopIds.length > 0 ? (
+              {groupSopIds.length > 0 || groupVideoIds.length > 0 ? (
                 <div className="self-start sm:self-auto flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    data-training-group-title={mainTitle}
-                    onClick={() => openRelatedSops(groupSopIds)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    相關 SOP
-                    <span className="bg-white/80 px-1.5 rounded-full">{groupSopIds.length}</span>
-                  </button>
-                  {renderReadStatus(groupSopIds)}
+                  {groupSopIds.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        data-training-group-title={mainTitle}
+                        onClick={() => openRelatedSops(groupSopIds)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        相關 SOP
+                        <span className="bg-white/80 px-1.5 rounded-full">{groupSopIds.length}</span>
+                      </button>
+                      {renderReadStatus(groupSopIds)}
+                    </>
+                  ) : (
+                    <span className="text-xs font-bold text-gray-400">尚無相關 SOP</span>
+                  )}
+                  {videosLoaded && groupVideoIds.length > 0 && (
+                    <button
+                      type="button"
+                      data-training-video-group-title={mainTitle}
+                      onClick={() => openRelatedVideos(groupVideoIds)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100 text-xs font-bold transition-colors"
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                      相關影片
+                      <span className="bg-white/80 px-1.5 rounded-full">{groupVideoIds.length}</span>
+                    </button>
+                  )}
                 </div>
               ) : sopsLoaded ? (
                 <span className="self-start sm:self-auto text-xs font-bold text-gray-400">尚無相關 SOP</span>
@@ -956,6 +1042,130 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Related Video Series Modal */}
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-6 bg-black/55 backdrop-blur-sm" onClick={() => setIsVideoModalOpen(false)}>
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full max-w-5xl h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col" onClick={event => event.stopPropagation()}>
+            <div className="px-4 sm:px-6 py-4 border-b border-purple-100 bg-purple-50 flex justify-between items-start gap-4">
+              <div>
+                <h3 className="font-bold text-purple-900 flex items-center gap-2">
+                  <Film className="w-5 h-5" /> 相關影片系列
+                </h3>
+                <p className="text-xs text-purple-700 mt-1">本訓練項目的影片集中於此，可依序觀看，不必逐一開啟多個連結。</p>
+              </div>
+              <button type="button" onClick={() => setIsVideoModalOpen(false)} className="p-1.5 rounded-full hover:bg-white text-gray-500" aria-label="關閉相關影片">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="md:hidden px-4 py-3 border-b border-gray-100 bg-white">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <label htmlFor="mobile-video-selector" className="text-xs font-bold text-gray-500">選擇教學影片</label>
+                <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded-full">
+                  第 {activeVideoIndex + 1}／{selectedVideoIds.length} 部
+                </span>
+              </div>
+              <select
+                id="mobile-video-selector"
+                value={activeVideoId}
+                onChange={event => setActiveVideoId(event.target.value)}
+                className="w-full px-3 py-2.5 border border-purple-200 rounded-xl bg-purple-50 text-purple-900 font-bold text-sm outline-none focus:ring-2 focus:ring-purple-300"
+              >
+                {selectedVideoIds.map(videoId => (
+                  <option key={videoId} value={videoId}>{videosById[videoId]?.title || '影片載入中'}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex-1 min-h-0 flex">
+              {selectedVideoIds.length > 1 && (
+                <aside className="hidden md:block w-72 border-r border-gray-100 p-3 bg-gray-50 overflow-y-auto">
+                  <p className="px-2 pb-2 text-xs font-bold text-gray-400">系列共 {selectedVideoIds.length} 部</p>
+                  <div className="flex flex-col gap-2">
+                    {selectedVideoIds.map((videoId, index) => {
+                      const video = videosById[videoId];
+                      return (
+                        <button
+                          type="button"
+                          key={videoId}
+                          onClick={() => setActiveVideoId(videoId)}
+                          className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${activeVideoId === videoId ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'}`}
+                        >
+                          <span className="block text-[11px] opacity-70 mb-1">第 {index + 1} 部</span>
+                          {video?.title || '影片載入中'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
+              )}
+
+              <section className="flex-1 overflow-y-auto p-4 sm:p-6">
+                {(() => {
+                  const activeVideo = videosById[activeVideoId];
+                  if (!activeVideo) return <div className="text-center py-16 text-gray-400">找不到這部影片，請通知管理者檢查連結。</div>;
+                  const embedUrl = getVideoEmbedUrl(activeVideo.url);
+                  return (
+                    <>
+                      <div className="mb-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full">{activeVideo.category || '未分類'}</span>
+                          <span className="text-xs text-gray-500">第 {activeVideoIndex + 1}／{selectedVideoIds.length} 部</span>
+                        </div>
+                        <h4 className="text-xl font-bold text-gray-900 leading-snug break-words">{activeVideo.title}</h4>
+                        {activeVideo.description && <p className="mt-2 text-sm text-gray-600">{activeVideo.description}</p>}
+                      </div>
+
+                      {embedUrl ? (
+                        <div className="w-full aspect-video rounded-xl overflow-hidden bg-black shadow-sm">
+                          <iframe
+                            src={embedUrl}
+                            title={activeVideo.title}
+                            className="w-full h-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border-2 border-dashed border-purple-200 bg-purple-50 p-8 text-center">
+                          <Film className="w-12 h-12 mx-auto text-purple-300 mb-3" />
+                          <p className="text-sm text-purple-800 font-bold">此影片需使用外部網站開啟。</p>
+                        </div>
+                      )}
+
+                      <a href={activeVideo.url} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700">
+                        <ExternalLink className="w-4 h-4" /> 開啟原始影片
+                      </a>
+                    </>
+                  );
+                })()}
+              </section>
+            </div>
+
+            {selectedVideoIds.length > 1 && (
+              <div className="md:hidden shrink-0 px-4 py-3 border-t border-gray-100 bg-white flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => selectRelativeVideo(-1)}
+                  disabled={activeVideoIndex <= 0}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-sm disabled:opacity-35 disabled:bg-gray-50"
+                >
+                  <ChevronLeft className="w-4 h-4" /> 上一部
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectRelativeVideo(1)}
+                  disabled={activeVideoIndex >= selectedVideoIds.length - 1}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-sm disabled:opacity-35"
+                >
+                  下一部 <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>

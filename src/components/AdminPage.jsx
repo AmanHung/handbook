@@ -221,7 +221,7 @@ const AdminPage = ({ user, userRole }) => {
               onClick={() => setActiveTab('sop-links')}
               className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'sop-links' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
-              <Link2 className="w-4 h-4"/> SOP 連結
+              <Link2 className="w-4 h-4"/> 訓練連結
             </button>
             <button
               onClick={() => setActiveTab('settings')} 
@@ -335,7 +335,7 @@ const AdminPage = ({ user, userRole }) => {
 
         {activeTab === 'sop-links' && (
           <div className="animate-in fade-in mx-4 md:mx-0">
-            <TrainingSopLinkManager user={user} sops={sops} />
+            <TrainingSopLinkManager user={user} sops={sops} videos={videos} />
           </div>
         )}
 

@@ -4,7 +4,7 @@ import { db } from '../firebase.js';
 import { Search, Play, Film, ExternalLink, Video } from 'lucide-react';
 
 const VideoGallery = () => {
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeCategory, setActiveCategory] = useState('全部');
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +26,7 @@ const VideoGallery = () => {
     if (!url) return null;
     try {
       // 使用正則表達式，涵蓋 watch?v=, youtu.be, embed, shorts, 以及手機版 m.youtube
-      const regExp = /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+      const regExp = /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
       const match = url.match(regExp);
       
       // 如果有成功抓出 11 碼的 YouTube 影片 ID
@@ -39,8 +39,34 @@ const VideoGallery = () => {
     return null; // 如果都不是，回傳 null 變成外部連結
   };
 
-  const categories = ['All', ...new Set(videos.map(v => v.category).filter(Boolean))];
-  const filteredVideos = activeCategory === 'All' ? videos : videos.filter(video => video.category === activeCategory);
+  const preferredCategoryOrder = [
+    '管制藥品智慧藥櫃',
+    '兒科分包機操作',
+    '錠劑自動包藥機操作',
+    '設備操作與故障排除',
+    '處方評估與調劑',
+    '臨床藥學與藥事照護',
+    '特殊製劑調配',
+  ];
+  const categoryRank = (category) => {
+    const index = preferredCategoryOrder.indexOf(category);
+    return index === -1 ? preferredCategoryOrder.length : index;
+  };
+  const categories = [
+    '全部',
+    ...new Set(videos.map(video => video.category).filter(Boolean)),
+  ].sort((a, b) => {
+    if (a === '全部') return -1;
+    if (b === '全部') return 1;
+    return categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'zh-Hant');
+  });
+  const filteredVideos = (activeCategory === '全部'
+    ? videos
+    : videos.filter(video => video.category === activeCategory))
+    .slice()
+    .sort((a, b) => categoryRank(a.category) - categoryRank(b.category)
+      || (a.category || '').localeCompare(b.category || '', 'zh-Hant')
+      || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true }));
 
   return (
     <div className="bg-transparent md:bg-white md:rounded-lg md:shadow-md p-0 md:p-6">
