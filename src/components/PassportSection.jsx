@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  collection, getDocs, query, where
+  collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ExternalLink, Paperclip } from 'lucide-react';
@@ -100,6 +100,15 @@ const formatSopDate = (timestamp) => {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-TW');
 };
 
+const getSopVersion = (sop) => {
+  const timestamp = sop?.updatedAt || sop?.createdAt;
+  if (!timestamp) return 0;
+  if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+  if (timestamp.seconds) return (timestamp.seconds * 1000) + Math.floor((timestamp.nanoseconds || 0) / 1000000);
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
@@ -132,6 +141,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedSopIds, setSelectedSopIds] = useState([]);
   const [activeSopId, setActiveSopId] = useState('');
   const [isSopModalOpen, setIsSopModalOpen] = useState(false);
+  const [configuredLinksByTargetId, setConfiguredLinksByTargetId] = useState({});
+  const [sopReadReceipts, setSopReadReceipts] = useState({});
+  const [savingReadReceipt, setSavingReadReceipt] = useState(false);
 
   // 初始化學員名單
   useEffect(() => {
@@ -184,6 +196,37 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       fetchPassportData(selectedStudentEmail);
     }
   }, [selectedStudentEmail, activeMainTab]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'training_sop_links'), snapshot => {
+      const nextLinks = {};
+      snapshot.forEach(linkDoc => {
+        nextLinks[linkDoc.id] = { id: linkDoc.id, ...linkDoc.data() };
+      });
+      setConfiguredLinksByTargetId(nextLinks);
+    }, error => console.error('讀取訓練 SOP 連結失敗：', error));
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedStudentEmail) {
+      setSopReadReceipts({});
+      return undefined;
+    }
+    const receiptsQuery = query(
+      collection(db, 'sop_read_receipts'),
+      where('studentEmail', '==', selectedStudentEmail)
+    );
+    const unsubscribe = onSnapshot(receiptsQuery, snapshot => {
+      const nextReceipts = {};
+      snapshot.forEach(receiptDoc => {
+        const receipt = { id: receiptDoc.id, ...receiptDoc.data() };
+        nextReceipts[receipt.sopId] = receipt;
+      });
+      setSopReadReceipts(nextReceipts);
+    }, error => console.error('讀取 SOP 閱讀紀錄失敗：', error));
+    return () => unsubscribe();
+  }, [selectedStudentEmail]);
 
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
@@ -320,11 +363,61 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return acc;
   }, {});
 
+  const resolveTrainingSopIds = (targetId, fallbackSopIds) => {
+    const configuredLink = configuredLinksByTargetId[targetId];
+    return configuredLink ? (configuredLink.sopIds || []) : fallbackSopIds;
+  };
+
+  const getSopReadState = (sopId) => {
+    const receipt = sopReadReceipts[sopId];
+    if (!receipt) return 'unread';
+    return Number(receipt.sopVersion || 0) < getSopVersion(sopsById[sopId]) ? 'updated' : 'read';
+  };
+
+  const getSopGroupReadState = (sopIds) => {
+    if (!sopIds.length) return 'none';
+    const states = sopIds.map(getSopReadState);
+    if (states.includes('updated')) return 'updated';
+    if (states.every(state => state === 'read')) return 'read';
+    return 'unread';
+  };
+
+  const renderReadStatus = (sopIds) => {
+    const state = getSopGroupReadState(sopIds);
+    if (state === 'read') return <span className="text-[11px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">已閱讀</span>;
+    if (state === 'updated') return <span className="text-[11px] font-bold text-orange-700 bg-orange-100 px-2 py-1 rounded-full">SOP 更新後需重新確認</span>;
+    if (state === 'unread') return <span className="text-[11px] font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded-full">未閱讀</span>;
+    return null;
+  };
+
+  const confirmActiveSopRead = async () => {
+    const activeSop = sopsById[activeSopId];
+    if (!activeSop || userRole !== 'student' || user?.email !== selectedStudentEmail) return;
+    setSavingReadReceipt(true);
+    try {
+      const receiptId = `${encodeURIComponent(user.email)}__${activeSopId}`;
+      await setDoc(doc(db, 'sop_read_receipts', receiptId), {
+        studentEmail: user.email,
+        studentName: selectedStudentName || user.displayName || user.email,
+        studentUid: user.uid,
+        sopId: activeSopId,
+        sopTitleSnapshot: activeSop.title || '',
+        sopVersion: getSopVersion(activeSop),
+        confirmedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('儲存 SOP 閱讀確認失敗：', error);
+      alert(`閱讀確認儲存失敗：${error.message}`);
+    } finally {
+      setSavingReadReceipt(false);
+    }
+  };
+
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
     const status = record.status; 
     const relatedSopIds = isMainItem
-      ? getTrainingGroupSopIds(item.title, [item], sopsById)
+      ? resolveTrainingSopIds(item.id, getTrainingGroupSopIds(item.title, [item], sopsById))
       : [];
     return (
       <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
@@ -339,22 +432,28 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               {record.note && <span className="text-gray-400"> - {record.note}</span>}
             </p>
           )}
-          {relatedSopIds.length > 0 && (
-            <button
-              type="button"
-              data-training-item-id={item.id}
-              onClick={() => openRelatedSops(relatedSopIds)}
-              className="mt-2 ml-6 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              相關 SOP
-              <span className="bg-white/80 px-1.5 rounded-full">{relatedSopIds.length}</span>
-            </button>
-          )}
+          {relatedSopIds.length > 0 ? (
+            <div className="mt-2 ml-6 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-training-item-id={item.id}
+                onClick={() => openRelatedSops(relatedSopIds)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                相關 SOP
+                <span className="bg-white/80 px-1.5 rounded-full">{relatedSopIds.length}</span>
+              </button>
+              {renderReadStatus(relatedSopIds)}
+            </div>
+          ) : isMainItem && sopsLoaded ? (
+            <p className="mt-2 ml-6 text-xs font-bold text-gray-400">尚無相關 SOP</p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 ml-6 sm:ml-0">
-          {status === 'pass' && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> 合格</span>}
-          {status === 'improve' && <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 再加強</span>}
+          {status === 'pass' && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> 教師評核通過</span>}
+          {status === 'improve' && <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 需再加強</span>}
+          {!status && <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-bold">訓練尚未評核</span>}
           {isTeacherOrAdmin && (
             <button onClick={() => openEvaluateModal(item)} className="px-3 py-1 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-md text-xs font-bold transition-colors">
               {status ? '重評' : '評核'}
@@ -372,12 +471,12 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       itemGroups[item.title].push(item);
     });
 
-    return [...new Set(Object.entries(itemGroups).flatMap(([mainTitle, subItems]) => {
-      const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
-      return isGroup
-        ? getTrainingGroupSopIds(mainTitle, subItems, sopsById)
-        : getTrainingGroupSopIds(mainTitle, subItems, sopsById);
-    }))];
+    return [...new Set(Object.entries(itemGroups).flatMap(([mainTitle, subItems]) =>
+      resolveTrainingSopIds(
+        subItems[0].id,
+        getTrainingGroupSopIds(mainTitle, subItems, sopsById)
+      )
+    ))];
   };
 
   const renderGroupContent = (items) => {
@@ -391,7 +490,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       const subItems = groups[mainTitle];
       const isGroup = subItems.length > 1 || (subItems[0] && subItems[0].sub_item);
       const groupSopIds = isGroup
-        ? getTrainingGroupSopIds(mainTitle, subItems, sopsById)
+        ? resolveTrainingSopIds(
+            subItems[0].id,
+            getTrainingGroupSopIds(mainTitle, subItems, sopsById)
+          )
         : [];
       return (
         <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
@@ -401,18 +503,23 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <List className="w-4 h-4 text-gray-500" />
                 {mainTitle}
               </div>
-              {groupSopIds.length > 0 && (
-                <button
-                  type="button"
-                  data-training-group-title={mainTitle}
-                  onClick={() => openRelatedSops(groupSopIds)}
-                  className="self-start sm:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  相關 SOP
-                  <span className="bg-white/80 px-1.5 rounded-full">{groupSopIds.length}</span>
-                </button>
-              )}
+              {groupSopIds.length > 0 ? (
+                <div className="self-start sm:self-auto flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    data-training-group-title={mainTitle}
+                    onClick={() => openRelatedSops(groupSopIds)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    相關 SOP
+                    <span className="bg-white/80 px-1.5 rounded-full">{groupSopIds.length}</span>
+                  </button>
+                  {renderReadStatus(groupSopIds)}
+                </div>
+              ) : sopsLoaded ? (
+                <span className="self-start sm:self-auto text-xs font-bold text-gray-400">尚無相關 SOP</span>
+              ) : null}
             </div>
           )}
           <div className="bg-white">{subItems.map(item => renderItemRow(item, !isGroup))}</div>
@@ -790,6 +897,20 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                               {(activeSop.updatedByName || activeSop.updatedBy) && <span className="text-xs text-gray-500">編修者：{activeSop.updatedByName || activeSop.updatedBy}</span>}
                             </div>
                             <h4 className="text-xl font-bold text-gray-900 leading-snug break-words">{activeSop.title}</h4>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {renderReadStatus([activeSopId])}
+                              {userRole === 'student' && user?.email === selectedStudentEmail && (
+                                <button
+                                  type="button"
+                                  onClick={confirmActiveSopRead}
+                                  disabled={savingReadReceipt}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-bold disabled:opacity-50"
+                                >
+                                  {savingReadReceipt ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                  {getSopReadState(activeSopId) === 'updated' ? '重新確認已閱讀' : '我已閱讀並確認'}
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           {activeSop.content

@@ -12,10 +12,11 @@ import {
 import { db } from '../firebase.js';
 import AdminUploader from './AdminUploader.jsx';
 import DashboardCharts from './DashboardCharts.jsx'; 
+import TrainingSopLinkManager from './TrainingSopLinkManager.jsx';
 import { getEditorAuditFields } from '../utils/editorIdentity.js';
 import { 
   Paperclip, ExternalLink, Users, Shield, Crown, 
-  Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2 
+  Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2, Link2
 } from 'lucide-react';
 
 const SUPER_ADMIN_EMAILS = [
@@ -217,6 +218,12 @@ const AdminPage = ({ user, userRole }) => {
               <Paperclip className="w-4 h-4"/> 資源
             </button>
             <button 
+              onClick={() => setActiveTab('sop-links')}
+              className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'sop-links' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              <Link2 className="w-4 h-4"/> SOP 連結
+            </button>
+            <button
               onClick={() => setActiveTab('settings')} 
               className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'settings' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
@@ -323,6 +330,12 @@ const AdminPage = ({ user, userRole }) => {
                  </table>
                </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'sop-links' && (
+          <div className="animate-in fade-in mx-4 md:mx-0">
+            <TrainingSopLinkManager user={user} sops={sops} />
           </div>
         )}
 
