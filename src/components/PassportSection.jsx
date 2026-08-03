@@ -445,7 +445,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     const state = getSopGroupReadState(sopIds);
     if (state === 'read') return <span className="text-[11px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">已閱讀</span>;
     if (state === 'updated') return <span className="text-[11px] font-bold text-orange-700 bg-orange-100 px-2 py-1 rounded-full">SOP 更新後需重新確認</span>;
-    if (state === 'unread') return <span className="text-[11px] font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded-full">未閱讀</span>;
+    if (state === 'unread') return null;
     return null;
   };
 
