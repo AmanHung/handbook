@@ -27,6 +27,14 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-Xt
 
 const DEFAULT_KEYWORDS = ['門診', '住院', '行政', '臨床', '管制藥', '盤點', '急診'];
 
+const normalizeKeyword = (value) => String(value || '').trim().toLocaleLowerCase('zh-TW');
+
+const hasExactKeyword = (sop, keyword) => {
+  const normalizedKeyword = normalizeKeyword(keyword);
+  return normalizedKeyword.length > 0
+    && (sop.keywords || []).some(item => normalizeKeyword(item) === normalizedKeyword);
+};
+
 const HighlightText = ({ text, highlight }) => {
   if (!highlight || !text) return <>{text}</>;
   const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -128,6 +136,7 @@ const formatDateTime = (timestamp) => {
 
 const QuickLookup = ({ canEdit = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeQuickKeyword, setActiveQuickKeyword] = useState('');
   const [activeTab, setActiveTab] = useState('sop'); 
   
   const [sops, setSops] = useState([]);
@@ -179,18 +188,53 @@ const QuickLookup = ({ canEdit = false }) => {
     return dynamicColors[Math.abs(hash) % dynamicColors.length];
   };
 
-  const searchLower = searchTerm.toLowerCase();
+  const searchLower = normalizeKeyword(searchTerm);
   const filteredExtensions = EXTENSION_DATA.filter(item => 
     (item.area && item.area.toLowerCase().includes(searchLower)) || 
     (item.ext && item.ext.toLowerCase().includes(searchLower)) || 
     (item.note && item.note.toLowerCase().includes(searchLower))
   );
 
-  const filteredSops = sops.filter(sop => 
-    (sop.title && sop.title.toLowerCase().includes(searchLower)) || 
-    (sop.category && sop.category.toLowerCase().includes(searchLower)) ||
-    (sop.content && sop.content.toLowerCase().includes(searchLower))
-  ).sort((a, b) => (a.category || '').localeCompare(b.category || ''));
+  const matchesFreeText = (sop) => !searchLower
+    || normalizeKeyword(sop.title).includes(searchLower)
+    || normalizeKeyword(sop.category).includes(searchLower)
+    || normalizeKeyword(sop.content).includes(searchLower)
+    || (sop.keywords || []).some(keyword => normalizeKeyword(keyword).includes(searchLower));
+
+  const getSearchRank = (sop) => {
+    if (!searchLower) return 4;
+    if (hasExactKeyword(sop, searchTerm)) return 0;
+    if (normalizeKeyword(sop.title).includes(searchLower)) return 1;
+    if (normalizeKeyword(sop.category).includes(searchLower)) return 2;
+    return 3;
+  };
+
+  const filteredSops = sops
+    .filter(sop => activeQuickKeyword ? hasExactKeyword(sop, activeQuickKeyword) : matchesFreeText(sop))
+    .sort((a, b) => getSearchRank(a) - getSearchRank(b)
+      || (a.category || '').localeCompare(b.category || '', 'zh-Hant')
+      || (a.title || '').localeCompare(b.title || '', 'zh-Hant'));
+
+  const quickKeywordCounts = Object.fromEntries(
+    keywords.map(keyword => [keyword, sops.filter(sop => hasExactKeyword(sop, keyword)).length])
+  );
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setActiveQuickKeyword('');
+  };
+
+  const handleQuickKeywordClick = (keyword) => {
+    if (quickKeywordCounts[keyword] === 0) return;
+    setActiveTab('sop');
+    setActiveQuickKeyword(keyword);
+    setSearchTerm(keyword);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
+    setActiveQuickKeyword('');
+  };
 
   const handleStartEditSop = () => {
     if (!canEdit) return;
@@ -286,17 +330,42 @@ const QuickLookup = ({ canEdit = false }) => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text" placeholder="請輸入關鍵字：內文、分機、SOP 名稱..."
-            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none text-base md:text-lg shadow-inner bg-gray-50 md:bg-white"
           />
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="text-sm text-gray-500 flex items-center mr-1">常用：</span>
-          {keywords.map((keyword, idx) => (
-            <button key={idx} onClick={() => setSearchTerm(keyword)} className="px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:text-orange-900 rounded-full text-xs transition-colors border border-orange-100">{keyword}</button>
-          ))}
-          {searchTerm && <button onClick={() => setSearchTerm('')} className="px-3 py-1 bg-gray-100 text-gray-500 hover:bg-gray-200 rounded-full text-xs transition-colors border border-gray-200 ml-auto">清除</button>}
+          {keywords.map((keyword, idx) => {
+            const count = quickKeywordCounts[keyword] || 0;
+            const isActive = activeQuickKeyword === keyword;
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleQuickKeywordClick(keyword)}
+                disabled={count === 0}
+                title={count === 0 ? '目前沒有文件使用此標籤' : `${count} 份文件`}
+                className={`px-3 py-1 rounded-full text-xs transition-colors border inline-flex items-center gap-1.5 ${
+                  isActive
+                    ? 'bg-orange-600 text-white border-orange-600'
+                    : count === 0
+                      ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-orange-50 hover:bg-orange-100 text-orange-700 hover:text-orange-900 border-orange-100'
+                }`}
+              >
+                {keyword}
+                <span className={`px-1.5 rounded-full text-[10px] ${isActive ? 'bg-white/20' : 'bg-white'}`}>{count}</span>
+              </button>
+            );
+          })}
+          {searchTerm && <button onClick={clearSearch} className="px-3 py-1 bg-gray-100 text-gray-500 hover:bg-gray-200 rounded-full text-xs transition-colors border border-gray-200 ml-auto">清除</button>}
         </div>
+        {activeQuickKeyword && (
+          <p className="text-xs text-orange-700 mt-3">
+            目前使用精確標籤篩選：{activeQuickKeyword}。如要搜尋全文，請直接修改上方搜尋文字。
+          </p>
+        )}
       </div>
 
       {/* Tabs */}
