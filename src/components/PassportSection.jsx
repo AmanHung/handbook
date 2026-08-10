@@ -146,6 +146,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [editPeriods, setEditPeriods] = useState({}); 
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [showAllTrainingItems, setShowAllTrainingItems] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -211,6 +212,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   // 當切換學員時，重置已載入的標籤
   useEffect(() => {
     setMountedTabs([assessmentType]);
+    setShowAllTrainingItems(false);
+    setExpandedGroups({});
   }, [selectedStudentEmail]);
 
   // 讀取護照資料
@@ -342,8 +345,11 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     setSavingPeriod(null);
   };
 
-  const toggleGroup = (groupId) => {
-    setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  const toggleGroup = (groupId, defaultExpanded = false) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupId]: !(prev[groupId] ?? defaultExpanded),
+    }));
   };
 
   const loadSops = useCallback(async () => {
@@ -416,6 +422,25 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     acc[item.category_id].items.push(item);
     return acc;
   }, {});
+
+  const trainingGroups = Object.values(groupedItems);
+  const isPendingTrainingItem = (item) => passportData.records[item.id]?.status !== 'pass';
+  const pendingTrainingCount = (passportData.items || []).filter(isPendingTrainingItem).length;
+  const visibleTrainingGroups = showAllTrainingItems
+    ? trainingGroups
+    : trainingGroups
+      .map(group => ({ ...group, items: group.items.filter(isPendingTrainingItem) }))
+      .filter(group => group.items.length > 0);
+
+  const toggleTrainingRecordView = () => {
+    if (showAllTrainingItems) {
+      setShowAllTrainingItems(false);
+      return;
+    }
+
+    setShowAllTrainingItems(true);
+    setExpandedGroups(Object.fromEntries(trainingGroups.map(group => [group.id, true])));
+  };
 
   const resolveTrainingSopIds = (targetId, fallbackSopIds) => {
     const configuredLink = configuredLinksByTargetId[targetId];
@@ -727,22 +752,43 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 <p>正在同步雲端護照資料...</p>
               </div>
             ) : (
-              Object.values(groupedItems).length > 0 ? (
-                Object.values(groupedItems).map((group) => {
-                  const isExpanded = expandedGroups[group.id];
-                  const progress = group.items.length > 0 ? Math.round((group.items.filter(item => passportData.records[item.id]?.status === 'pass').length / group.items.length) * 100) : 0;
+              trainingGroups.length > 0 ? (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                    <div>
+                      <p className="text-sm font-bold text-indigo-800">
+                        {showAllTrainingItems ? '完整訓練紀錄' : '待評核與未通過項目'}
+                      </p>
+                      <p className="text-xs text-indigo-600 mt-0.5">
+                        尚有 {pendingTrainingCount} 項待完成，共 {passportData.items.length} 項訓練。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleTrainingRecordView}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-sm font-bold transition-colors shadow-sm"
+                    >
+                      {showAllTrainingItems ? <CheckCircle2 className="w-4 h-4" /> : <List className="w-4 h-4" />}
+                      {showAllTrainingItems ? '只看待評核' : '全部展開'}
+                    </button>
+                  </div>
+
+                  {visibleTrainingGroups.length > 0 ? visibleTrainingGroups.map((group) => {
+                  const completeGroup = groupedItems[group.id];
+                  const isExpanded = expandedGroups[group.id] ?? !showAllTrainingItems;
+                  const progress = completeGroup.items.length > 0 ? Math.round((completeGroup.items.filter(item => passportData.records[item.id]?.status === 'pass').length / completeGroup.items.length) * 100) : 0;
                   const serverPeriod = passportData.periods[group.id] || {};
                   const editPeriod = editPeriods[group.id] || serverPeriod;
                   const isSaving = savingPeriod === group.id;
                   const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
-                  const secondLevelSopIds = new Set(getSecondLevelSopIds(group.items));
+                  const secondLevelSopIds = new Set(getSecondLevelSopIds(completeGroup.items));
                   const categorySopIds = getCategorySopIds(group.id, sopsById)
                     .filter(sopId => !secondLevelSopIds.has(sopId));
 
                   return (
                     <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                       <div className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <button onClick={() => toggleGroup(group.id)} className="flex items-center gap-3 hover:text-indigo-600 transition-colors text-left flex-1">
+                        <button onClick={() => toggleGroup(group.id, !showAllTrainingItems)} className="flex items-center gap-3 hover:text-indigo-600 transition-colors text-left flex-1">
                           {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
                           <div>
                             <span className="font-bold text-gray-700 block sm:inline">{group.title}</span>
@@ -781,7 +827,14 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                       {isExpanded && <div className="bg-white p-3 border-t border-gray-100">{renderGroupContent(group.items)}</div>}
                     </div>
                   );
-                })
+                  }) : (
+                    <div className="text-center py-10 text-green-700 border border-dashed border-green-200 rounded-lg bg-green-50">
+                      <CheckCircle2 className="w-8 h-8 mx-auto mb-2" />
+                      <p className="font-bold">目前沒有待評核或未通過的項目</p>
+                      <p className="text-xs mt-1">可按「全部展開」查看完整訓練紀錄。</p>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg bg-gray-50">📋 目前護照內容是空的</div>
               )
