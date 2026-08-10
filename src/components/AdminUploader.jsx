@@ -11,6 +11,7 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
   const [loading, setLoading] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false); 
   const [resourceType, setResourceType] = useState('sop'); 
+  const [customKeyword, setCustomKeyword] = useState('');
   
   const [formData, setFormData] = useState({
     title: '', category: '', content: '', url: '', attachmentUrl: '', keywords: [], description: ''
@@ -39,6 +40,25 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
       if (currentKeywords.includes(keyword)) return { ...prev, keywords: currentKeywords.filter(k => k !== keyword) };
       return { ...prev, keywords: [...currentKeywords, keyword] };
     });
+  };
+
+  const handleCustomKeywordAdd = () => {
+    const keyword = customKeyword.trim();
+    if (!keyword) return;
+
+    setFormData(prev => ({
+      ...prev,
+      keywords: prev.keywords?.includes(keyword)
+        ? prev.keywords
+        : [...(prev.keywords || []), keyword]
+    }));
+    setCustomKeyword('');
+  };
+
+  const handleCustomKeywordKeyDown = (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    handleCustomKeywordAdd();
   };
 
   const handleFileUpload = async (e, targetField) => {
@@ -210,6 +230,43 @@ const AdminUploader = ({ editData = null, onCancelEdit, onSuccess, settings = { 
           <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
             {availableKeywords.length > 0 ? ( availableKeywords.map((kw, idx) => ( <button key={idx} type="button" onClick={() => handleKeywordToggle(kw)} className={`px-3 py-1 rounded-full text-sm transition-colors border ${formData.keywords.includes(kw) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'}`}>{kw}</button> )) ) : ( <span className="text-gray-400 text-sm">請先至「參數設定」頁籤新增關鍵字</span> )}
           </div>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={customKeyword}
+              onChange={(event) => setCustomKeyword(event.target.value)}
+              onKeyDown={handleCustomKeywordKeyDown}
+              placeholder="新增自訂標籤，例如：智慧藥櫃"
+              className="flex-1 px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={handleCustomKeywordAdd}
+              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-bold hover:bg-blue-200"
+            >
+              新增標籤
+            </button>
+          </div>
+          {(formData.keywords || []).length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 mb-2">已套用標籤（點擊 × 可移除）</p>
+              <div className="flex flex-wrap gap-2">
+                {formData.keywords.map(keyword => (
+                  <span key={keyword} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1 text-sm">
+                    {keyword}
+                    <button
+                      type="button"
+                      onClick={() => handleKeywordToggle(keyword)}
+                      className="text-blue-400 hover:text-red-600 font-bold"
+                      aria-label={`移除標籤 ${keyword}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
