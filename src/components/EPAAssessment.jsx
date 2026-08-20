@@ -6,7 +6,7 @@ import {
 import { EPA_CONFIG, EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
 import EPAFormModal from './EPAFormModal';
 
-const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
+const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, targetRecordId, apiUrl }) => {
   const [selectedEPA, setSelectedEPA] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
@@ -41,6 +41,16 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, curr
   useEffect(() => {
     fetchEPARecords();
   }, [studentEmail]);
+
+  useEffect(() => {
+    if (!targetRecordId || assessments.length === 0) return;
+    const targetRecord = assessments.find(record => record.record_id === targetRecordId);
+    const targetEPA = EPA_CONFIG.find(epa => epa.id === targetRecord?.epa_id);
+    if (targetEPA) {
+      setSelectedEPA(targetEPA);
+      setShowHistoryModal(true);
+    }
+  }, [targetRecordId, assessments]);
 
   // API: 教師儲存評估
   const handleSaveRecord = async (formData) => {
@@ -93,6 +103,13 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, curr
           action: 'save_trainee_feedback',
           record_id: recordId,
           teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
+          student_email: studentEmail,
+          student_name: studentName,
+          assessment_type: 'epa',
+          assessment_name: EPA_CONFIG.find(epa => epa.id === record?.epa_id)?.title || 'EPA 評估',
+          assessment_date: record?.date || '',
+          assessment_result: record?.level ? `信賴等級 ${record.level}` : '',
+          feedback_summary: feedbackData.reflection,
           reflection: feedbackData.reflection,
           satisfaction: feedbackData.satisfaction
         })
@@ -186,6 +203,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, curr
           isTeacher={isTeacher}
           studentName={studentName}
           isSubmitting={isSubmitting}
+          targetRecordId={targetRecordId}
         />
       )}
 
@@ -203,7 +221,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, curr
   );
 };
 
-const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTeacher, studentName, isSubmitting }) => {
+const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTeacher, studentName, isSubmitting, targetRecordId }) => {
   const [selectedRecordId, setSelectedRecordId] = useState(null);
   
   const [reflection, setReflection] = useState('');
@@ -211,11 +229,12 @@ const HistoryModal = ({ epa, records, onClose, onOpenForm, onSaveFeedback, isTea
 
   useEffect(() => {
     if (records.length > 0) {
-        setSelectedRecordId(records[0].record_id);
+        const targetExists = targetRecordId && records.some(record => record.record_id === targetRecordId);
+        setSelectedRecordId(targetExists ? targetRecordId : records[0].record_id);
     } else {
         setSelectedRecordId(null);
     }
-  }, [records]);
+  }, [records, targetRecordId]);
 
   useEffect(() => {
       const record = records.find(r => r.record_id === selectedRecordId);

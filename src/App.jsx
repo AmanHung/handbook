@@ -33,11 +33,13 @@ const PHARMACY_INFO_CENTER_URL =
   import.meta.env.VITE_PHARMACY_INFO_CENTER_URL ||
   'https://pharmacy-bot-gamma.vercel.app/liff'
 
+const initialSection = new URLSearchParams(window.location.search).get('section')
+
 function App() {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
   const [userRole, setUserRole] = useState('student')
-  const [activeTab, setActiveTab] = useState('lookup')
+  const [activeTab, setActiveTab] = useState(initialSection === 'passport' ? 'passport' : 'lookup')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 

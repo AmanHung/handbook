@@ -129,21 +129,36 @@ const compareVideos = (a, b) => getVideoSequence(a.title) - getVideoSequence(b.t
 
 const normalizeTeacherName = (name) => String(name || '').trim().replace(/\s+/g, '').toLowerCase();
 
+const assessmentDeepLink = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const supportedTypes = ['epa', 'dops', 'minicex', 'osce'];
+  const assessment = params.get('assessment') || '';
+
+  return {
+    assessment: supportedTypes.includes(assessment) ? assessment : '',
+    studentEmail: params.get('studentEmail') || '',
+    recordId: params.get('recordId') || '',
+    formId: params.get('formId') || ''
+  };
+})();
+
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
   const [teacherDirectory, setTeacherDirectory] = useState({});
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
   
-  const [selectedStudentEmail, setSelectedStudentEmail] = useState(isTeacherOrAdmin ? '' : user?.email);
+  const [selectedStudentEmail, setSelectedStudentEmail] = useState(
+    isTeacherOrAdmin ? assessmentDeepLink.studentEmail : user?.email
+  );
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
   // 導航狀態: todo(待辦事項), records(訓練紀錄), assessment(學習評估), outcome(學習成果)
-  const [activeMainTab, setActiveMainTab] = useState('todo');
-  const [assessmentType, setAssessmentType] = useState('pre_training'); 
+  const [activeMainTab, setActiveMainTab] = useState(assessmentDeepLink.assessment ? 'assessment' : 'todo');
+  const [assessmentType, setAssessmentType] = useState(assessmentDeepLink.assessment || 'pre_training');
 
   // 追蹤已經載入過的標籤 (達成秒切換)
-  const [mountedTabs, setMountedTabs] = useState(['pre_training']);
+  const [mountedTabs, setMountedTabs] = useState([assessmentDeepLink.assessment || 'pre_training']);
 
   const [passportData, setPassportData] = useState({ items: [], records: {}, periods: {} });
   const [editPeriods, setEditPeriods] = useState({}); 
@@ -1146,25 +1161,25 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               
               <div className={assessmentType === 'epa' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('epa') && (
-                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
+                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} targetRecordId={assessmentDeepLink.recordId} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'dops' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('dops') && (
-                  <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} resolveTeacherEmail={resolveTeacherEmail} gasApiUrl={GAS_API_URL} />
+                  <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} resolveTeacherEmail={resolveTeacherEmail} targetFormId={assessmentDeepLink.formId} targetRecordId={assessmentDeepLink.recordId} gasApiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'minicex' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('minicex') && (
-                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
+                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} targetRecordId={assessmentDeepLink.recordId} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'osce' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('osce') && (
-                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
+                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} targetRecordId={assessmentDeepLink.recordId} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
