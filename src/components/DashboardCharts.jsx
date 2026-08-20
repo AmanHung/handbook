@@ -4,6 +4,7 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ReferenceLine
 } from 'recharts';
 import { Target, TrendingUp, Award, Activity, ClipboardList, CheckSquare } from 'lucide-react';
+import { DOPS_FORMS } from '../data/dopsForms';
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#F97316', '#475569', '#84CC16', '#6366F1'];
 
@@ -18,7 +19,7 @@ const EPA_NAMES = {
   'EPA-08': '管制藥品調劑與管理', 'EPA_08': '管制藥品調劑與管理', 'epa_08': '管制藥品調劑與管理'
 };
 
-const DOPS_NAMES = {
+const LEGACY_DOPS_NAMES = {
   'DOPS-01': '門診處方調劑作業', 'dops_op_dispensing': '門診處方調劑作業',
   'DOPS-02': '單一劑量藥車調配', 'dops_ud_cart': '單一劑量藥車調配',
   'DOPS-03': '門診藥品交付作業', 'dops_op_delivery': '門診藥品交付作業',
@@ -28,6 +29,16 @@ const DOPS_NAMES = {
   'DOPS-07': '抗腫瘤藥物環境安全維護', 'dops_chemo_env': '抗腫瘤藥物環境安全維護',
   'DOPS-08': '抗腫瘤藥物安全防護裝備', 'dops_chemo_ppe': '抗腫瘤藥物安全防護裝備',
   'DOPS-09': '中藥調劑作業', 'dops_tcm_dispensing': '中藥調劑作業', 'dops_tcm': '中藥調劑作業'
+};
+
+const DOPS_NAMES = {
+  ...LEGACY_DOPS_NAMES,
+  ...Object.fromEntries(
+    DOPS_FORMS.map(form => [
+      form.id,
+      form.title.replace(/\s*DOPS\s*$/iu, '').trim()
+    ])
+  )
 };
 
 const EPA_LEVEL_LABELS = ['', '2a', '2b', '3a', '3b', '3c', '4', '5'];
@@ -105,7 +116,7 @@ const DashboardCharts = ({ studentEmail, dashboardData }) => {
 
     // 2. DOPS (及格: 整體評估 8 分) -> 統計及格的不重複項目數
     const dopsPassedItems = new Set(studentDOPS.filter(d => getDopsOverallScore(d.formData) >= 8).map(d => d.dopsId)).size;
-    const dopsTotal = 9; // DOPS 總共 9 項
+    const dopsTotal = DOPS_FORMS.length;
     const dopsRate = Math.round((dopsPassedItems / dopsTotal) * 100);
 
     // 3. Mini-CEX (及格: 平均 4 分) -> 目前僅1項，有及格紀錄就是 100%
