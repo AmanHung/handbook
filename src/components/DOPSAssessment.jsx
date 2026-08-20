@@ -6,7 +6,7 @@ import {
   Star, AlertTriangle, RotateCcw
 } from 'lucide-react';
 
-const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, gasApiUrl }) => {
+const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, targetFormId, targetRecordId, gasApiUrl }) => {
   const [view, setView] = useState('menu'); 
   const [selectedFormId, setSelectedFormId] = useState(null);
   
@@ -39,6 +39,12 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const canEditStudentFeedback = isStudent && status === 'teacher_graded';
   
   const isGlobalReadOnly = status === 'completed' || status === 'needs_improvement';
+
+  useEffect(() => {
+    if (!targetFormId || !DOPS_FORMS.some(form => form.id === targetFormId)) return;
+    setSelectedFormId(targetFormId);
+    setView('form');
+  }, [targetFormId]);
 
   useEffect(() => {
     if (view === 'menu' && studentEmail) {
@@ -123,7 +129,9 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       setRecordsList(list);
 
       if (list.length > 0) {
-        if (!currentInstanceId || !list.find(r => r.instanceId === currentInstanceId)) {
+        if (targetRecordId && list.some(record => record.instanceId === targetRecordId)) {
+          setCurrentInstanceId(targetRecordId);
+        } else if (!currentInstanceId || !list.find(r => r.instanceId === currentInstanceId)) {
           setCurrentInstanceId(list[0].instanceId);
         }
       } else {
@@ -216,7 +224,12 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
         ? currentUserEmail
         : resolveTeacherEmail?.(finalFormData.sign_teacher_name) || '',
       teacherSign: finalFormData.sign_teacher_name,
-      studentSign: finalFormData.sign_student_name
+      studentSign: finalFormData.sign_student_name,
+      assessmentType: 'dops',
+      assessmentName: currentFormConfig?.title || 'DOPS 評估',
+      assessmentDate: evaluationDate,
+      assessmentResult: finalFormData.global_rating ? `整體評分 ${finalFormData.global_rating} 分` : '',
+      feedbackSummary: finalFormData.feedback_student_thoughts || ''
     };
 
     try {

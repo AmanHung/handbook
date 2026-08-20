@@ -7,7 +7,7 @@ import {
   MINICEX_TOPICS, COMPLEXITY_OPTIONS, EVALUATION_ITEMS, getScoreStyle 
 } from '../data/MiniCEX_Config';
 
-const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
+const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, targetRecordId, apiUrl }) => {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +50,13 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
       setViewingRecordId(records[0].record_id);
     }
   }, [selectedTopic, records]);
+
+  useEffect(() => {
+    if (!targetRecordId || !records.some(record => record.record_id === targetRecordId)) return;
+    setSelectedTopic(MINICEX_TOPICS[0]);
+    setViewingRecordId(targetRecordId);
+    setIsAdding(false);
+  }, [targetRecordId, records]);
 
   // 教師儲存評估
   const handleSaveAssessment = async () => {
@@ -94,12 +101,23 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     setIsSubmitting(true);
     try {
       const record = records.find(item => item.record_id === recordId);
+      const numericScores = Object.values(record?.scores || {}).filter(score => score !== 'NA').map(Number).filter(Number.isFinite);
+      const averageScore = numericScores.length
+        ? (numericScores.reduce((sum, score) => sum + score, 0) / numericScores.length).toFixed(1)
+        : '';
       const response = await fetch(apiUrl, {
         method: 'POST',
         body: JSON.stringify({
           action: 'save_minicex_feedback',
           record_id: recordId,
           teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
+          student_email: studentEmail,
+          student_name: studentName,
+          assessment_type: 'minicex',
+          assessment_name: 'Mini-CEX 臨床評估',
+          assessment_date: record?.date || '',
+          assessment_result: averageScore ? `平均 ${averageScore} 分` : '',
+          feedback_summary: feedbackData.reflection,
           student_feedback: feedbackData
         })
       });

@@ -7,7 +7,7 @@ import {
   OSCE_TOPICS, OSCE_ITEMS, OSCE_FEEDBACK_OPTIONS, getOSCEResult 
 } from '../data/OSCE_Config';
 
-const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
+const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, targetRecordId, apiUrl }) => {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -46,6 +46,13 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
       setViewingRecordId(records[0].record_id);
     }
   }, [selectedTopic, records]);
+
+  useEffect(() => {
+    if (!targetRecordId || !records.some(record => record.record_id === targetRecordId)) return;
+    setSelectedTopic(OSCE_TOPICS[0]);
+    setViewingRecordId(targetRecordId);
+    setIsAdding(false);
+  }, [targetRecordId, records]);
 
   // 計算總分
   const totalScore = Object.values(formData.scores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
@@ -95,7 +102,19 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
     setIsSubmitting(true);
     try {
       const record = records.find(item => item.record_id === recordId);
-      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({ action: 'save_osce_feedback', record_id: recordId, teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '', student_feedback: feedbackData }) });
+      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({
+        action: 'save_osce_feedback',
+        record_id: recordId,
+        teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
+        student_email: studentEmail,
+        student_name: studentName,
+        assessment_type: 'osce',
+        assessment_name: 'OSCE 評估',
+        assessment_date: record?.date || '',
+        assessment_result: record?.total_score ? `${record.total_score} / 75 分` : '',
+        feedback_summary: feedbackData.reflection,
+        student_feedback: feedbackData
+      }) });
       const result = await response.json();
       if (result.status !== 'success') throw new Error(result.message || '送出失敗');
       alert(result.email_sent
