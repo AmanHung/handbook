@@ -127,8 +127,11 @@ const getVideoSequence = (title) => {
 const compareVideos = (a, b) => getVideoSequence(a.title) - getVideoSequence(b.title)
   || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true });
 
+const normalizeTeacherName = (name) => String(name || '').trim().replace(/\s+/g, '').toLowerCase();
+
 const PassportSection = ({ user, userRole, userProfile }) => {
   const [students, setStudents] = useState([]);
+  const [teacherDirectory, setTeacherDirectory] = useState({});
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
   
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(isTeacherOrAdmin ? '' : user?.email);
@@ -192,6 +195,39 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       fetchStudents();
     }
   }, [userRole]);
+
+  // 從後台使用者資料建立教師姓名與 Google 登入 Email 的對照，供新舊評核紀錄共用。
+  useEffect(() => {
+    const fetchTeacherDirectory = async () => {
+      try {
+        const teacherQuery = query(collection(db, 'users'), where('role', 'in', ['teacher', 'admin']));
+        const snapshot = await getDocs(teacherQuery);
+        const directory = {};
+
+        snapshot.docs.forEach((userDoc) => {
+          const profile = userDoc.data();
+          const key = normalizeTeacherName(profile.displayName);
+          if (!key || !profile.email) return;
+
+          if (directory[key] && directory[key] !== profile.email) {
+            directory[key] = '';
+          } else if (directory[key] === undefined) {
+            directory[key] = profile.email;
+          }
+        });
+
+        setTeacherDirectory(directory);
+      } catch (error) {
+        console.error('讀取教師 Email 對照失敗:', error);
+      }
+    };
+
+    fetchTeacherDirectory();
+  }, []);
+
+  const resolveTeacherEmail = useCallback((teacherName) => (
+    teacherDirectory[normalizeTeacherName(teacherName)] || ''
+  ), [teacherDirectory]);
 
   // 同步學員資訊
   useEffect(() => {
@@ -1110,25 +1146,25 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               
               <div className={assessmentType === 'epa' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('epa') && (
-                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
+                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'dops' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('dops') && (
-                  <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} gasApiUrl={GAS_API_URL} />
+                  <DOPSAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} userRole={userRole} currentUserEmail={user?.email} currentUserName={userProfile?.displayName || user?.displayName} resolveTeacherEmail={resolveTeacherEmail} gasApiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'minicex' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('minicex') && (
-                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
+                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'osce' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('osce') && (
-                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
+                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} resolveTeacherEmail={resolveTeacherEmail} apiUrl={GAS_API_URL} />
                 )}
               </div>
 

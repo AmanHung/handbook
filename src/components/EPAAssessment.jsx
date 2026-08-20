@@ -6,7 +6,7 @@ import {
 import { EPA_CONFIG, EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
 import EPAFormModal from './EPAFormModal';
 
-const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, apiUrl }) => {
+const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
   const [selectedEPA, setSelectedEPA] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
@@ -85,12 +85,14 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, curr
   const handleSaveFeedback = async (recordId, feedbackData) => {
     setIsSubmitting(true);
     try {
+      const record = assessments.find(item => item.record_id === recordId);
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'save_trainee_feedback',
           record_id: recordId,
+          teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
           reflection: feedbackData.reflection,
           satisfaction: feedbackData.satisfaction
         })

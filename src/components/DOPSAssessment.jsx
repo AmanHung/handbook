@@ -6,7 +6,7 @@ import {
   Star, AlertTriangle, RotateCcw
 } from 'lucide-react';
 
-const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, gasApiUrl }) => {
+const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, gasApiUrl }) => {
   const [view, setView] = useState('menu'); 
   const [selectedFormId, setSelectedFormId] = useState(null);
   
@@ -212,7 +212,9 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       formData: finalFormData,
       status: targetStatus,
       updatedBy: currentUserEmail,
-      teacherEmail: newStatus === 'teacher_graded' ? currentUserEmail : '',
+      teacherEmail: newStatus === 'teacher_graded'
+        ? currentUserEmail
+        : resolveTeacherEmail?.(finalFormData.sign_teacher_name) || '',
       teacherSign: finalFormData.sign_teacher_name,
       studentSign: finalFormData.sign_student_name
     };
