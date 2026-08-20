@@ -7,7 +7,7 @@ import {
   OSCE_TOPICS, OSCE_ITEMS, OSCE_FEEDBACK_OPTIONS, getOSCEResult 
 } from '../data/OSCE_Config';
 
-const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, apiUrl }) => {
+const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -94,7 +94,8 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
     if (!feedbackData.reflection) return alert('請填寫心得');
     setIsSubmitting(true);
     try {
-      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({ action: 'save_osce_feedback', record_id: recordId, student_feedback: feedbackData }) });
+      const record = records.find(item => item.record_id === recordId);
+      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({ action: 'save_osce_feedback', record_id: recordId, teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '', student_feedback: feedbackData }) });
       const result = await response.json();
       if (result.status !== 'success') throw new Error(result.message || '送出失敗');
       alert(result.email_sent

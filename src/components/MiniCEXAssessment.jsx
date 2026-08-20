@@ -7,7 +7,7 @@ import {
   MINICEX_TOPICS, COMPLEXITY_OPTIONS, EVALUATION_ITEMS, getScoreStyle 
 } from '../data/MiniCEX_Config';
 
-const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, apiUrl }) => {
+const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, apiUrl }) => {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -93,11 +93,13 @@ const MiniCEXAssessment = ({ studentEmail, studentName, isTeacher, userProfile, 
     if (!feedbackData.reflection) return alert('請填寫心得');
     setIsSubmitting(true);
     try {
+      const record = records.find(item => item.record_id === recordId);
       const response = await fetch(apiUrl, {
         method: 'POST',
         body: JSON.stringify({
           action: 'save_minicex_feedback',
           record_id: recordId,
+          teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
           student_feedback: feedbackData
         })
       });
