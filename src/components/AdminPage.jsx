@@ -16,7 +16,7 @@ import TrainingSopLinkManager from './TrainingSopLinkManager.jsx';
 import { getEditorAuditFields } from '../utils/editorIdentity.js';
 import { 
   Paperclip, ExternalLink, Users, Shield, Crown, 
-  Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2, Link2
+  Edit, Calendar, Save, X, BarChart3, Search, Loader2, Trash2, Link2, RefreshCw
 } from 'lucide-react';
 
 const SUPER_ADMIN_EMAILS = [
@@ -44,6 +44,9 @@ const AdminPage = ({ user, userRole }) => {
 
   const [dashboardData, setDashboardData] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [dashboardError, setDashboardError] = useState('');
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState(null);
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState('');
 
   useEffect(() => {
@@ -88,20 +91,32 @@ const AdminPage = ({ user, userRole }) => {
   }, [selectedStudentEmail]);
 
   useEffect(() => {
+    if (!selectedStudentEmail) return undefined;
+
+    const controller = new AbortController();
     const fetchDashboardData = async () => {
       setLoadingDashboard(true);
+      setDashboardError('');
       try {
-        const res = await fetch(`${GAS_API_URL}?type=getDashboardData&studentEmail=ALL`);
+        const res = await fetch(`${GAS_API_URL}?type=getDashboardData&studentEmail=${encodeURIComponent(selectedStudentEmail)}`, {
+          signal: controller.signal
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (data?.status === 'error') throw new Error(data.message || '儀表板資料讀取失敗');
         setDashboardData(data);
+        setDashboardUpdatedAt(new Date());
       } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error("Dashboard fetch error:", error);
+        setDashboardError('暫時無法讀取成效資料，請稍後重新整理。');
       } finally {
-        setLoadingDashboard(false);
+        if (!controller.signal.aborted) setLoadingDashboard(false);
       }
     };
     fetchDashboardData();
-  }, []);
+    return () => controller.abort();
+  }, [selectedStudentEmail, dashboardRefreshKey]);
 
   const handleDeleteResource = async (collectionName, id) => {
     if (window.confirm('確定要刪除此項目嗎？')) {
@@ -239,25 +254,42 @@ const AdminPage = ({ user, userRole }) => {
                 <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
                   <BarChart3 className="w-5 h-5" /> 學習成效總覽
                 </h2>
-                <p className="text-sm text-indigo-700 mt-1">選取學員以檢視各項臨床評估的成長軌跡與雷達圖</p>
+                <p className="text-sm text-indigo-700 mt-1">選取學員以檢視達標進度、優先處理事項與成長軌跡</p>
               </div>
               
-              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm w-full sm:w-auto">
-                <Users className="w-4 h-4 text-indigo-500" />
-                <select 
-                  value={selectedStudentEmail}
-                  onChange={(e) => setSelectedStudentEmail(e.target.value)}
-                  className="bg-transparent text-sm font-bold text-gray-700 outline-none w-full sm:w-48"
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm flex-1 sm:flex-none">
+                  <Users className="w-4 h-4 text-indigo-500" />
+                  <select
+                    value={selectedStudentEmail}
+                    onChange={(e) => setSelectedStudentEmail(e.target.value)}
+                    className="bg-transparent text-sm font-bold text-gray-700 outline-none w-full sm:w-48"
+                  >
+                    <option value="" disabled>請選擇學員...</option>
+                    {studentsOnly.map(s => (
+                      <option key={s.email} value={s.email}>{s.displayName || s.email}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDashboardRefreshKey(key => key + 1)}
+                  disabled={loadingDashboard || !selectedStudentEmail}
+                  className="p-2.5 rounded-lg border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                  aria-label="重新整理成效資料"
+                  title="重新整理成效資料"
                 >
-                  <option value="" disabled>請選擇學員...</option>
-                  {studentsOnly.map(s => (
-                    <option key={s.email} value={s.email}>{s.displayName || s.email}</option>
-                  ))}
-                </select>
+                  <RefreshCw className={`w-4 h-4 ${loadingDashboard ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
 
-            {loadingDashboard ? (
+            {dashboardError ? (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5 text-sm font-medium">
+                {dashboardError}
+                <button type="button" onClick={() => setDashboardRefreshKey(key => key + 1)} className="ml-2 underline font-bold">重新讀取</button>
+              </div>
+            ) : loadingDashboard ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-gray-100">
                 <Loader2 className="w-10 h-10 animate-spin mb-4 text-indigo-500" />
                 <p className="font-medium">正在聚合學習數據，請稍候...</p>
@@ -265,7 +297,9 @@ const AdminPage = ({ user, userRole }) => {
             ) : (
               <DashboardCharts 
                 studentEmail={selectedStudentEmail} 
-                dashboardData={dashboardData} 
+                studentProfile={studentsOnly.find(student => student.email === selectedStudentEmail)}
+                dashboardData={dashboardData}
+                updatedAt={dashboardUpdatedAt}
               />
             )}
           </div>
