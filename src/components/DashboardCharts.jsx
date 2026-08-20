@@ -133,6 +133,7 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
   const chartData = rows.map((row, index) => ({
     ...row,
     label: `${isEPA ? 'EPA' : 'DOPS'} ${index + 1}`,
+    chartLabel: `${isEPA ? 'EPA' : 'DOPS'} ${index + 1} ${row.title}`,
     value: row.value || 0
   }));
   const achievedCount = rows.filter(row => row.passed).length;
@@ -171,11 +172,12 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
       {attentionCount > 0 && <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-center text-[11px] font-bold text-amber-700">其中 {attentionCount} 項仍待回饋或需加強</div>}
 
       <div className="px-2 pt-5 md:px-4">
-        <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 22, right: 8, left: isEPA ? -8 : -12, bottom: 42 }} barCategoryGap="24%">
+        <div className="w-full overflow-x-auto pb-1">
+          <div className="h-96 min-w-[820px]">
+            <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 22, right: 8, left: isEPA ? -8 : -12, bottom: 18 }} barCategoryGap="24%">
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-              <XAxis dataKey="label" interval={0} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} angle={-28} textAnchor="end" height={54} />
+              <XAxis dataKey="chartLabel" interval={0} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} angle={-38} textAnchor="end" height={112} />
               <YAxis
                 domain={isEPA ? [0, 7] : [0, 10]}
                 ticks={isEPA ? [1, 2, 3, 4, 5, 6, 7] : [0, 2, 4, 6, 8, 10]}
@@ -194,8 +196,10 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
                 <LabelList dataKey="value" position="top" formatter={value => value > 0 ? isEPA ? EPA_LEVEL_LABELS[value] : value : ''} style={{ fill: '#334155', fontSize: 10, fontWeight: 800 }} />
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+            </ResponsiveContainer>
+          </div>
         </div>
+        <p className="mt-1 text-center text-[10px] font-medium text-slate-400 md:hidden">可左右滑動查看完整評估項目</p>
         <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 border-t border-slate-100 py-3 text-[11px] font-bold text-slate-500">
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <span key={status} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: STATUS_CHART_COLORS[status] }} />{label}</span>
@@ -489,19 +493,22 @@ const CohortAssessmentChart = ({ title, subtitle, icon: Icon, rows }) => (
         <div><h3 className="font-black tracking-wide">{title}</h3><p className="mt-1 text-xs text-slate-300">{subtitle}</p></div>
       </div>
     </div>
-    <div className="h-80 w-full px-2 pt-5 md:px-4">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 16, right: 8, left: -12, bottom: 46 }} barCategoryGap="20%">
+    <div className="w-full overflow-x-auto px-2 pt-5 pb-1 md:px-4">
+      <div className="h-96 min-w-[820px]">
+        <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={rows} margin={{ top: 16, right: 8, left: -12, bottom: 18 }} barCategoryGap="20%">
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-          <XAxis dataKey="label" interval={0} angle={-28} textAnchor="end" height={58} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} />
+          <XAxis dataKey="chartLabel" interval={0} angle={-38} textAnchor="end" height={112} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} />
           <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={value => `${value}%`} tick={{ fontSize: 10, fill: '#64748B' }} />
           <Tooltip content={<CohortRateTooltip />} cursor={{ fill: '#F8FAFC' }} />
           <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
           <Bar dataKey="completionRate" name="完成率（已評核／全部學員）" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} />
           <Bar dataKey="achievementRate" name="達標率（已達標／已評核）" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={28} />
         </BarChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </div>
     </div>
+    <p className="px-4 pb-3 text-center text-[10px] font-medium text-slate-400 md:hidden">可左右滑動查看完整評估項目</p>
   </section>
 );
 
@@ -517,10 +524,13 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
       const items = learners.map(learner => learner[key][index]);
       const evaluated = items.filter(item => item.evaluated).length;
       const achieved = items.filter(item => item.achieved).length;
+      const title = items[0]?.title || String(config.title || '').replace(/^EPA\s*\d+[.、]?\s*/iu, '').replace(/\s*DOPS\s*$/iu, '').trim();
+      const label = `${key === 'epaItems' ? 'EPA' : 'DOPS'} ${index + 1}`;
       return {
         id: config.id,
-        label: `${key === 'epaItems' ? 'EPA' : 'DOPS'} ${index + 1}`,
-        title: items[0]?.title || config.title,
+        label,
+        chartLabel: `${label} ${title}`,
+        title,
         totalLearners: learners.length,
         evaluated,
         achieved,
