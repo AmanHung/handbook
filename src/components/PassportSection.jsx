@@ -135,7 +135,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
-  // 導航狀態: todo(我的待辦), records(訓練紀錄), assessment(學習評估), outcome(學習成果)
+  // 導航狀態: todo(待辦事項), records(訓練紀錄), assessment(學習評估), outcome(學習成果)
   const [activeMainTab, setActiveMainTab] = useState('todo');
   const [assessmentType, setAssessmentType] = useState('pre_training'); 
 
@@ -790,7 +790,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
                 : 'border-transparent text-gray-500 hover:bg-gray-50'
             }`}
           >
-            <Home className="w-5 h-5" /> 我的待辦
+            <Home className="w-5 h-5" /> 待辦事項
           </button>
           <button
             onClick={() => setActiveMainTab('records')}
@@ -830,7 +830,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         )}
 
-        {/* 1. 我的待辦 */}
+        {/* 1. 待辦事項 */}
         {activeMainTab === 'todo' && (
           <div className="space-y-5 animate-in fade-in">
             {loading ? (
