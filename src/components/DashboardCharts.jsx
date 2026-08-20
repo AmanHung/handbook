@@ -136,9 +136,10 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
     value: row.value || 0
   }));
   const achievedCount = rows.filter(row => row.passed).length;
-  const evaluatedCount = rows.filter(row => row.value > 0).length;
+  const evaluatedCount = rows.filter(row => row.evaluated).length;
   const attentionCount = rows.filter(row => ['pending', 'improvement'].includes(row.status)).length;
-  const achievementRate = rows.length ? Math.round((achievedCount / rows.length) * 100) : 0;
+  const completionRate = rows.length ? Math.round((evaluatedCount / rows.length) * 100) : 0;
+  const achievementRate = evaluatedCount ? Math.round((achievedCount / evaluatedCount) * 100) : 0;
   const valueFormatter = value => isEPA ? EPA_LEVEL_LABELS[value] || '' : value;
 
   return (
@@ -155,8 +156,8 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
             </div>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">達標率</p>
-            <p className="text-3xl font-black leading-none mt-1">{achievementRate}<span className="ml-1 text-sm text-indigo-200">%</span></p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">完成率</p>
+              <p className="text-3xl font-black leading-none mt-1">{completionRate}<span className="ml-1 text-sm text-indigo-200">%</span></p>
           </div>
         </div>
       </div>
@@ -164,8 +165,10 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
       <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/70">
         <div className="px-3 py-3 text-center"><p className="text-xl font-black text-slate-900">{evaluatedCount}<span className="text-xs text-slate-400">／{rows.length}</span></p><p className="text-[11px] font-bold text-slate-500">已評核</p></div>
         <div className="px-3 py-3 text-center"><p className="text-xl font-black text-emerald-600">{achievedCount}</p><p className="text-[11px] font-bold text-slate-500">已達標</p></div>
-        <div className="px-3 py-3 text-center"><p className="text-xl font-black text-amber-600">{attentionCount}</p><p className="text-[11px] font-bold text-slate-500">待處理</p></div>
+        <div className="px-3 py-3 text-center"><p className="text-xl font-black text-indigo-600">{achievementRate}<span className="text-xs">%</span></p><p className="text-[11px] font-bold text-slate-500">達標率（{achievedCount}／{evaluatedCount}）</p></div>
       </div>
+
+      {attentionCount > 0 && <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-center text-[11px] font-bold text-amber-700">其中 {attentionCount} 項仍待回饋或需加強</div>}
 
       <div className="px-2 pt-5 md:px-4">
         <div className="h-80 w-full">
@@ -210,7 +213,9 @@ const SatisfactionTrendTooltip = ({ active, payload }) => {
     <div className="max-w-64 rounded-xl border border-violet-100 bg-white p-3 shadow-xl">
       <p className="text-xs font-black text-slate-900">{item.title}</p>
       <p className="mt-1 text-lg font-black text-violet-600">{item.score}／9</p>
-      <p className="mt-1 text-[11px] text-slate-400">{item.date}・第 {item.attempt} 次回饋</p>
+      <p className="mt-1 text-[11px] text-slate-400">
+        {item.date}{item.count ? `・有效回饋 ${item.count} 筆` : `・第 ${item.attempt} 次回饋`}
+      </p>
     </div>
   );
 };
@@ -235,13 +240,13 @@ const SatisfactionMetric = ({ label, value, detail, accent = 'text-slate-900' })
   </div>
 );
 
-const SatisfactionDashboard = ({ satisfaction }) => (
+const SatisfactionDashboard = ({ satisfaction, overall = false }) => (
   <section className="overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 shadow-sm">
     <div className="border-b border-violet-100 px-4 py-4 md:px-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Heart className="h-5 w-5 fill-violet-100 text-violet-600" />學員回饋體驗</h2>
-          <p className="mt-1 text-xs text-slate-500">滿意度反映教學體驗，不列入學員達標率或完訓成績。</p>
+          <p className="mt-1 text-xs text-slate-500">{overall ? '彙整全部學員的教學體驗；滿意度不列入達標率或完訓成績。' : '滿意度反映教學體驗，不列入學員達標率或完訓成績。'}</p>
         </div>
         <p className="text-[11px] font-bold text-violet-500">量尺：1～9 分・未填資料不計為 0 分</p>
       </div>
@@ -250,14 +255,16 @@ const SatisfactionDashboard = ({ satisfaction }) => (
     <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:p-5">
       <SatisfactionMetric label="平均滿意度" value={satisfaction.count ? `${satisfaction.average}／9` : '—'} detail={`有效回饋 ${satisfaction.count} 筆`} accent="text-violet-700" />
       <SatisfactionMetric label="回饋完成率" value={`${satisfaction.responseRate}%`} detail={`${satisfaction.count}／${satisfaction.totalAssessments} 筆已填`} accent="text-indigo-700" />
-      <SatisfactionMetric label="最近一次" value={satisfaction.latest ? `${satisfaction.latest.score}／9` : '—'} detail={satisfaction.latest?.date || '尚無回饋'} accent="text-fuchsia-700" />
+      {overall
+        ? <SatisfactionMetric label="回饋學員" value={`${satisfaction.feedbackLearners}／${satisfaction.totalLearners}`} detail="至少完成 1 筆滿意度回饋" accent="text-fuchsia-700" />
+        : <SatisfactionMetric label="最近一次" value={satisfaction.latest ? `${satisfaction.latest.score}／9` : '—'} detail={satisfaction.latest?.date || '尚無回饋'} accent="text-fuchsia-700" />}
       <SatisfactionMetric label="需關注回饋" value={satisfaction.attentionItems.length} detail="低分或較前次明顯下降" accent={satisfaction.attentionItems.length ? 'text-red-600' : 'text-emerald-600'} />
     </div>
 
     <div className="grid grid-cols-1 gap-5 px-4 pb-5 md:px-5 xl:grid-cols-5">
       <div className="rounded-xl border border-violet-100 bg-white p-4 xl:col-span-3">
         <div className="flex items-center justify-between gap-3">
-          <div><h3 className="text-sm font-black text-slate-800">歷次滿意度趨勢</h3><p className="mt-1 text-[11px] text-slate-400">依評核日期排列，呈現每筆學員滿意度</p></div>
+          <div><h3 className="text-sm font-black text-slate-800">{overall ? '每月平均滿意度趨勢' : '歷次滿意度趨勢'}</h3><p className="mt-1 text-[11px] text-slate-400">{overall ? '依月份彙整全部學員的有效滿意度回饋' : '依評核日期排列，呈現每筆學員滿意度'}</p></div>
           {satisfaction.change !== null && <span className={`rounded-full px-2.5 py-1 text-xs font-black ${satisfaction.change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{satisfaction.change > 0 ? '+' : ''}{satisfaction.change}</span>}
         </div>
         <div className="mt-3 h-72 w-full">
@@ -309,7 +316,7 @@ const SatisfactionDashboard = ({ satisfaction }) => (
           {satisfaction.attentionItems.map(item => (
             <a key={item.recordId || `${item.epaId}-${item.date}`} href={item.link} className="flex items-start justify-between gap-3 rounded-xl border border-red-100 bg-red-50/70 p-3 hover:bg-red-50">
               <div className="min-w-0">
-                <p className="truncate text-xs font-black text-slate-800">{item.title}</p>
+                <p className="truncate text-xs font-black text-slate-800">{item.learnerName ? `${item.learnerName}・` : ''}{item.title}</p>
                 <p className="mt-1 text-[11px] font-bold text-red-600">{item.reason}・{item.date}</p>
                 {item.reflection && <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{item.reflection}</p>}
               </div>
@@ -380,7 +387,283 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
   </section>
 );
 
-const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedAt }) => {
+const isValidSatisfaction = value => {
+  const score = Number(value);
+  return Number.isFinite(score) && score >= 1 && score <= 9;
+};
+
+const getFinalRecord = (dashboardData, email) => {
+  const targetEmail = normalizeEmail(email);
+  return dashboardData.final?.[email]
+    || Object.entries(dashboardData.final || {}).find(([recordEmail]) => normalizeEmail(recordEmail) === targetEmail)?.[1]
+    || null;
+};
+
+const buildCohortStudent = (student, dashboardData) => {
+  const email = student.email;
+  const targetEmail = normalizeEmail(email);
+  const matchesStudent = record => normalizeEmail(record.email) === targetEmail;
+  const studentEPA = (dashboardData.epa || []).filter(matchesStudent);
+  const studentDOPS = (dashboardData.dops || []).filter(matchesStudent);
+  const studentMiniCEX = (dashboardData.minicex || []).filter(matchesStudent);
+  const studentOSCE = (dashboardData.osce || []).filter(matchesStudent);
+
+  const epaItems = EPA_CONFIG.map((epa, index) => {
+    const latest = latestRecord(studentEPA.filter(record => normalizeEPAId(record.epaId) === normalizeEPAId(epa.id)));
+    const levelIndex = extractEpaLevelIndex(latest?.level);
+    const pending = Boolean(latest) && !String(latest.feedbackReflection || '').trim() && !isValidSatisfaction(latest.feedbackSatisfaction);
+    return {
+      id: epa.id,
+      label: `EPA ${index + 1}`,
+      title: String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, ''),
+      evaluated: Boolean(latest),
+      achieved: levelIndex >= 6,
+      pending
+    };
+  });
+
+  const dopsItems = DOPS_FORMS.map((form, index) => {
+    const latest = latestRecord(studentDOPS.filter(record => record.dopsId === form.id));
+    const score = extractDopsScore(latest?.formData);
+    const evaluated = Boolean(latest) && ['teacher_graded', 'completed', 'needs_improvement'].includes(latest.status);
+    return {
+      id: form.id,
+      label: `DOPS ${index + 1}`,
+      title: form.title.replace(/\s*DOPS\s*$/iu, '').trim(),
+      evaluated,
+      achieved: evaluated && score !== null && score >= 8,
+      pending: latest?.status === 'teacher_graded'
+    };
+  });
+
+  const latestMiniCEX = latestRecord(studentMiniCEX);
+  const miniCEXScore = extractAverageScore(latestMiniCEX?.scores);
+  const latestOSCE = latestRecord(studentOSCE);
+  const osceScore = latestOSCE ? Number(latestOSCE.total_score) : null;
+  const clinicalItems = [
+    ...epaItems,
+    ...dopsItems,
+    { id: 'minicex', evaluated: Boolean(latestMiniCEX), achieved: miniCEXScore !== null && miniCEXScore >= 4, pending: latestMiniCEX?.status === 'teacher_graded' },
+    { id: 'osce', evaluated: Boolean(latestOSCE), achieved: Number.isFinite(osceScore) && osceScore >= 46, pending: latestOSCE?.status === 'teacher_graded' }
+  ];
+  const evaluatedCount = clinicalItems.filter(item => item.evaluated).length;
+  const achievedCount = clinicalItems.filter(item => item.achieved).length;
+  const pendingCount = clinicalItems.filter(item => item.pending).length;
+  const finalRecord = getFinalRecord(dashboardData, email);
+  const finalTotalCount = FINAL_ASSESSMENT_CATEGORIES.reduce((total, category) => total + category.items.length, 0);
+  const finalPassedCount = Object.values(finalRecord?.items || {}).filter(item => item?.passed === true || item === true).length;
+
+  return {
+    email,
+    name: student.displayName || email,
+    arrivalDate: student.arrivalDate || '',
+    epaItems,
+    dopsItems,
+    evaluatedCount,
+    achievedCount,
+    pendingCount,
+    clinicalTotal: clinicalItems.length,
+    completionRate: clinicalItems.length ? Math.round((evaluatedCount / clinicalItems.length) * 100) : 0,
+    achievementRate: evaluatedCount ? Math.round((achievedCount / evaluatedCount) * 100) : 0,
+    finalProgress: finalTotalCount ? Math.round((finalPassedCount / finalTotalCount) * 100) : 0
+  };
+};
+
+const CohortRateTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="max-w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+      <p className="text-xs font-black text-slate-900">{item.title}</p>
+      <p className="mt-2 text-xs font-bold text-blue-700">完成率 {item.completionRate}%（{item.evaluated}／{item.totalLearners} 位）</p>
+      <p className="mt-1 text-xs font-bold text-emerald-700">達標率 {item.achievementRate}%（{item.achieved}／{item.evaluated} 位已評核）</p>
+    </div>
+  );
+};
+
+const CohortAssessmentChart = ({ title, subtitle, icon: Icon, rows }) => (
+  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-4 py-4 text-white md:px-5">
+      <div className="flex items-start gap-3">
+        <span className="rounded-xl bg-white/10 p-2.5 ring-1 ring-white/15">{React.createElement(Icon, { className: 'h-5 w-5 text-indigo-200' })}</span>
+        <div><h3 className="font-black tracking-wide">{title}</h3><p className="mt-1 text-xs text-slate-300">{subtitle}</p></div>
+      </div>
+    </div>
+    <div className="h-80 w-full px-2 pt-5 md:px-4">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={rows} margin={{ top: 16, right: 8, left: -12, bottom: 46 }} barCategoryGap="20%">
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+          <XAxis dataKey="label" interval={0} angle={-28} textAnchor="end" height={58} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} />
+          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={value => `${value}%`} tick={{ fontSize: 10, fill: '#64748B' }} />
+          <Tooltip content={<CohortRateTooltip />} cursor={{ fill: '#F8FAFC' }} />
+          <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+          <Bar dataKey="completionRate" name="完成率（已評核／全部學員）" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="achievementRate" name="達標率（已達標／已評核）" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </section>
+);
+
+const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent }) => {
+  const cohort = useMemo(() => {
+    if (!dashboardData || dashboardData.status === 'error') return null;
+    const learners = (students || []).map(student => buildCohortStudent(student, dashboardData));
+    const totalOpportunities = learners.reduce((sum, learner) => sum + learner.clinicalTotal, 0);
+    const evaluatedCount = learners.reduce((sum, learner) => sum + learner.evaluatedCount, 0);
+    const achievedCount = learners.reduce((sum, learner) => sum + learner.achievedCount, 0);
+    const pendingCount = learners.reduce((sum, learner) => sum + learner.pendingCount, 0);
+    const aggregateItems = key => (key === 'epaItems' ? EPA_CONFIG : DOPS_FORMS).map((config, index) => {
+      const items = learners.map(learner => learner[key][index]);
+      const evaluated = items.filter(item => item.evaluated).length;
+      const achieved = items.filter(item => item.achieved).length;
+      return {
+        id: config.id,
+        label: `${key === 'epaItems' ? 'EPA' : 'DOPS'} ${index + 1}`,
+        title: items[0]?.title || config.title,
+        totalLearners: learners.length,
+        evaluated,
+        achieved,
+        completionRate: learners.length ? Math.round((evaluated / learners.length) * 100) : 0,
+        achievementRate: evaluated ? Math.round((achieved / evaluated) * 100) : 0
+      };
+    });
+
+    const profileByEmail = new Map((students || []).map(student => [normalizeEmail(student.email), student]));
+    const cohortEPA = (dashboardData.epa || []).filter(record => profileByEmail.has(normalizeEmail(record.email)));
+    const validFeedback = sortByDate(cohortEPA.filter(record => isValidSatisfaction(record.feedbackSatisfaction))).map(record => {
+      const normalizedId = normalizeEPAId(record.epaId);
+      const epa = EPA_CONFIG.find(item => normalizeEPAId(item.id) === normalizedId);
+      const profile = profileByEmail.get(normalizeEmail(record.email));
+      return {
+        ...record,
+        normalizedId,
+        score: Number(record.feedbackSatisfaction),
+        title: epa ? String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, '') : record.epaId,
+        learnerName: profile?.displayName || record.email,
+        reflection: String(record.feedbackReflection || '').trim(),
+        link: buildAssessmentLink(record.email, 'epa', record.recordId || '')
+      };
+    });
+    const monthlyGroups = new Map();
+    validFeedback.forEach(item => {
+      const month = String(item.date || '').slice(0, 7) || '未註明';
+      if (!monthlyGroups.has(month)) monthlyGroups.set(month, []);
+      monthlyGroups.get(month).push(item);
+    });
+    const satisfactionTimeline = [...monthlyGroups.entries()].map(([month, records]) => ({
+      title: '整體平均滿意度',
+      date: month,
+      displayDate: month.replace('-', '/'),
+      count: records.length,
+      score: Number((records.reduce((sum, item) => sum + item.score, 0) / records.length).toFixed(1))
+    }));
+    const satisfactionByEPA = EPA_CONFIG.map((epa, index) => {
+      const records = validFeedback.filter(item => item.normalizedId === normalizeEPAId(epa.id));
+      if (!records.length) return null;
+      return {
+        id: epa.id,
+        label: `EPA ${index + 1}`,
+        title: String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, ''),
+        count: records.length,
+        average: Number((records.reduce((sum, item) => sum + item.score, 0) / records.length).toFixed(1))
+      };
+    }).filter(Boolean);
+    const previousByLearnerEPA = {};
+    const attentionItems = [];
+    validFeedback.forEach(item => {
+      const key = `${normalizeEmail(item.email)}::${item.normalizedId}`;
+      const previous = previousByLearnerEPA[key];
+      let reason = '';
+      if (item.score <= 4) reason = `滿意度 ${item.score}／9`;
+      else if (previous && previous.score - item.score >= 2) reason = `較同項前次下降 ${previous.score - item.score} 分`;
+      if (reason) attentionItems.push({ ...item, reason });
+      previousByLearnerEPA[key] = item;
+    });
+    const feedbackLearners = new Set(validFeedback.map(item => normalizeEmail(item.email))).size;
+    const average = validFeedback.length ? Number((validFeedback.reduce((sum, item) => sum + item.score, 0) / validFeedback.length).toFixed(1)) : 0;
+    const change = satisfactionTimeline.length > 1 ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1)) : null;
+
+    return {
+      learners: [...learners].sort((a, b) => a.completionRate - b.completionRate || b.pendingCount - a.pendingCount),
+      metrics: {
+        totalLearners: learners.length,
+        totalOpportunities,
+        evaluatedCount,
+        achievedCount,
+        pendingCount,
+        completionRate: totalOpportunities ? Math.round((evaluatedCount / totalOpportunities) * 100) : 0,
+        achievementRate: evaluatedCount ? Math.round((achievedCount / evaluatedCount) * 100) : 0
+      },
+      epaItems: aggregateItems('epaItems'),
+      dopsItems: aggregateItems('dopsItems'),
+      satisfaction: {
+        count: validFeedback.length,
+        totalAssessments: cohortEPA.length,
+        average,
+        responseRate: cohortEPA.length ? Math.round((validFeedback.length / cohortEPA.length) * 100) : 0,
+        latest: validFeedback.at(-1) || null,
+        change,
+        timeline: satisfactionTimeline,
+        byEPA: satisfactionByEPA,
+        attentionItems: attentionItems.reverse(),
+        feedbackLearners,
+        totalLearners: learners.length
+      }
+    };
+  }, [dashboardData, students]);
+
+  if (!cohort) return <div className="py-8 text-center text-gray-400">資料解析中...</div>;
+  const refreshedAt = updatedAt || (dashboardData?.generatedAt ? new Date(dashboardData.generatedAt) : null);
+
+  return (
+    <div className="mt-4 space-y-6 animate-in fade-in">
+      <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-blue-50 px-4 py-4 shadow-sm md:px-5">
+        <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
+          <div><h3 className="flex items-center gap-2 font-black text-gray-900"><BarChart3 className="h-5 w-5 text-indigo-600" />全部學員整體成效</h3><p className="mt-1 text-xs text-gray-500">完成率＝已評核項數 ÷ 應評核項數；達標率＝已達標項數 ÷ 已評核項數。</p></div>
+          <p className="text-xs text-gray-400">資料更新：{refreshedAt && !Number.isNaN(refreshedAt.getTime()) ? refreshedAt.toLocaleString('zh-TW', { hour12: false }) : '尚未更新'}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+        <MetricCard icon={UserRound} label="學員人數" value={cohort.metrics.totalLearners} suffix="人" detail="目前納入整體統計" color="bg-purple-100 text-purple-700" />
+        <MetricCard icon={Clock3} label="整體完成率" value={cohort.metrics.completionRate} suffix="%" detail={`${cohort.metrics.evaluatedCount}／${cohort.metrics.totalOpportunities} 項已評核`} color="bg-blue-100 text-blue-700" />
+        <MetricCard icon={CheckCircle2} label="整體達標率" value={cohort.metrics.achievementRate} suffix="%" detail={`${cohort.metrics.achievedCount}／${cohort.metrics.evaluatedCount} 項已達標`} color="bg-emerald-100 text-emerald-700" />
+        <MetricCard icon={AlertTriangle} label="待學員回饋" value={cohort.metrics.pendingCount} suffix="項" detail="教師已完成評核" color="bg-amber-100 text-amber-700" />
+      </div>
+
+      <section className="space-y-3">
+        <div><h2 className="text-lg font-black text-slate-900">全體 EPA／DOPS 成效分布</h2><p className="mt-1 text-xs text-slate-500">藍色呈現完成率，綠色呈現達標率；兩者分母不同，滑鼠移入可查看人數。</p></div>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <CohortAssessmentChart title="EPA 整體完成與達標" subtitle="達標門檻：Level 4 以上" icon={Activity} rows={cohort.epaItems} />
+          <CohortAssessmentChart title="DOPS 整體完成與達標" subtitle="達標門檻：8 分以上" icon={CheckSquare} rows={cohort.dopsItems} />
+        </div>
+      </section>
+
+      <SatisfactionDashboard satisfaction={cohort.satisfaction} overall />
+
+      <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-4 py-4 md:px-5"><h3 className="font-black text-gray-900">學員成效一覽</h3><p className="mt-1 text-xs text-gray-500">依完成率由低至高排列，便於優先掌握需要協助的學員。</p></div>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-5 py-3 text-left">學員</th><th className="px-4 py-3 text-center">完訓進度</th><th className="px-4 py-3 text-center">完成率</th><th className="px-4 py-3 text-center">達標率</th><th className="px-4 py-3 text-center">待回饋</th><th className="px-5 py-3 text-right">操作</th></tr></thead>
+            <tbody className="divide-y divide-gray-100">{cohort.learners.map(learner => (
+              <tr key={learner.email} className="hover:bg-gray-50"><td className="px-5 py-3 font-bold text-gray-800">{learner.name}</td><td className="px-4 py-3 text-center">{learner.finalProgress}%</td><td className="px-4 py-3 text-center font-bold text-blue-700">{learner.completionRate}%<span className="ml-1 text-[10px] font-normal text-gray-400">{learner.evaluatedCount}／{learner.clinicalTotal}</span></td><td className="px-4 py-3 text-center font-bold text-emerald-700">{learner.achievementRate}%<span className="ml-1 text-[10px] font-normal text-gray-400">{learner.achievedCount}／{learner.evaluatedCount}</span></td><td className="px-4 py-3 text-center font-bold text-amber-700">{learner.pendingCount}</td><td className="px-5 py-3 text-right"><button type="button" onClick={() => onSelectStudent?.(learner.email)} className="font-bold text-indigo-600 hover:text-indigo-800">查看個別</button></td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-gray-100 md:hidden">{cohort.learners.map(learner => (
+          <button key={learner.email} type="button" onClick={() => onSelectStudent?.(learner.email)} className="block w-full p-4 text-left hover:bg-gray-50">
+            <div className="flex items-center justify-between"><span className="font-black text-gray-800">{learner.name}</span><ArrowRight className="h-4 w-4 text-indigo-500" /></div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-lg bg-blue-50 p-2"><p className="font-black text-blue-700">{learner.completionRate}%</p><p className="mt-1 text-gray-500">完成率</p></div><div className="rounded-lg bg-emerald-50 p-2"><p className="font-black text-emerald-700">{learner.achievementRate}%</p><p className="mt-1 text-gray-500">達標率</p></div><div className="rounded-lg bg-amber-50 p-2"><p className="font-black text-amber-700">{learner.pendingCount}</p><p className="mt-1 text-gray-500">待回饋</p></div></div>
+          </button>
+        ))}</div>
+      </section>
+    </div>
+  );
+};
+
+const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile, students = [], dashboardData, updatedAt, onSelectStudent }) => {
   const processedData = useMemo(() => {
     if (!dashboardData || !studentEmail || dashboardData.status === 'error') return null;
     const targetEmail = normalizeEmail(studentEmail);
@@ -411,6 +694,7 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
         date: latest?.date || '',
         status,
         value: levelIndex,
+        evaluated: Boolean(latest),
         passed: levelIndex >= 6,
         latest,
         link: buildAssessmentLink(studentEmail, 'epa', latest?.recordId || '')
@@ -440,6 +724,7 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
         date: latest?.date || '',
         status,
         value: score || 0,
+        evaluated: Boolean(latest) && (assessmentCompleted || pendingFeedback),
         passed: score !== null && score >= 8 && ['teacher_graded', 'completed'].includes(latest?.status),
         latest,
         link: buildAssessmentLink(studentEmail, 'dops', latest?.recordId || '', form.id)
@@ -459,12 +744,14 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
       {
         id: 'minicex', title: 'Mini-CEX 臨床評估', result: miniCEXScore !== null ? `平均 ${miniCEXScore} 分` : '尚未評核',
         attempts: studentMiniCEX.length, date: latestMiniCEX?.date || '', status: miniCEXStatus,
+        evaluated: Boolean(latestMiniCEX),
         passed: miniCEXScore !== null && miniCEXScore >= 4, latest: latestMiniCEX,
         link: buildAssessmentLink(studentEmail, 'minicex', latestMiniCEX?.recordId || ''), type: 'Mini-CEX'
       },
       {
         id: 'osce', title: 'OSCE 評估', result: osceScore !== null ? `${osceScore} / 75 分` : '尚未評核',
         attempts: studentOSCE.length, date: latestOSCE?.date || '', status: osceStatus,
+        evaluated: Boolean(latestOSCE),
         passed: osceScore !== null && osceScore >= 46, latest: latestOSCE,
         link: buildAssessmentLink(studentEmail, 'osce', latestOSCE?.recordId || ''), type: 'OSCE'
       }
@@ -474,73 +761,12 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
     const finalPassedCount = Object.values(studentFinal?.items || {}).filter(item => item?.passed === true || item === true).length;
     const finalProgress = finalTotalCount ? Math.min(Math.round((finalPassedCount / finalTotalCount) * 100), 100) : 0;
     const achievedCount = clinicalRows.filter(row => row.passed).length;
+    const evaluatedCount = clinicalRows.filter(row => row.evaluated).length;
+    const clinicalCompletionRate = clinicalRows.length ? Math.round((evaluatedCount / clinicalRows.length) * 100) : 0;
+    const clinicalAchievementRate = evaluatedCount ? Math.round((achievedCount / evaluatedCount) * 100) : 0;
     const unassessedCount = clinicalRows.filter(row => row.status === 'unassessed').length;
     const improvementCount = clinicalRows.filter(row => row.status === 'improvement').length;
     const pendingCount = clinicalRows.filter(row => row.status === 'pending').length;
-
-    const epaAttemptCounts = {};
-    const satisfactionTimeline = sortByDate(studentEPA).map(record => {
-      const score = Number(record.feedbackSatisfaction);
-      if (!Number.isFinite(score) || score < 1 || score > 9) return null;
-      const normalizedId = normalizeEPAId(record.epaId);
-      const epa = EPA_CONFIG.find(item => normalizeEPAId(item.id) === normalizedId);
-      epaAttemptCounts[normalizedId] = (epaAttemptCounts[normalizedId] || 0) + 1;
-      return {
-        epaId: record.epaId,
-        normalizedId,
-        recordId: record.recordId,
-        title: epa ? String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, '') : record.epaId,
-        score,
-        date: record.date || '',
-        displayDate: record.date ? String(record.date).slice(5).replace('-', '/') : `第 ${epaAttemptCounts[normalizedId]} 次`,
-        attempt: epaAttemptCounts[normalizedId],
-        reflection: String(record.feedbackReflection || '').trim(),
-        link: buildAssessmentLink(studentEmail, 'epa', record.recordId || '')
-      };
-    }).filter(Boolean);
-
-    const satisfactionCount = satisfactionTimeline.length;
-    const satisfactionAverage = satisfactionCount
-      ? Number((satisfactionTimeline.reduce((sum, item) => sum + item.score, 0) / satisfactionCount).toFixed(1))
-      : 0;
-    const latestSatisfaction = satisfactionTimeline.at(-1) || null;
-    const satisfactionChange = satisfactionTimeline.length > 1
-      ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1))
-      : null;
-    const satisfactionByEPA = EPA_CONFIG.map((epa, index) => {
-      const records = satisfactionTimeline.filter(item => item.normalizedId === normalizeEPAId(epa.id));
-      if (!records.length) return null;
-      return {
-        id: epa.id,
-        label: `EPA ${index + 1}`,
-        title: String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, ''),
-        count: records.length,
-        average: Number((records.reduce((sum, item) => sum + item.score, 0) / records.length).toFixed(1))
-      };
-    }).filter(Boolean);
-
-    const previousSatisfactionByEPA = {};
-    const satisfactionAttentionItems = [];
-    satisfactionTimeline.forEach(item => {
-      const previous = previousSatisfactionByEPA[item.normalizedId];
-      let reason = '';
-      if (item.score <= 4) reason = `滿意度 ${item.score}／9`;
-      else if (previous && previous.score - item.score >= 2) reason = `較同項前次下降 ${previous.score - item.score} 分`;
-      if (reason) satisfactionAttentionItems.push({ ...item, reason });
-      previousSatisfactionByEPA[item.normalizedId] = item;
-    });
-
-    const satisfaction = {
-      count: satisfactionCount,
-      totalAssessments: studentEPA.length,
-      average: satisfactionAverage,
-      responseRate: studentEPA.length ? Math.round((satisfactionCount / studentEPA.length) * 100) : 0,
-      latest: latestSatisfaction,
-      change: satisfactionChange,
-      timeline: satisfactionTimeline,
-      byEPA: satisfactionByEPA,
-      attentionItems: satisfactionAttentionItems.reverse()
-    };
 
     const priorityOrder = { pending: 1, improvement: 2, unassessed: 3 };
     const priorityItems = clinicalRows
@@ -573,15 +799,20 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
     const allDates = [...studentDOPS, ...studentMiniCEX, ...studentOSCE, ...studentKSA, ...studentEPA].map(record => record.date).filter(Boolean).sort((a, b) => toTimestamp(b) - toTimestamp(a));
 
     return {
-      epaRows, dopsRows, priorityItems, radarData, ksaSeries, minicexTimeline, osceTimeline, satisfaction,
+      epaRows, dopsRows, priorityItems, radarData, ksaSeries, minicexTimeline, osceTimeline,
       metrics: {
-        finalProgress, finalPassedCount, finalTotalCount, achievedCount,
+        finalProgress, finalPassedCount, finalTotalCount, achievedCount, evaluatedCount,
+        clinicalCompletionRate, clinicalAchievementRate,
         clinicalTotal: clinicalRows.length, unassessedCount, improvementCount, pendingCount
       },
       latestAssessmentDate: allDates[0] || '',
       hasData: clinicalRows.some(row => row.attempts > 0) || finalPassedCount > 0 || studentKSA.length > 0
     };
   }, [dashboardData, studentEmail]);
+
+  if (viewMode === 'overall') {
+    return <OverallDashboard dashboardData={dashboardData} students={students} updatedAt={updatedAt} onSelectStudent={onSelectStudent} />;
+  }
 
   if (!processedData) return <div className="text-gray-400 text-center py-8">資料解析中...</div>;
 
@@ -608,8 +839,8 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
         <MetricCard icon={TrendingUp} label="完訓進度" value={processedData.metrics.finalProgress} suffix="%" detail={`${processedData.metrics.finalPassedCount} / ${processedData.metrics.finalTotalCount} 項完成`} color="bg-purple-100 text-purple-700" />
-        <MetricCard icon={CheckCircle2} label="臨床評核達標" value={processedData.metrics.achievedCount} suffix="項" detail={`共 ${processedData.metrics.clinicalTotal} 項評核`} color="bg-emerald-100 text-emerald-700" />
-        <MetricCard icon={Clock3} label="尚未評核" value={processedData.metrics.unassessedCount} suffix="項" detail="尚無任何評核紀錄" color="bg-gray-100 text-gray-700" />
+        <MetricCard icon={Clock3} label="臨床評核完成率" value={processedData.metrics.clinicalCompletionRate} suffix="%" detail={`${processedData.metrics.evaluatedCount} / ${processedData.metrics.clinicalTotal} 項已評核`} color="bg-blue-100 text-blue-700" />
+        <MetricCard icon={CheckCircle2} label="臨床評核達標率" value={processedData.metrics.clinicalAchievementRate} suffix="%" detail={`${processedData.metrics.achievedCount} / ${processedData.metrics.evaluatedCount} 項已達標`} color="bg-emerald-100 text-emerald-700" />
         <MetricCard icon={XCircle} label="待加強／重評" value={processedData.metrics.improvementCount} suffix="項" detail="最新結果尚未達標" color="bg-red-100 text-red-700" />
         <MetricCard icon={AlertTriangle} label="待學員回饋" value={processedData.metrics.pendingCount} suffix="項" detail="教師已完成評核" color="bg-amber-100 text-amber-700" />
       </div>
@@ -627,8 +858,6 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
           <AssessmentBIChart title="DOPS 最新整體評分" subtitle="8 分以上視為達標" icon={CheckSquare} rows={processedData.dopsRows} type="dops" />
         </div>
       </section>
-
-      <SatisfactionDashboard satisfaction={processedData.satisfaction} />
 
       <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
