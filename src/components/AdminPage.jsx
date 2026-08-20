@@ -47,6 +47,7 @@ const AdminPage = ({ user, userRole }) => {
   const [dashboardError, setDashboardError] = useState('');
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState(null);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+  const [dashboardView, setDashboardView] = useState('individual');
   const [selectedStudentEmail, setSelectedStudentEmail] = useState('');
 
   useEffect(() => {
@@ -91,14 +92,15 @@ const AdminPage = ({ user, userRole }) => {
   }, [selectedStudentEmail]);
 
   useEffect(() => {
-    if (!selectedStudentEmail) return undefined;
+    const requestTarget = dashboardView === 'overall' ? 'ALL' : selectedStudentEmail;
+    if (!requestTarget) return undefined;
 
     const controller = new AbortController();
     const fetchDashboardData = async () => {
       setLoadingDashboard(true);
       setDashboardError('');
       try {
-        const res = await fetch(`${GAS_API_URL}?type=getDashboardData&studentEmail=${encodeURIComponent(selectedStudentEmail)}`, {
+        const res = await fetch(`${GAS_API_URL}?type=getDashboardData&studentEmail=${encodeURIComponent(requestTarget)}`, {
           signal: controller.signal
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -116,7 +118,7 @@ const AdminPage = ({ user, userRole }) => {
     };
     fetchDashboardData();
     return () => controller.abort();
-  }, [selectedStudentEmail, dashboardRefreshKey]);
+  }, [dashboardView, selectedStudentEmail, dashboardRefreshKey]);
 
   const handleDeleteResource = async (collectionName, id) => {
     if (window.confirm('確定要刪除此項目嗎？')) {
@@ -254,27 +256,33 @@ const AdminPage = ({ user, userRole }) => {
                 <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
                   <BarChart3 className="w-5 h-5" /> 學習成效總覽
                 </h2>
-                <p className="text-sm text-indigo-700 mt-1">選取學員以檢視達標進度、優先處理事項與成長軌跡</p>
+                <p className="text-sm text-indigo-700 mt-1">切換個別或全部學員，檢視完成率、達標率與成長軌跡</p>
               </div>
               
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm flex-1 sm:flex-none">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <select
-                    value={selectedStudentEmail}
-                    onChange={(e) => setSelectedStudentEmail(e.target.value)}
-                    className="bg-transparent text-sm font-bold text-gray-700 outline-none w-full sm:w-48"
-                  >
-                    <option value="" disabled>請選擇學員...</option>
-                    {studentsOnly.map(s => (
-                      <option key={s.email} value={s.email}>{s.displayName || s.email}</option>
-                    ))}
-                  </select>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <div className="grid grid-cols-2 rounded-lg border border-indigo-200 bg-white p-1 shadow-sm">
+                  <button type="button" onClick={() => setDashboardView('individual')} className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${dashboardView === 'individual' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>個別學員</button>
+                  <button type="button" onClick={() => setDashboardView('overall')} className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${dashboardView === 'overall' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>全部學員</button>
                 </div>
+                {dashboardView === 'individual' && (
+                  <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-200 shadow-sm flex-1 sm:flex-none">
+                    <Users className="w-4 h-4 text-indigo-500" />
+                    <select
+                      value={selectedStudentEmail}
+                      onChange={(e) => setSelectedStudentEmail(e.target.value)}
+                      className="bg-transparent text-sm font-bold text-gray-700 outline-none w-full sm:w-48"
+                    >
+                      <option value="" disabled>請選擇學員...</option>
+                      {studentsOnly.map(s => (
+                        <option key={s.email} value={s.email}>{s.displayName || s.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => setDashboardRefreshKey(key => key + 1)}
-                  disabled={loadingDashboard || !selectedStudentEmail}
+                  disabled={loadingDashboard || (dashboardView === 'individual' && !selectedStudentEmail)}
                   className="p-2.5 rounded-lg border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
                   aria-label="重新整理成效資料"
                   title="重新整理成效資料"
@@ -296,10 +304,16 @@ const AdminPage = ({ user, userRole }) => {
               </div>
             ) : (
               <DashboardCharts 
+                viewMode={dashboardView}
                 studentEmail={selectedStudentEmail} 
                 studentProfile={studentsOnly.find(student => student.email === selectedStudentEmail)}
+                students={studentsOnly}
                 dashboardData={dashboardData}
                 updatedAt={dashboardUpdatedAt}
+                onSelectStudent={(email) => {
+                  setSelectedStudentEmail(email);
+                  setDashboardView('individual');
+                }}
               />
             )}
           </div>
