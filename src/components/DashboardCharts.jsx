@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 import {
   Activity, AlertTriangle, ArrowRight, CheckCircle2, CheckSquare,
-  BarChart3, ClipboardList, Clock3, Target, TrendingUp, UserRound, XCircle
+  BarChart3, ClipboardList, Clock3, Heart, MessageSquareText, Target,
+  TrendingUp, UserRound, XCircle
 } from 'lucide-react';
 import { DOPS_FORMS } from '../data/dopsForms';
 import { EPA_CONFIG } from '../data/EPA_Config';
@@ -202,6 +203,125 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
   );
 };
 
+const SatisfactionTrendTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="max-w-64 rounded-xl border border-violet-100 bg-white p-3 shadow-xl">
+      <p className="text-xs font-black text-slate-900">{item.title}</p>
+      <p className="mt-1 text-lg font-black text-violet-600">{item.score}／9</p>
+      <p className="mt-1 text-[11px] text-slate-400">{item.date}・第 {item.attempt} 次回饋</p>
+    </div>
+  );
+};
+
+const SatisfactionAverageTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="max-w-64 rounded-xl border border-violet-100 bg-white p-3 shadow-xl">
+      <p className="text-xs font-black text-slate-900">{item.title}</p>
+      <p className="mt-1 text-lg font-black text-violet-600">平均 {item.average}／9</p>
+      <p className="mt-1 text-[11px] text-slate-500">有效回饋 {item.count} 筆{item.count < 3 ? '・樣本數較少' : ''}</p>
+    </div>
+  );
+};
+
+const SatisfactionMetric = ({ label, value, detail, accent = 'text-slate-900' }) => (
+  <div className="rounded-xl border border-violet-100 bg-white/90 px-3 py-3 shadow-sm">
+    <p className="text-[11px] font-bold text-slate-500">{label}</p>
+    <p className={`mt-1 text-2xl font-black ${accent}`}>{value}</p>
+    <p className="mt-1 text-[10px] font-medium text-slate-400">{detail}</p>
+  </div>
+);
+
+const SatisfactionDashboard = ({ satisfaction }) => (
+  <section className="overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 shadow-sm">
+    <div className="border-b border-violet-100 px-4 py-4 md:px-5">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Heart className="h-5 w-5 fill-violet-100 text-violet-600" />學員回饋體驗</h2>
+          <p className="mt-1 text-xs text-slate-500">滿意度反映教學體驗，不列入學員達標率或完訓成績。</p>
+        </div>
+        <p className="text-[11px] font-bold text-violet-500">量尺：1～9 分・未填資料不計為 0 分</p>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:p-5">
+      <SatisfactionMetric label="平均滿意度" value={satisfaction.count ? `${satisfaction.average}／9` : '—'} detail={`有效回饋 ${satisfaction.count} 筆`} accent="text-violet-700" />
+      <SatisfactionMetric label="回饋完成率" value={`${satisfaction.responseRate}%`} detail={`${satisfaction.count}／${satisfaction.totalAssessments} 筆已填`} accent="text-indigo-700" />
+      <SatisfactionMetric label="最近一次" value={satisfaction.latest ? `${satisfaction.latest.score}／9` : '—'} detail={satisfaction.latest?.date || '尚無回饋'} accent="text-fuchsia-700" />
+      <SatisfactionMetric label="需關注回饋" value={satisfaction.attentionItems.length} detail="低分或較前次明顯下降" accent={satisfaction.attentionItems.length ? 'text-red-600' : 'text-emerald-600'} />
+    </div>
+
+    <div className="grid grid-cols-1 gap-5 px-4 pb-5 md:px-5 xl:grid-cols-5">
+      <div className="rounded-xl border border-violet-100 bg-white p-4 xl:col-span-3">
+        <div className="flex items-center justify-between gap-3">
+          <div><h3 className="text-sm font-black text-slate-800">歷次滿意度趨勢</h3><p className="mt-1 text-[11px] text-slate-400">依評核日期排列，呈現每筆學員滿意度</p></div>
+          {satisfaction.change !== null && <span className={`rounded-full px-2.5 py-1 text-xs font-black ${satisfaction.change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{satisfaction.change > 0 ? '+' : ''}{satisfaction.change}</span>}
+        </div>
+        <div className="mt-3 h-72 w-full">
+          {satisfaction.timeline.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={satisfaction.timeline} margin={{ top: 18, right: 12, left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDE9FE" />
+                <XAxis dataKey="displayDate" tick={{ fontSize: 10, fill: '#64748B' }} />
+                <YAxis domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} tick={{ fontSize: 10, fill: '#64748B' }} />
+                <Tooltip content={<SatisfactionTrendTooltip />} />
+                <ReferenceLine y={4} stroke="#EF4444" strokeDasharray="4 4" label={{ value: '需關注 ≤4', fill: '#DC2626', fontSize: 10, position: 'insideBottomRight' }} />
+                <ReferenceLine y={7} stroke="#10B981" strokeDasharray="4 4" label={{ value: '良好區間', fill: '#059669', fontSize: 10, position: 'insideTopRight' }} />
+                <Line type="monotone" dataKey="score" name="滿意度" stroke="#7C3AED" strokeWidth={3} dot={{ r: 4, fill: '#8B5CF6', strokeWidth: 2, stroke: '#FFFFFF' }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : <div className="flex h-full items-center justify-center text-sm text-slate-400">尚無滿意度資料</div>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-violet-100 bg-white p-4 xl:col-span-2">
+        <h3 className="text-sm font-black text-slate-800">各 EPA 項目平均滿意度</h3>
+        <p className="mt-1 text-[11px] text-slate-400">滑鼠移入可查看回饋筆數與樣本提醒</p>
+        <div className="mt-3 h-72 w-full">
+          {satisfaction.byEPA.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={satisfaction.byEPA} margin={{ top: 18, right: 8, left: -18, bottom: 38 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDE9FE" />
+                <XAxis dataKey="label" interval={0} angle={-28} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} />
+                <YAxis domain={[0, 9]} ticks={[0, 3, 6, 9]} tick={{ fontSize: 10, fill: '#64748B' }} />
+                <Tooltip content={<SatisfactionAverageTooltip />} cursor={{ fill: '#FAF5FF' }} />
+                <ReferenceLine y={7} stroke="#10B981" strokeDasharray="4 4" />
+                <Bar dataKey="average" fill="#8B5CF6" radius={[5, 5, 0, 0]} maxBarSize={38}>
+                  <LabelList dataKey="average" position="top" style={{ fill: '#5B21B6', fontSize: 10, fontWeight: 800 }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <div className="flex h-full items-center justify-center text-sm text-slate-400">尚無可比較項目</div>}
+        </div>
+      </div>
+    </div>
+
+    <div className="border-t border-violet-100 bg-white/70 px-4 py-4 md:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2 text-sm font-black text-slate-800"><MessageSquareText className="h-4 w-4 text-violet-600" />需關注回饋</h3>
+        <span className="text-[11px] font-bold text-slate-400">滿意度 ≤4，或同項較前次下降 2 分以上</span>
+      </div>
+      {satisfaction.attentionItems.length ? (
+        <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {satisfaction.attentionItems.map(item => (
+            <a key={item.recordId || `${item.epaId}-${item.date}`} href={item.link} className="flex items-start justify-between gap-3 rounded-xl border border-red-100 bg-red-50/70 p-3 hover:bg-red-50">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-black text-slate-800">{item.title}</p>
+                <p className="mt-1 text-[11px] font-bold text-red-600">{item.reason}・{item.date}</p>
+                {item.reflection && <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{item.reflection}</p>}
+              </div>
+              <ArrowRight className="mt-1 h-4 w-4 flex-shrink-0 text-red-500" />
+            </a>
+          ))}
+        </div>
+      ) : <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-center text-xs font-bold text-emerald-700">目前沒有低分或明顯下降的回饋。</div>}
+    </div>
+  </section>
+);
+
 const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
   <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
     <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
@@ -358,6 +478,70 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
     const improvementCount = clinicalRows.filter(row => row.status === 'improvement').length;
     const pendingCount = clinicalRows.filter(row => row.status === 'pending').length;
 
+    const epaAttemptCounts = {};
+    const satisfactionTimeline = sortByDate(studentEPA).map(record => {
+      const score = Number(record.feedbackSatisfaction);
+      if (!Number.isFinite(score) || score < 1 || score > 9) return null;
+      const normalizedId = normalizeEPAId(record.epaId);
+      const epa = EPA_CONFIG.find(item => normalizeEPAId(item.id) === normalizedId);
+      epaAttemptCounts[normalizedId] = (epaAttemptCounts[normalizedId] || 0) + 1;
+      return {
+        epaId: record.epaId,
+        normalizedId,
+        recordId: record.recordId,
+        title: epa ? String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, '') : record.epaId,
+        score,
+        date: record.date || '',
+        displayDate: record.date ? String(record.date).slice(5).replace('-', '/') : `第 ${epaAttemptCounts[normalizedId]} 次`,
+        attempt: epaAttemptCounts[normalizedId],
+        reflection: String(record.feedbackReflection || '').trim(),
+        link: buildAssessmentLink(studentEmail, 'epa', record.recordId || '')
+      };
+    }).filter(Boolean);
+
+    const satisfactionCount = satisfactionTimeline.length;
+    const satisfactionAverage = satisfactionCount
+      ? Number((satisfactionTimeline.reduce((sum, item) => sum + item.score, 0) / satisfactionCount).toFixed(1))
+      : 0;
+    const latestSatisfaction = satisfactionTimeline.at(-1) || null;
+    const satisfactionChange = satisfactionTimeline.length > 1
+      ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1))
+      : null;
+    const satisfactionByEPA = EPA_CONFIG.map((epa, index) => {
+      const records = satisfactionTimeline.filter(item => item.normalizedId === normalizeEPAId(epa.id));
+      if (!records.length) return null;
+      return {
+        id: epa.id,
+        label: `EPA ${index + 1}`,
+        title: String(epa.title).replace(/^EPA\s*\d+[.、]?\s*/iu, ''),
+        count: records.length,
+        average: Number((records.reduce((sum, item) => sum + item.score, 0) / records.length).toFixed(1))
+      };
+    }).filter(Boolean);
+
+    const previousSatisfactionByEPA = {};
+    const satisfactionAttentionItems = [];
+    satisfactionTimeline.forEach(item => {
+      const previous = previousSatisfactionByEPA[item.normalizedId];
+      let reason = '';
+      if (item.score <= 4) reason = `滿意度 ${item.score}／9`;
+      else if (previous && previous.score - item.score >= 2) reason = `較同項前次下降 ${previous.score - item.score} 分`;
+      if (reason) satisfactionAttentionItems.push({ ...item, reason });
+      previousSatisfactionByEPA[item.normalizedId] = item;
+    });
+
+    const satisfaction = {
+      count: satisfactionCount,
+      totalAssessments: studentEPA.length,
+      average: satisfactionAverage,
+      responseRate: studentEPA.length ? Math.round((satisfactionCount / studentEPA.length) * 100) : 0,
+      latest: latestSatisfaction,
+      change: satisfactionChange,
+      timeline: satisfactionTimeline,
+      byEPA: satisfactionByEPA,
+      attentionItems: satisfactionAttentionItems.reverse()
+    };
+
     const priorityOrder = { pending: 1, improvement: 2, unassessed: 3 };
     const priorityItems = clinicalRows
       .filter(row => row.status !== 'passed')
@@ -389,7 +573,7 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
     const allDates = [...studentDOPS, ...studentMiniCEX, ...studentOSCE, ...studentKSA, ...studentEPA].map(record => record.date).filter(Boolean).sort((a, b) => toTimestamp(b) - toTimestamp(a));
 
     return {
-      epaRows, dopsRows, priorityItems, radarData, ksaSeries, minicexTimeline, osceTimeline,
+      epaRows, dopsRows, priorityItems, radarData, ksaSeries, minicexTimeline, osceTimeline, satisfaction,
       metrics: {
         finalProgress, finalPassedCount, finalTotalCount, achievedCount,
         clinicalTotal: clinicalRows.length, unassessedCount, improvementCount, pendingCount
@@ -443,6 +627,8 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
           <AssessmentBIChart title="DOPS 最新整體評分" subtitle="8 分以上視為達標" icon={CheckSquare} rows={processedData.dopsRows} type="dops" />
         </div>
       </section>
+
+      <SatisfactionDashboard satisfaction={processedData.satisfaction} />
 
       <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
