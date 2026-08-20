@@ -10,7 +10,7 @@ import {
   BookOpen, Calendar, Film, Loader2, PlayCircle, User, Save, X, List, FileText,
   Circle, Clock, ClipboardList, Activity, 
   GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
-  Award, HeartHandshake // [新] 引入關懷圖示
+  Award, HeartHandshake, Home, ArrowRight // [新] 引入關懷圖示
 } from 'lucide-react';
 
 // 引入子元件
@@ -135,8 +135,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentName, setSelectedStudentName] = useState(user?.displayName);
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
-  // 導航狀態: records(訓練紀錄), assessment(學習評估), outcome(學習成果)
-  const [activeMainTab, setActiveMainTab] = useState('records'); 
+  // 導航狀態: todo(我的待辦), records(訓練紀錄), assessment(學習評估), outcome(學習成果)
+  const [activeMainTab, setActiveMainTab] = useState('todo');
   const [assessmentType, setAssessmentType] = useState('pre_training'); 
 
   // 追蹤已經載入過的標籤 (達成秒切換)
@@ -218,7 +218,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   // 讀取護照資料
   useEffect(() => {
-    if (selectedStudentEmail && activeMainTab === 'records') {
+    if (selectedStudentEmail && ['todo', 'records'].includes(activeMainTab)) {
       fetchPassportData(selectedStudentEmail);
     }
   }, [selectedStudentEmail, activeMainTab]);
@@ -426,6 +426,42 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const trainingGroups = Object.values(groupedItems);
   const isPendingTrainingItem = (item) => passportData.records[item.id]?.status !== 'pass';
   const pendingTrainingCount = (passportData.items || []).filter(isPendingTrainingItem).length;
+  const completedTrainingCount = Math.max((passportData.items || []).length - pendingTrainingCount, 0);
+  const trainingProgress = passportData.items?.length
+    ? Math.round((completedTrainingCount / passportData.items.length) * 100)
+    : 0;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const getDaysUntil = (dateString) => {
+    if (!dateString) return null;
+    const deadline = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(deadline.getTime())) return null;
+    return Math.ceil((deadline.getTime() - todayStart.getTime()) / MS_PER_DAY);
+  };
+  const todoItems = (passportData.items || [])
+    .filter(isPendingTrainingItem)
+    .map(item => {
+      const record = passportData.records[item.id] || {};
+      const endDate = passportData.periods[item.category_id]?.endDate || '';
+      const daysUntilDue = getDaysUntil(endDate);
+      const urgency = record.status === 'improve'
+        ? 0
+        : daysUntilDue !== null && daysUntilDue < 0
+          ? 1
+          : daysUntilDue !== null && daysUntilDue <= 14
+            ? 2
+            : 3;
+      return { ...item, record, endDate, daysUntilDue, urgency };
+    })
+    .sort((a, b) => a.urgency - b.urgency
+      || (a.daysUntilDue ?? Number.MAX_SAFE_INTEGER) - (b.daysUntilDue ?? Number.MAX_SAFE_INTEGER)
+      || String(a.category_name || '').localeCompare(String(b.category_name || ''), 'zh-Hant')
+      || String(a.sub_item || a.title || '').localeCompare(String(b.sub_item || b.title || ''), 'zh-Hant'));
+  const improveTrainingCount = todoItems.filter(item => item.record.status === 'improve').length;
+  const overdueTrainingCount = todoItems.filter(item => item.daysUntilDue !== null && item.daysUntilDue < 0).length;
+  const dueSoonTrainingCount = todoItems.filter(item => item.daysUntilDue !== null && item.daysUntilDue >= 0 && item.daysUntilDue <= 14).length;
+  const todoPreviewItems = todoItems.slice(0, 8);
   const visibleTrainingGroups = showAllTrainingItems
     ? trainingGroups
     : trainingGroups
@@ -440,6 +476,47 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
     setShowAllTrainingItems(true);
     setExpandedGroups(Object.fromEntries(trainingGroups.map(group => [group.id, true])));
+  };
+
+  const openTrainingRecord = (item) => {
+    setShowAllTrainingItems(false);
+    setExpandedGroups(prev => ({ ...prev, [item.category_id]: true }));
+    setActiveMainTab('records');
+  };
+
+  const getTodoPresentation = (item) => {
+    if (item.record.status === 'improve') {
+      return {
+        label: '需再加強',
+        detail: item.record.note || '請依教師回饋完成補強後再次評核。',
+        badgeClass: 'bg-orange-100 text-orange-700',
+        borderClass: 'border-orange-200',
+      };
+    }
+    if (item.daysUntilDue !== null && item.daysUntilDue < 0) {
+      return {
+        label: '已逾期',
+        detail: `原訂 ${item.endDate} 前完成，已逾期 ${Math.abs(item.daysUntilDue)} 天。`,
+        badgeClass: 'bg-red-100 text-red-700',
+        borderClass: 'border-red-200',
+      };
+    }
+    if (item.daysUntilDue !== null && item.daysUntilDue <= 14) {
+      return {
+        label: item.daysUntilDue === 0 ? '今日到期' : '即將到期',
+        detail: item.daysUntilDue === 0
+          ? '預定今天完成。'
+          : `預定 ${item.endDate} 前完成，剩餘 ${item.daysUntilDue} 天。`,
+        badgeClass: 'bg-amber-100 text-amber-700',
+        borderClass: 'border-amber-200',
+      };
+    }
+    return {
+      label: isTeacherOrAdmin ? '待教師評核' : '訓練尚未評核',
+      detail: item.endDate ? `預定 ${item.endDate} 前完成。` : '尚未設定完成期限。',
+      badgeClass: 'bg-gray-100 text-gray-600',
+      borderClass: 'border-gray-200',
+    };
   };
 
   const resolveTrainingSopIds = (targetId, fallbackSopIds) => {
@@ -706,6 +783,16 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         {/* 主選單 */}
         <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
           <button
+            onClick={() => setActiveMainTab('todo')}
+            className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeMainTab === 'todo'
+                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50'
+                : 'border-transparent text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <Home className="w-5 h-5" /> 我的待辦
+          </button>
+          <button
             onClick={() => setActiveMainTab('records')}
             className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeMainTab === 'records' 
@@ -743,7 +830,144 @@ const PassportSection = ({ user, userRole, userProfile }) => {
           </div>
         )}
 
-        {/* 1. 訓練紀錄 */}
+        {/* 1. 我的待辦 */}
+        {activeMainTab === 'todo' && (
+          <div className="space-y-5 animate-in fade-in">
+            {loading ? (
+              <div className="text-center py-12 text-gray-400 flex flex-col items-center">
+                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                <p>正在整理學習待辦...</p>
+              </div>
+            ) : passportData.items?.length > 0 ? (
+              <>
+                <section className="rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white p-5 sm:p-6 shadow-lg shadow-indigo-100">
+                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+                    <div>
+                      <p className="text-indigo-100 text-sm font-bold mb-1">
+                        {isTeacherOrAdmin ? `${selectedStudentName || '學員'}的學習進度` : `${selectedStudentName || '您好'}，今天從這裡開始`}
+                      </p>
+                      <h3 className="text-2xl font-black">
+                        {pendingTrainingCount > 0 ? `目前有 ${pendingTrainingCount} 項訓練待完成` : '所有訓練項目皆已完成'}
+                      </h3>
+                      <p className="text-sm text-indigo-100 mt-2">
+                        已完成 {completedTrainingCount}／{passportData.items.length} 項，教材閱讀與教師評核分開記錄。
+                      </p>
+                    </div>
+                    <div className="shrink-0 bg-white/15 border border-white/20 rounded-2xl px-5 py-3 text-center backdrop-blur-sm">
+                      <p className="text-3xl font-black">{trainingProgress}%</p>
+                      <p className="text-xs text-indigo-100">訓練完成率</p>
+                    </div>
+                  </div>
+                  <div className="h-2.5 bg-white/20 rounded-full overflow-hidden mt-5">
+                    <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${trainingProgress}%` }} />
+                  </div>
+                </section>
+
+                <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-bold text-gray-500">尚未評核</p>
+                    <p className="text-2xl font-black text-gray-800 mt-1">{todoItems.filter(item => !item.record.status).length}</p>
+                  </div>
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                    <p className="text-xs font-bold text-orange-700">需再加強</p>
+                    <p className="text-2xl font-black text-orange-800 mt-1">{improveTrainingCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                    <p className="text-xs font-bold text-red-700">已逾期</p>
+                    <p className="text-2xl font-black text-red-800 mt-1">{overdueTrainingCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-bold text-amber-700">14 天內到期</p>
+                    <p className="text-2xl font-black text-amber-800 mt-1">{dueSoonTrainingCount}</p>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                  <div className="px-4 sm:px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-black text-gray-800 flex items-center gap-2">
+                        <ClipboardCheck className="w-5 h-5 text-indigo-600" /> 優先待辦
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1">依需再加強、逾期及到期日自動排序。</p>
+                    </div>
+                    {todoItems.length > todoPreviewItems.length && (
+                      <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full">
+                        顯示前 {todoPreviewItems.length} 項
+                      </span>
+                    )}
+                  </div>
+
+                  {todoPreviewItems.length > 0 ? (
+                    <div className="divide-y divide-gray-100">
+                      {todoPreviewItems.map(item => {
+                        const presentation = getTodoPresentation(item);
+                        return (
+                          <article key={item.id} className={`p-4 sm:p-5 border-l-4 ${presentation.borderClass}`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${presentation.badgeClass}`}>
+                                    {presentation.label}
+                                  </span>
+                                  <span className="text-xs text-gray-500">{item.category_name}</span>
+                                </div>
+                                <h4 className="font-bold text-gray-800 leading-snug">{item.sub_item || item.title}</h4>
+                                {item.sub_item && <p className="text-xs text-gray-500 mt-1">{item.title}</p>}
+                                <p className="text-xs text-gray-600 mt-2">{presentation.detail}</p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {isTeacherOrAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEvaluateModal(item)}
+                                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs font-bold transition-colors"
+                                  >
+                                    <UserCheck className="w-4 h-4" /> {item.record.status ? '重新評核' : '立即評核'}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openTrainingRecord(item)}
+                                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-bold transition-colors"
+                                >
+                                  查看訓練 <ArrowRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-green-700 bg-green-50">
+                      <CheckCircle2 className="w-10 h-10 mx-auto mb-2" />
+                      <p className="font-black">目前沒有待辦項目</p>
+                      <p className="text-xs mt-1">所有訓練項目均已由教師評核通過。</p>
+                    </div>
+                  )}
+
+                  {todoItems.length > 0 && (
+                    <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setActiveMainTab('records')}
+                        className="inline-flex items-center gap-1.5 text-sm font-bold text-indigo-700 hover:text-indigo-900"
+                      >
+                        查看全部 {todoItems.length} 項待辦 <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </section>
+              </>
+            ) : (
+              <div className="text-center py-10 text-gray-400 border border-dashed rounded-lg bg-gray-50">
+                目前護照內容是空的
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. 訓練紀錄 */}
         {activeMainTab === 'records' && (
           <div className="space-y-4 animate-in fade-in">
             {loading ? (
