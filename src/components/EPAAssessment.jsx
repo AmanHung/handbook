@@ -6,7 +6,7 @@ import {
 import { EPA_CONFIG, EPA_LEVEL_OPTIONS, EPA_PERFORMANCE_OPTIONS } from '../data/EPA_Config';
 import EPAFormModal from './EPAFormModal';
 
-const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiUrl }) => {
+const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, apiUrl }) => {
   const [selectedEPA, setSelectedEPA] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
@@ -52,6 +52,7 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
         
         epa_id: formData.epa_id,
         teacher_name: formData.teacher_name,
+        teacher_email: currentUserEmail || userProfile?.email || '',
         date: formData.date,
         observation_time: formData.observation_time, 
         level: formData.level,
@@ -97,7 +98,11 @@ const EPAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       
       const result = await response.json();
       if (result.status === 'success') {
-        alert("回饋已成功送出！");
+        alert(result.email_sent
+          ? "回饋已成功送出，並已通知原評核教師！"
+          : result.email_message === 'send_failed'
+            ? "回饋已成功送出，但教師 Email 通知寄送失敗，請稍後通知管理者。"
+            : "回饋已成功送出，但舊評核紀錄沒有教師 Email，未能寄送通知。");
         fetchEPARecords(); 
       } else {
         throw new Error(result.message || "儲存失敗");

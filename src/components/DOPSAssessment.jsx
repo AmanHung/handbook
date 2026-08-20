@@ -212,19 +212,26 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       formData: finalFormData,
       status: targetStatus,
       updatedBy: currentUserEmail,
+      teacherEmail: newStatus === 'teacher_graded' ? currentUserEmail : '',
       teacherSign: finalFormData.sign_teacher_name,
       studentSign: finalFormData.sign_student_name
     };
 
     try {
-      await fetch(gasApiUrl, {
+      const response = await fetch(gasApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
+      const result = await response.json();
+      if (result.status !== 'success') throw new Error(result.message || '儲存失敗');
       
       if (newStatus === 'completed') {
-        alert(alertMessage);
+        alert(result.email_sent
+          ? `${alertMessage}\n\n已通知原評核教師。`
+          : result.email_message === 'send_failed'
+            ? `${alertMessage}\n\n回饋已儲存，但教師 Email 通知寄送失敗，請稍後通知管理者。`
+            : `${alertMessage}\n\n回饋已儲存，但舊評核紀錄沒有教師 Email，未能寄送通知。`);
       } else {
         alert("儲存成功！");
       }

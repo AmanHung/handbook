@@ -7,7 +7,7 @@ import {
   OSCE_TOPICS, OSCE_ITEMS, OSCE_FEEDBACK_OPTIONS, getOSCEResult 
 } from '../data/OSCE_Config';
 
-const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiUrl }) => {
+const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, apiUrl }) => {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +70,7 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, api
       student_email: studentEmail,
       student_name: studentName,
       teacher_name: userProfile?.displayName || 'Unknown',
+      teacher_email: currentUserEmail || userProfile?.email || '',
       date: formData.date,
       scores: formData.scores,
       total_score: totalScore,
@@ -93,8 +94,14 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, api
     if (!feedbackData.reflection) return alert('請填寫心得');
     setIsSubmitting(true);
     try {
-      await fetch(apiUrl, { method: 'POST', body: JSON.stringify({ action: 'save_osce_feedback', record_id: recordId, student_feedback: feedbackData }) });
-      alert('回饋已送出！');
+      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({ action: 'save_osce_feedback', record_id: recordId, student_feedback: feedbackData }) });
+      const result = await response.json();
+      if (result.status !== 'success') throw new Error(result.message || '送出失敗');
+      alert(result.email_sent
+        ? '回饋已送出，並已通知原評核教師！'
+        : result.email_message === 'send_failed'
+          ? '回饋已送出，但教師 Email 通知寄送失敗，請稍後通知管理者。'
+          : '回饋已送出，但舊評核紀錄沒有教師 Email，未能寄送通知。');
       fetchRecords();
     } catch (e) { alert('送出失敗'); } finally { setIsSubmitting(false); }
   };

@@ -1110,7 +1110,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               
               <div className={assessmentType === 'epa' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('epa') && (
-                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                  <EPAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
@@ -1122,13 +1122,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
               <div className={assessmentType === 'minicex' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('minicex') && (
-                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                  <MiniCEXAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
               <div className={assessmentType === 'osce' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('osce') && (
-                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                  <OSCEAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} currentUserEmail={user?.email} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
