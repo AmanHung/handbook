@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ReferenceLine
+  BarChart, Bar, Cell, LabelList, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, Radar, RadarChart, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis, ReferenceLine
 } from 'recharts';
 import {
   Activity, AlertTriangle, ArrowRight, CheckCircle2, CheckSquare,
-  ClipboardList, Clock3, Target, TrendingUp, UserRound, XCircle
+  BarChart3, ClipboardList, Clock3, Target, TrendingUp, UserRound, XCircle
 } from 'lucide-react';
 import { DOPS_FORMS } from '../data/dopsForms';
 import { EPA_CONFIG } from '../data/EPA_Config';
@@ -26,6 +27,13 @@ const STATUS_LABELS = {
   pending: '待學員回饋',
   improvement: '待加強／重評',
   unassessed: '尚未評核'
+};
+
+const STATUS_CHART_COLORS = {
+  passed: '#10B981',
+  pending: '#F59E0B',
+  improvement: '#EF4444',
+  unassessed: '#CBD5E1'
 };
 
 const normalizeEmail = value => String(value || '').trim().toLowerCase();
@@ -98,6 +106,101 @@ const MetricCard = ({ icon: Icon, label, value, suffix, detail, color }) => (
     <p className="mt-1 text-xs font-medium text-gray-500">{detail}</p>
   </div>
 );
+
+const AssessmentChartTooltip = ({ active, payload, type }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  const displayValue = type === 'epa'
+    ? item.value > 0 ? `Level ${EPA_LEVEL_LABELS[item.value]}` : '尚未評核'
+    : item.value > 0 ? `${item.value} / 10 分` : '尚未評核';
+
+  return (
+    <div className="max-w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+      <p className="text-xs font-black text-slate-900">{item.title}</p>
+      <p className="mt-1 text-sm font-bold text-indigo-600">{displayValue}</p>
+      <div className="mt-2 flex items-center justify-between gap-4 text-[11px] text-slate-500">
+        <span>{STATUS_LABELS[item.status]}</span>
+        <span>共 {item.attempts} 次</span>
+      </div>
+      {item.date && <p className="mt-1 text-[11px] text-slate-400">最近評核：{item.date}</p>}
+    </div>
+  );
+};
+
+const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
+  const isEPA = type === 'epa';
+  const chartData = rows.map((row, index) => ({
+    ...row,
+    label: `${isEPA ? 'EPA' : 'DOPS'} ${index + 1}`,
+    value: row.value || 0
+  }));
+  const achievedCount = rows.filter(row => row.passed).length;
+  const evaluatedCount = rows.filter(row => row.value > 0).length;
+  const attentionCount = rows.filter(row => ['pending', 'improvement'].includes(row.status)).length;
+  const achievementRate = rows.length ? Math.round((achievedCount / rows.length) * 100) : 0;
+  const valueFormatter = value => isEPA ? EPA_LEVEL_LABELS[value] || '' : value;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-4 py-4 text-white md:px-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="rounded-xl bg-white/10 p-2.5 ring-1 ring-white/15">
+              {React.createElement(Icon, { className: 'w-5 h-5 text-indigo-200' })}
+            </span>
+            <div className="min-w-0">
+              <h3 className="font-black tracking-wide">{title}</h3>
+              <p className="mt-1 text-xs text-slate-300">{subtitle}</p>
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">達標率</p>
+            <p className="text-3xl font-black leading-none mt-1">{achievementRate}<span className="ml-1 text-sm text-indigo-200">%</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/70">
+        <div className="px-3 py-3 text-center"><p className="text-xl font-black text-slate-900">{evaluatedCount}<span className="text-xs text-slate-400">／{rows.length}</span></p><p className="text-[11px] font-bold text-slate-500">已評核</p></div>
+        <div className="px-3 py-3 text-center"><p className="text-xl font-black text-emerald-600">{achievedCount}</p><p className="text-[11px] font-bold text-slate-500">已達標</p></div>
+        <div className="px-3 py-3 text-center"><p className="text-xl font-black text-amber-600">{attentionCount}</p><p className="text-[11px] font-bold text-slate-500">待處理</p></div>
+      </div>
+
+      <div className="px-2 pt-5 md:px-4">
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 22, right: 8, left: isEPA ? -8 : -12, bottom: 42 }} barCategoryGap="24%">
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+              <XAxis dataKey="label" interval={0} tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }} angle={-28} textAnchor="end" height={54} />
+              <YAxis
+                domain={isEPA ? [0, 7] : [0, 10]}
+                ticks={isEPA ? [1, 2, 3, 4, 5, 6, 7] : [0, 2, 4, 6, 8, 10]}
+                tickFormatter={valueFormatter}
+                tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }}
+              />
+              <Tooltip content={<AssessmentChartTooltip type={type} />} cursor={{ fill: '#F8FAFC' }} />
+              <ReferenceLine
+                y={isEPA ? 6 : 8}
+                stroke="#DC2626"
+                strokeDasharray="5 4"
+                label={{ value: isEPA ? 'Level 4 達標' : '8 分達標', fill: '#DC2626', fontSize: 10, fontWeight: 700, position: 'insideTopRight' }}
+              />
+              <Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={42}>
+                {chartData.map(item => <Cell key={item.id} fill={STATUS_CHART_COLORS[item.status]} />)}
+                <LabelList dataKey="value" position="top" formatter={value => value > 0 ? isEPA ? EPA_LEVEL_LABELS[value] : value : ''} style={{ fill: '#334155', fontSize: 10, fontWeight: 800 }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 border-t border-slate-100 py-3 text-[11px] font-bold text-slate-500">
+          {Object.entries(STATUS_LABELS).map(([status, label]) => (
+            <span key={status} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: STATUS_CHART_COLORS[status] }} />{label}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
   <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -187,6 +290,7 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
         trend: getTrend(records, record => extractEpaLevelIndex(record.level)),
         date: latest?.date || '',
         status,
+        value: levelIndex,
         passed: levelIndex >= 6,
         latest,
         link: buildAssessmentLink(studentEmail, 'epa', latest?.recordId || '')
@@ -215,6 +319,7 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
         trend: getTrend(records, record => extractDopsScore(record.formData)),
         date: latest?.date || '',
         status,
+        value: score || 0,
         passed: score !== null && score >= 8 && ['teacher_graded', 'completed'].includes(latest?.status),
         latest,
         link: buildAssessmentLink(studentEmail, 'dops', latest?.recordId || '', form.id)
@@ -324,6 +429,20 @@ const DashboardCharts = ({ studentEmail, studentProfile, dashboardData, updatedA
         <MetricCard icon={XCircle} label="待加強／重評" value={processedData.metrics.improvementCount} suffix="項" detail="最新結果尚未達標" color="bg-red-100 text-red-700" />
         <MetricCard icon={AlertTriangle} label="待學員回饋" value={processedData.metrics.pendingCount} suffix="項" detail="教師已完成評核" color="bg-amber-100 text-amber-700" />
       </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><BarChart3 className="h-5 w-5 text-indigo-600" />臨床評核 BI 分析</h2>
+            <p className="mt-1 text-xs text-slate-500">以各項最新一次評核呈現，紅色虛線為達標門檻；可搭配下方進度矩陣查看歷次變化。</p>
+          </div>
+          <p className="text-[11px] font-bold text-slate-400">綠：達標・黃：待回饋・紅：待加強・灰：未評核</p>
+        </div>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <AssessmentBIChart title="EPA 最新信賴等級" subtitle="Level 4 以上視為達標" icon={Activity} rows={processedData.epaRows} type="epa" />
+          <AssessmentBIChart title="DOPS 最新整體評分" subtitle="8 分以上視為達標" icon={CheckSquare} rows={processedData.dopsRows} type="dops" />
+        </div>
+      </section>
 
       <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
