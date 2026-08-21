@@ -73,6 +73,23 @@ const extractAverageScore = scores => {
   return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1));
 };
 
+const extractKSAProfile = record => {
+  if (!record) return null;
+  const groups = ['k', 's', 'a'].map(prefix => Object.entries(record.scores || {})
+    .filter(([field]) => field.toLowerCase().startsWith(prefix))
+    .map(([, value]) => Number(value))
+    .filter(value => Number.isFinite(value) && value > 0 && value <= 9));
+  const averages = groups.map(values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null);
+  if (averages.every(value => value === null)) return null;
+  return { knowledge: averages[0], skill: averages[1], attitude: averages[2] };
+};
+
+const averageKSAProfiles = profiles => ['knowledge', 'skill', 'attitude'].reduce((result, field) => {
+  const values = profiles.map(profile => profile?.[field]).filter(Number.isFinite);
+  result[field] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+  return result;
+}, {});
+
 const getTrend = (records, getValue) => {
   const values = sortByDate(records).map(getValue).filter(value => value !== null && value !== undefined && value > 0);
   if (values.length < 2) return '—';
@@ -542,6 +559,48 @@ const CohortAssessmentMatrix = ({ title, subtitle, icon: Icon, rows }) => (
   </section>
 );
 
+const CohortKSARadar = ({ radarData, series }) => {
+  const latestSeries = series.find(item => item.key === 'latest');
+  const previousSeries = series.find(item => item.key === 'previous');
+  return (
+    <section className="overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-sm">
+      <div className="border-b border-teal-100 bg-gradient-to-r from-teal-50 via-white to-indigo-50 px-4 py-4 md:px-5">
+        <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
+          <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Target className="h-5 w-5 text-teal-600" />全體 KSA 核心能力輪廓</h2><p className="mt-1 text-xs text-slate-500">每位學員僅取最近一次評核計算群組平均；有前次資料時同步呈現成長變化。</p></div>
+          <div className="flex flex-wrap gap-2 text-[11px] font-bold"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700">最近一次：{latestSeries?.learners || 0} 人</span>{previousSeries && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">前一次：{previousSeries.learners} 人</span>}</div>
+        </div>
+      </div>
+      {latestSeries ? (
+        <div className="grid grid-cols-1 gap-4 p-4 md:p-5 xl:grid-cols-5">
+          <div className="h-80 xl:col-span-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                <PolarGrid stroke="#CBD5E1" />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#334155', fontSize: 13, fontWeight: 800 }} />
+                <PolarRadiusAxis angle={30} domain={[0, 9]} ticks={[0, 3, 6, 9]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                {series.map(item => <Radar key={item.key} name={item.label} dataKey={item.key} stroke={item.color} strokeWidth={3} fill={item.color} fillOpacity={item.key === 'latest' ? 0.2 : 0.08} />)}
+                <Tooltip /><Legend />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-1 gap-3 self-center xl:col-span-2">
+            {radarData.map(item => {
+              const change = previousSeries ? Number((item.latest - item.previous).toFixed(1)) : null;
+              return (
+                <div key={item.subject} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+                  <div className="flex items-center justify-between gap-3"><p className="text-sm font-black text-slate-700">{item.subject}</p><div className="text-right"><span className="text-2xl font-black text-indigo-700">{item.latest}</span><span className="text-xs font-bold text-slate-400">／9</span></div></div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-indigo-500" style={{ width: `${Math.min((item.latest / 9) * 100, 100)}%` }} /></div>
+                  <p className={`mt-2 text-right text-[11px] font-bold ${change === null ? 'text-slate-400' : change >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{change === null ? '尚無前次資料' : `較前次 ${change > 0 ? '+' : ''}${change}`}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : <div className="p-10 text-center text-sm font-medium text-slate-400">目前尚無可彙整的 KSA 評估資料。</div>}
+    </section>
+  );
+};
+
 const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent }) => {
   const cohort = useMemo(() => {
     if (!dashboardData || dashboardData.status === 'error') return null;
@@ -624,6 +683,33 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
     const feedbackLearners = new Set(validFeedback.map(item => normalizeEmail(item.email))).size;
     const average = validFeedback.length ? Number((validFeedback.reduce((sum, item) => sum + item.score, 0) / validFeedback.length).toFixed(1)) : 0;
     const change = satisfactionTimeline.length > 1 ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1)) : null;
+    const cohortEmails = new Set((students || []).map(student => normalizeEmail(student.email)));
+    const ksaByEmail = new Map();
+    (dashboardData.ksa || []).filter(record => cohortEmails.has(normalizeEmail(record.email))).forEach(record => {
+      const email = normalizeEmail(record.email);
+      if (!ksaByEmail.has(email)) ksaByEmail.set(email, []);
+      ksaByEmail.get(email).push(record);
+    });
+    const latestKSAProfiles = [];
+    const previousKSAProfiles = [];
+    ksaByEmail.forEach(records => {
+      const sortedRecords = sortByDate(records);
+      const latestProfile = extractKSAProfile(sortedRecords.at(-1));
+      const previousProfile = extractKSAProfile(sortedRecords.at(-2));
+      if (latestProfile) latestKSAProfiles.push(latestProfile);
+      if (previousProfile) previousKSAProfiles.push(previousProfile);
+    });
+    const latestKSAAverage = averageKSAProfiles(latestKSAProfiles);
+    const previousKSAAverage = averageKSAProfiles(previousKSAProfiles);
+    const ksaRadarData = [
+      { subject: '專業知識', latest: latestKSAAverage.knowledge, previous: previousKSAAverage.knowledge, fullMark: 9 },
+      { subject: '專業技能', latest: latestKSAAverage.skill, previous: previousKSAAverage.skill, fullMark: 9 },
+      { subject: '專業態度', latest: latestKSAAverage.attitude, previous: previousKSAAverage.attitude, fullMark: 9 }
+    ];
+    const ksaSeries = [
+      ...(previousKSAProfiles.length ? [{ key: 'previous', label: '前一次平均', learners: previousKSAProfiles.length, color: '#10B981' }] : []),
+      ...(latestKSAProfiles.length ? [{ key: 'latest', label: '最近一次平均', learners: latestKSAProfiles.length, color: '#4F46E5' }] : [])
+    ];
     const epaItems = aggregateItems('epaItems');
     const dopsItems = aggregateItems('dopsItems');
     const priorityItems = [...epaItems, ...dopsItems]
@@ -644,6 +730,8 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
       epaItems,
       dopsItems,
       priorityItems,
+      ksaRadarData,
+      ksaSeries,
       satisfaction: {
         count: validFeedback.length,
         totalAssessments: cohortEPA.length,
@@ -698,6 +786,8 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
           <CohortAssessmentMatrix title="DOPS 整體完成與達標" subtitle="達標門檻：8 分以上" icon={CheckSquare} rows={cohort.dopsItems} />
         </div>
       </section>
+
+      <CohortKSARadar radarData={cohort.ksaRadarData} series={cohort.ksaSeries} />
 
       <SatisfactionDashboard satisfaction={cohort.satisfaction} overall />
 
