@@ -485,40 +485,60 @@ const buildCohortStudent = (student, dashboardData) => {
   };
 };
 
-const CohortRateTooltip = ({ active, payload }) => {
-  if (!active || !payload?.length) return null;
-  const item = payload[0].payload;
-  return (
-    <div className="max-w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-      <p className="text-xs font-black text-slate-900">{item.title}</p>
-      <p className="mt-2 text-xs font-bold text-blue-700">完成率 {item.completionRate}%（{item.evaluated}／{item.totalLearners} 位）</p>
-      <p className="mt-1 text-xs font-bold text-emerald-700">達標率 {item.achievementRate}%（{item.achieved}／{item.evaluated} 位已評核）</p>
-    </div>
-  );
+const getRateTone = (rate, hasData = true) => {
+  if (!hasData) return 'border-slate-200 bg-slate-50 text-slate-500';
+  if (rate >= 80) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (rate >= 60) return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-red-200 bg-red-50 text-red-700';
 };
 
-const CohortAssessmentChart = ({ title, subtitle, icon: Icon, rows }) => (
+const RateMatrixCell = ({ rate, numerator, denominator, hasData = true }) => (
+  <div className={`rounded-xl border px-2 py-2.5 text-center ${getRateTone(rate, hasData)}`}>
+    <p className="text-lg font-black leading-none">{hasData ? `${rate}%` : '—'}</p>
+    <p className="mt-1 text-[10px] font-bold opacity-75">{numerator}／{denominator}</p>
+  </div>
+);
+
+const CohortAssessmentMatrix = ({ title, subtitle, icon: Icon, rows }) => (
   <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
     <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-4 py-4 text-white md:px-5">
-      <div className="flex items-start gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
         <span className="rounded-xl bg-white/10 p-2.5 ring-1 ring-white/15">{React.createElement(Icon, { className: 'h-5 w-5 text-indigo-200' })}</span>
         <div><h3 className="font-black tracking-wide">{title}</h3><p className="mt-1 text-xs text-slate-300">{subtitle}</p></div>
+        </div>
+        <div className="hidden items-center gap-2 text-[10px] font-bold text-slate-300 sm:flex"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />良好<span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />注意<span className="h-2.5 w-2.5 rounded-sm bg-red-400" />優先改善</div>
       </div>
     </div>
-    <div className="h-80 w-full px-2 pt-5 md:h-96 md:px-4">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 16, right: 8, left: -12, bottom: 4 }} barCategoryGap="12%">
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-          <XAxis dataKey="axisLabel" interval={0} height={34} tick={{ fontSize: 9, fill: '#64748B', fontWeight: 800 }} />
-          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={value => `${value}%`} tick={{ fontSize: 10, fill: '#64748B' }} />
-          <Tooltip content={<CohortRateTooltip />} cursor={{ fill: '#F8FAFC' }} />
-          <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
-          <Bar dataKey="completionRate" name="完成率（已評核／全部學員）" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="achievementRate" name="達標率（已達標／已評核）" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={28} />
-        </BarChart>
-      </ResponsiveContainer>
+
+    <div className="hidden md:block">
+      <table className="w-full table-fixed text-sm">
+        <thead className="border-b border-slate-100 bg-slate-50 text-[11px] font-black text-slate-500">
+          <tr><th className="w-[42%] px-4 py-3 text-left">評估項目</th><th className="w-[19%] px-2 py-3 text-center">完成率</th><th className="w-[19%] px-2 py-3 text-center">達標率</th><th className="w-[10%] px-2 py-3 text-center">已評核</th><th className="w-[10%] px-2 py-3 text-center">待追蹤</th></tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map(row => (
+            <tr key={row.id} className="hover:bg-slate-50/70">
+              <td className="px-4 py-3"><div className="flex items-start gap-2"><span className="min-w-14 rounded-md bg-indigo-50 px-2 py-1 text-center text-[10px] font-black text-indigo-700">{row.label}</span><span className="font-bold leading-5 text-slate-800">{row.title}</span></div></td>
+              <td className="px-2 py-2"><RateMatrixCell rate={row.completionRate} numerator={row.evaluated} denominator={row.totalLearners} hasData={row.totalLearners > 0} /></td>
+              <td className="px-2 py-2"><RateMatrixCell rate={row.achievementRate} numerator={row.achieved} denominator={row.evaluated} hasData={row.evaluated > 0} /></td>
+              <td className="px-2 py-3 text-center font-black text-slate-700">{row.evaluated}<span className="text-[10px] font-medium text-slate-400">／{row.totalLearners}</span></td>
+              <td className="px-2 py-3 text-center"><span className={`inline-flex min-w-8 justify-center rounded-full px-2 py-1 text-xs font-black ${row.followUpCount ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{row.followUpCount}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
-    <AssessmentLabelKey rows={rows} />
+
+    <div className="divide-y divide-slate-100 md:hidden">
+      {rows.map(row => (
+        <div key={row.id} className="p-4">
+          <div className="flex items-start gap-2"><span className="min-w-14 rounded-md bg-indigo-50 px-2 py-1 text-center text-[10px] font-black text-indigo-700">{row.label}</span><p className="text-sm font-black leading-5 text-slate-800">{row.title}</p></div>
+          <div className="mt-3 grid grid-cols-2 gap-2"><div><p className="mb-1 text-center text-[10px] font-bold text-slate-400">完成率</p><RateMatrixCell rate={row.completionRate} numerator={row.evaluated} denominator={row.totalLearners} hasData={row.totalLearners > 0} /></div><div><p className="mb-1 text-center text-[10px] font-bold text-slate-400">達標率</p><RateMatrixCell rate={row.achievementRate} numerator={row.achieved} denominator={row.evaluated} hasData={row.evaluated > 0} /></div></div>
+          <div className="mt-2 flex justify-between text-[11px] font-bold text-slate-500"><span>已評核 {row.evaluated}／{row.totalLearners} 人</span><span className={row.followUpCount ? 'text-red-600' : 'text-emerald-600'}>待追蹤 {row.followUpCount} 人</span></div>
+        </div>
+      ))}
+    </div>
   </section>
 );
 
@@ -539,11 +559,12 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
       return {
         id: config.id,
         label,
-        axisLabel: `${key === 'epaItems' ? 'EPA' : 'DOPS'}${index + 1}`,
+        type: key === 'epaItems' ? 'EPA' : 'DOPS',
         title,
         totalLearners: learners.length,
         evaluated,
         achieved,
+        followUpCount: items.filter(item => !item.evaluated || !item.achieved || item.pending).length,
         completionRate: learners.length ? Math.round((evaluated / learners.length) * 100) : 0,
         achievementRate: evaluated ? Math.round((achieved / evaluated) * 100) : 0
       };
@@ -603,6 +624,11 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
     const feedbackLearners = new Set(validFeedback.map(item => normalizeEmail(item.email))).size;
     const average = validFeedback.length ? Number((validFeedback.reduce((sum, item) => sum + item.score, 0) / validFeedback.length).toFixed(1)) : 0;
     const change = satisfactionTimeline.length > 1 ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1)) : null;
+    const epaItems = aggregateItems('epaItems');
+    const dopsItems = aggregateItems('dopsItems');
+    const priorityItems = [...epaItems, ...dopsItems]
+      .sort((a, b) => b.followUpCount - a.followUpCount || a.completionRate - b.completionRate || a.achievementRate - b.achievementRate)
+      .slice(0, 3);
 
     return {
       learners: [...learners].sort((a, b) => a.completionRate - b.completionRate || b.pendingCount - a.pendingCount),
@@ -615,8 +641,9 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
         completionRate: totalOpportunities ? Math.round((evaluatedCount / totalOpportunities) * 100) : 0,
         achievementRate: evaluatedCount ? Math.round((achievedCount / evaluatedCount) * 100) : 0
       },
-      epaItems: aggregateItems('epaItems'),
-      dopsItems: aggregateItems('dopsItems'),
+      epaItems,
+      dopsItems,
+      priorityItems,
       satisfaction: {
         count: validFeedback.length,
         totalAssessments: cohortEPA.length,
@@ -653,10 +680,22 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
       </div>
 
       <section className="space-y-3">
-        <div><h2 className="text-lg font-black text-slate-900">全體 EPA／DOPS 成效分布</h2><p className="mt-1 text-xs text-slate-500">藍色呈現完成率，綠色呈現達標率；兩者分母不同，滑鼠移入可查看人數。</p></div>
+        <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><AlertTriangle className="h-5 w-5 text-amber-500" />優先改善項目</h2><p className="mt-1 text-xs text-slate-500">依待追蹤人數、完成率及達標率排序，顯示最需要優先介入的前 3 項。</p></div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {cohort.priorityItems.map((item, index) => (
+            <div key={item.id} className="rounded-xl border border-amber-100 bg-gradient-to-br from-white to-amber-50 p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-black text-amber-700">{index + 1}</span><div className="min-w-0"><p className="text-[10px] font-black text-indigo-600">{item.label}</p><p className="mt-1 text-sm font-black leading-5 text-slate-800">{item.title}</p></div></div><span className="flex-shrink-0 rounded-full bg-red-50 px-2 py-1 text-[10px] font-black text-red-700">待追蹤 {item.followUpCount} 人</span></div>
+              <div className="mt-3 grid grid-cols-2 divide-x divide-amber-100 rounded-lg bg-white/80 py-2 text-center"><div><p className="text-lg font-black text-blue-700">{item.completionRate}%</p><p className="text-[10px] font-bold text-slate-400">完成率</p></div><div><p className="text-lg font-black text-emerald-700">{item.evaluated ? `${item.achievementRate}%` : '—'}</p><p className="text-[10px] font-bold text-slate-400">達標率</p></div></div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div><h2 className="text-lg font-black text-slate-900">全體 EPA／DOPS 成效矩陣</h2><p className="mt-1 text-xs text-slate-500">完成率＝已評核／全部學員；達標率＝已達標／已評核。待追蹤包含尚未評核、尚未達標或待回饋者。</p></div>
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <CohortAssessmentChart title="EPA 整體完成與達標" subtitle="達標門檻：Level 4 以上" icon={Activity} rows={cohort.epaItems} />
-          <CohortAssessmentChart title="DOPS 整體完成與達標" subtitle="達標門檻：8 分以上" icon={CheckSquare} rows={cohort.dopsItems} />
+          <CohortAssessmentMatrix title="EPA 整體完成與達標" subtitle="達標門檻：Level 4 以上" icon={Activity} rows={cohort.epaItems} />
+          <CohortAssessmentMatrix title="DOPS 整體完成與達標" subtitle="達標門檻：8 分以上" icon={CheckSquare} rows={cohort.dopsItems} />
         </div>
       </section>
 
