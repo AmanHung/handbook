@@ -12,10 +12,22 @@ import {
 import { DOPS_FORMS } from '../data/dopsForms';
 import { EPA_CONFIG } from '../data/EPA_Config';
 import { FINAL_ASSESSMENT_CATEGORIES } from '../data/FinalAssessment_Config';
+import { KSA_DOMAINS } from '../data/KSA_Config';
 
 const CHART_COLORS = ['#4F46E5', '#10B981'];
 const EPA_LEVEL_LABELS = ['', '2a', '2b', '3a', '3b', '3c', '4', '5'];
 const EPA_ATTEMPT_COLORS = ['#3B82F6', '#10B981', '#14B8A6', '#6366F1', '#A855F7', '#F97316', '#F43F5E'];
+const KSA_DOMAIN_META = {
+  knowledge: { shortLabel: 'K', label: '專業知識', color: '#2563EB', badgeClass: 'border-blue-200 bg-blue-50 text-blue-700' },
+  skills: { shortLabel: 'S', label: '專業技能', color: '#0D9488', badgeClass: 'border-teal-200 bg-teal-50 text-teal-700' },
+  attitude: { shortLabel: 'A', label: '專業態度', color: '#D97706', badgeClass: 'border-amber-200 bg-amber-50 text-amber-700' }
+};
+const KSA_ITEMS = KSA_DOMAINS.flatMap(domain => domain.items.map(item => ({
+  ...item,
+  domain: domain.id,
+  domainLabel: KSA_DOMAIN_META[domain.id]?.label || domain.title
+})));
+const KSA_ITEM_DOMAIN_BY_LABEL = Object.fromEntries(KSA_ITEMS.map(item => [item.label, item.domain]));
 
 const STATUS_STYLES = {
   passed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -74,20 +86,19 @@ const extractAverageScore = scores => {
   return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1));
 };
 
-const extractKSAProfile = record => {
+const extractKSAItemProfile = record => {
   if (!record) return null;
-  const groups = ['k', 's', 'a'].map(prefix => Object.entries(record.scores || {})
-    .filter(([field]) => field.toLowerCase().startsWith(prefix))
-    .map(([, value]) => Number(value))
-    .filter(value => Number.isFinite(value) && value > 0 && value <= 9));
-  const averages = groups.map(values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null);
-  if (averages.every(value => value === null)) return null;
-  return { knowledge: averages[0], skill: averages[1], attitude: averages[2] };
+  const profile = KSA_ITEMS.reduce((result, item) => {
+    const value = Number(record.scores?.[item.id]);
+    result[item.id] = Number.isFinite(value) && value > 0 && value <= 9 ? value : null;
+    return result;
+  }, {});
+  return Object.values(profile).some(value => value !== null) ? profile : null;
 };
 
-const averageKSAProfiles = profiles => ['knowledge', 'skill', 'attitude'].reduce((result, field) => {
-  const values = profiles.map(profile => profile?.[field]).filter(Number.isFinite);
-  result[field] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+const averageKSAItemProfiles = profiles => KSA_ITEMS.reduce((result, item) => {
+  const values = profiles.map(profile => profile?.[item.id]).filter(Number.isFinite);
+  result[item.id] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
   return result;
 }, {});
 
@@ -644,6 +655,32 @@ const CohortAssessmentMatrix = ({ title, subtitle, icon: Icon, rows }) => (
   </section>
 );
 
+const KSAColoredTick = ({ payload, x, y, textAnchor }) => {
+  const domain = KSA_ITEM_DOMAIN_BY_LABEL[payload?.value];
+  const meta = KSA_DOMAIN_META[domain] || KSA_DOMAIN_META.knowledge;
+  return (
+    <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" fill={meta.color} fontSize="11" fontWeight="800">
+      {payload?.value}
+    </text>
+  );
+};
+
+const KSAGroupLegend = () => (
+  <div className="flex flex-wrap justify-center gap-2 text-[11px] font-black">
+    {Object.entries(KSA_DOMAIN_META).map(([domain, meta]) => (
+      <span key={domain} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${meta.badgeClass}`}>
+        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.color }} />
+        {meta.shortLabel}・{meta.label}
+      </span>
+    ))}
+  </div>
+);
+
+const getKSADomainAverage = (radarData, domain, key) => {
+  const values = radarData.filter(item => item.domain === domain).map(item => Number(item[key])).filter(value => Number.isFinite(value) && value > 0);
+  return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+};
+
 const CohortKSARadar = ({ radarData, series }) => {
   const latestSeries = series.find(item => item.key === 'latest');
   const previousSeries = series.find(item => item.key === 'previous');
@@ -651,30 +688,35 @@ const CohortKSARadar = ({ radarData, series }) => {
     <section className="overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-sm">
       <div className="border-b border-teal-100 bg-gradient-to-r from-teal-50 via-white to-indigo-50 px-4 py-4 md:px-5">
         <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
-          <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Target className="h-5 w-5 text-teal-600" />全體 KSA 核心能力輪廓</h2><p className="mt-1 text-xs text-slate-500">每位學員僅取最近一次評核計算群組平均；有前次資料時同步呈現成長變化。</p></div>
+          <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Target className="h-5 w-5 text-teal-600" />全體 KSA 細項能力輪廓</h2><p className="mt-1 text-xs text-slate-500">12 個評核細項分別呈現；每位學員取最近一次評核計算全體平均，有前次資料時同步呈現成長變化。</p></div>
           <div className="flex flex-wrap gap-2 text-[11px] font-bold"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700">最近一次：{latestSeries?.learners || 0} 人</span>{previousSeries && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">前一次：{previousSeries.learners} 人</span>}</div>
         </div>
       </div>
       {latestSeries ? (
         <div className="grid grid-cols-1 gap-4 p-4 md:p-5 xl:grid-cols-5">
-          <div className="h-80 xl:col-span-3">
+          <div className="xl:col-span-3">
+            <KSAGroupLegend />
+            <div className="mt-2 h-[25rem] sm:h-[28rem]">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+              <RadarChart cx="50%" cy="50%" outerRadius="66%" data={radarData}>
                 <PolarGrid stroke="#CBD5E1" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: '#334155', fontSize: 13, fontWeight: 800 }} />
+                <PolarAngleAxis dataKey="subject" tick={<KSAColoredTick />} />
                 <PolarRadiusAxis angle={30} domain={[0, 9]} ticks={[0, 3, 6, 9]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
                 {series.map(item => <Radar key={item.key} name={item.label} dataKey={item.key} stroke={item.color} strokeWidth={3} fill={item.color} fillOpacity={item.key === 'latest' ? 0.2 : 0.08} />)}
                 <Tooltip /><Legend />
               </RadarChart>
             </ResponsiveContainer>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-3 self-center xl:col-span-2">
-            {radarData.map(item => {
-              const change = previousSeries ? Number((item.latest - item.previous).toFixed(1)) : null;
+            {Object.entries(KSA_DOMAIN_META).map(([domain, meta]) => {
+              const latestAverage = getKSADomainAverage(radarData, domain, 'latest');
+              const previousAverage = getKSADomainAverage(radarData, domain, 'previous');
+              const change = previousSeries ? Number((latestAverage - previousAverage).toFixed(1)) : null;
               return (
-                <div key={item.subject} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
-                  <div className="flex items-center justify-between gap-3"><p className="text-sm font-black text-slate-700">{item.subject}</p><div className="text-right"><span className="text-2xl font-black text-indigo-700">{item.latest}</span><span className="text-xs font-bold text-slate-400">／9</span></div></div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-indigo-500" style={{ width: `${Math.min((item.latest / 9) * 100, 100)}%` }} /></div>
+                <div key={domain} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+                  <div className="flex items-center justify-between gap-3"><p className="text-sm font-black" style={{ color: meta.color }}>{meta.shortLabel}・{meta.label}</p><div className="text-right"><span className="text-2xl font-black" style={{ color: meta.color }}>{latestAverage}</span><span className="text-xs font-bold text-slate-400">／9</span></div></div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width: `${Math.min((latestAverage / 9) * 100, 100)}%`, backgroundColor: meta.color }} /></div>
                   <p className={`mt-2 text-right text-[11px] font-bold ${change === null ? 'text-slate-400' : change >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{change === null ? '尚無前次資料' : `較前次 ${change > 0 ? '+' : ''}${change}`}</p>
                 </div>
               );
@@ -779,18 +821,22 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
     const previousKSAProfiles = [];
     ksaByEmail.forEach(records => {
       const sortedRecords = sortByDate(records);
-      const latestProfile = extractKSAProfile(sortedRecords.at(-1));
-      const previousProfile = extractKSAProfile(sortedRecords.at(-2));
+      const latestProfile = extractKSAItemProfile(sortedRecords.at(-1));
+      const previousProfile = extractKSAItemProfile(sortedRecords.at(-2));
       if (latestProfile) latestKSAProfiles.push(latestProfile);
       if (previousProfile) previousKSAProfiles.push(previousProfile);
     });
-    const latestKSAAverage = averageKSAProfiles(latestKSAProfiles);
-    const previousKSAAverage = averageKSAProfiles(previousKSAProfiles);
-    const ksaRadarData = [
-      { subject: '專業知識', latest: latestKSAAverage.knowledge, previous: previousKSAAverage.knowledge, fullMark: 9 },
-      { subject: '專業技能', latest: latestKSAAverage.skill, previous: previousKSAAverage.skill, fullMark: 9 },
-      { subject: '專業態度', latest: latestKSAAverage.attitude, previous: previousKSAAverage.attitude, fullMark: 9 }
-    ];
+    const latestKSAAverage = averageKSAItemProfiles(latestKSAProfiles);
+    const previousKSAAverage = averageKSAItemProfiles(previousKSAProfiles);
+    const ksaRadarData = KSA_ITEMS.map(item => ({
+      subject: item.label,
+      itemId: item.id,
+      domain: item.domain,
+      domainLabel: item.domainLabel,
+      latest: latestKSAAverage[item.id],
+      previous: previousKSAAverage[item.id],
+      fullMark: 9
+    }));
     const ksaSeries = [
       ...(previousKSAProfiles.length ? [{ key: 'previous', label: '前一次平均', learners: previousKSAProfiles.length, color: '#10B981' }] : []),
       ...(latestKSAProfiles.length ? [{ key: 'latest', label: '最近一次平均', learners: latestKSAProfiles.length, color: '#4F46E5' }] : [])
@@ -1015,20 +1061,19 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
 
     const sortedKSA = sortByDate(studentKSA);
     const selectedKSA = sortedKSA.slice(-2);
-    const radarData = [
-      { subject: '專業知識', fullMark: 9 },
-      { subject: '專業技能', fullMark: 9 },
-      { subject: '專業態度', fullMark: 9 }
-    ];
+    const radarData = KSA_ITEMS.map(item => ({
+      subject: item.label,
+      itemId: item.id,
+      domain: item.domain,
+      domainLabel: item.domainLabel,
+      fullMark: 9
+    }));
     const ksaSeries = selectedKSA.map((record, index) => {
       const key = index === selectedKSA.length - 1 ? 'latest' : 'previous';
       const label = `階段 ${record.phaseId}`;
-      const groups = ['k', 's', 'a'].map(prefix => Object.entries(record.scores || {})
-        .filter(([field]) => field.toLowerCase().startsWith(prefix))
-        .map(([, value]) => Number(value))
-        .filter(Number.isFinite));
-      groups.forEach((values, groupIndex) => {
-        radarData[groupIndex][key] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+      radarData.forEach(item => {
+        const value = Number(record.scores?.[item.itemId]);
+        item[key] = Number.isFinite(value) && value > 0 && value <= 9 ? value : 0;
       });
       return { key, label };
     });
@@ -1128,14 +1173,15 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
       <ProgressMatrix title="DOPS 評核進度" icon={CheckSquare} iconColor="text-blue-600" rows={processedData.dopsRows} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="font-bold text-gray-800 mb-4">KSA 核心能力：最近兩階段</h3>
-          <div className="h-72 w-full">
+        <section className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100">
+          <div className="mb-3"><h3 className="font-bold text-gray-800">KSA 細項能力：最近兩階段</h3><p className="mt-1 text-xs text-slate-500">12 個評核細項分別成軸，文字顏色區分 K、S、A 三類。</p></div>
+          <KSAGroupLegend />
+          <div className="mt-2 h-[25rem] w-full sm:h-[28rem]">
             {processedData.ksaSeries.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={processedData.radarData}>
+                <RadarChart cx="50%" cy="50%" outerRadius="65%" data={processedData.radarData}>
                   <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#4B5563', fontSize: 13, fontWeight: 'bold' }} />
+                  <PolarAngleAxis dataKey="subject" tick={<KSAColoredTick />} />
                   <PolarRadiusAxis angle={30} domain={[0, 9]} tick={{ fontSize: 10 }} />
                   {processedData.ksaSeries.map((series, index) => <Radar key={series.key} name={series.label} dataKey={series.key} stroke={CHART_COLORS[index]} strokeWidth={2} fill={CHART_COLORS[index]} fillOpacity={0.14} />)}
                   <Tooltip /><Legend />
