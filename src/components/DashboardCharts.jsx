@@ -362,6 +362,37 @@ const SatisfactionDashboard = ({ satisfaction, overall = false }) => (
   </section>
 );
 
+const EPATrendTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-white px-2.5 py-2 shadow-lg">
+      <p className="text-[10px] font-bold text-slate-400">{item.date || '未註明日期'}</p>
+      <p className="mt-0.5 text-xs font-black text-indigo-700">Level {item.level}</p>
+    </div>
+  );
+};
+
+const EPATrendSparkline = ({ history, trend }) => {
+  if (!history?.length) return <span className="text-sm font-bold text-slate-400">—</span>;
+  const stroke = trend.startsWith('↓') ? '#EF4444' : trend.startsWith('↑') ? '#10B981' : '#4F46E5';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-12 w-32 sm:w-40">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={history} margin={{ top: 6, right: 6, left: 6, bottom: 6 }}>
+            <YAxis domain={[1, 7]} hide />
+            <ReferenceLine y={6} stroke="#F59E0B" strokeDasharray="3 3" />
+            <Tooltip content={<EPATrendTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '2 2' }} />
+            <Line type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} dot={{ r: 3, fill: stroke, stroke: '#FFFFFF', strokeWidth: 1.5 }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <span className={`whitespace-nowrap text-xs font-black ${trend.startsWith('↓') ? 'text-red-600' : trend.startsWith('↑') ? 'text-emerald-600' : 'text-slate-500'}`}>{trend}</span>
+    </div>
+  );
+};
+
 const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
   <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
     <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
@@ -389,7 +420,7 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
               <td className="px-5 py-3.5 font-bold text-gray-800">{row.title}</td>
               <td className="px-4 py-3.5 text-gray-700">{row.result}<div className="text-[11px] text-gray-400">{row.date || '尚無日期'}</div></td>
               <td className="px-4 py-3.5 text-center font-bold text-gray-600">{row.attempts}</td>
-              <td className={`px-4 py-3.5 font-bold ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-gray-500'}`}>{row.trend}</td>
+              <td className="min-w-48 px-4 py-2.5">{row.history?.length ? <EPATrendSparkline history={row.history} trend={row.trend} /> : <span className={`font-bold ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-gray-500'}`}>{row.trend}</span>}</td>
               <td className="px-4 py-3.5"><StatusBadge status={row.status} /></td>
               <td className="px-5 py-3.5 text-right">
                 <a href={row.link} className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold text-xs">查看 <ArrowRight className="w-3.5 h-3.5" /></a>
@@ -407,13 +438,14 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
             <div className="min-w-0">
               <p className="font-bold text-gray-800 leading-snug">{row.title}</p>
               <p className="text-sm text-gray-600 mt-1">{row.result}・共 {row.attempts} 次</p>
-              <p className="text-xs text-gray-400 mt-1">{row.date || '尚無評核日期'}・{row.trend}</p>
+              <p className="text-xs text-gray-400 mt-1">{row.date || '尚無評核日期'}</p>
             </div>
             <div className="flex flex-col items-end gap-2 flex-shrink-0">
               <StatusBadge status={row.status} />
               <ArrowRight className="w-4 h-4 text-indigo-500" />
             </div>
           </div>
+          {row.history?.length > 0 && <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span className="text-[11px] font-bold text-slate-400">歷次 Level 趨勢</span><EPATrendSparkline history={row.history} trend={row.trend} /></div>}
         </a>
       ))}
     </div>
@@ -833,6 +865,10 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
       const levelIndex = extractEpaLevelIndex(latest?.level);
       const feedbackCompleted = Boolean(latest?.feedbackReflection) || Number(latest?.feedbackSatisfaction) > 0;
       const status = !latest ? 'unassessed' : !feedbackCompleted ? 'pending' : levelIndex >= 6 ? 'passed' : 'improvement';
+      const history = sortByDate(records).map(record => {
+        const value = extractEpaLevelIndex(record.level);
+        return value > 0 ? { date: record.date || '', value, level: EPA_LEVEL_LABELS[value] || record.level } : null;
+      }).filter(Boolean);
 
       return {
         id: epa.id,
@@ -840,6 +876,7 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
         result: latest ? `Level ${EPA_LEVEL_LABELS[levelIndex] || latest.level}` : '尚未評核',
         attempts: records.length,
         trend: getTrend(records, record => extractEpaLevelIndex(record.level)),
+        history,
         date: latest?.date || '',
         status,
         value: levelIndex,
