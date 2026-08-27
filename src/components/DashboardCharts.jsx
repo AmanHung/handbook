@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BarChart, Bar, Cell, LabelList, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, Radar, RadarChart, PolarGrid,
@@ -7,7 +7,7 @@ import {
 import {
   Activity, AlertTriangle, ArrowRight, CheckCircle2, CheckSquare,
   BarChart3, ClipboardList, Clock3, Heart, MessageSquareText, Target,
-  TrendingUp, UserRound, XCircle
+  Maximize2, TrendingUp, UserRound, X, XCircle
 } from 'lucide-react';
 import { DOPS_FORMS } from '../data/dopsForms';
 import { EPA_CONFIG } from '../data/EPA_Config';
@@ -15,6 +15,7 @@ import { FINAL_ASSESSMENT_CATEGORIES } from '../data/FinalAssessment_Config';
 
 const CHART_COLORS = ['#4F46E5', '#10B981'];
 const EPA_LEVEL_LABELS = ['', '2a', '2b', '3a', '3b', '3c', '4', '5'];
+const EPA_ATTEMPT_COLORS = ['#3B82F6', '#10B981', '#14B8A6', '#6366F1', '#A855F7', '#F97316', '#F43F5E'];
 
 const STATUS_STYLES = {
   passed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -373,27 +374,76 @@ const EPATrendTooltip = ({ active, payload }) => {
   );
 };
 
-const EPATrendSparkline = ({ history, trend }) => {
+const EPATrendBarChart = ({ history, compact = false }) => {
   if (!history?.length) return <span className="text-sm font-bold text-slate-400">—</span>;
-  const stroke = trend.startsWith('↓') ? '#EF4444' : trend.startsWith('↑') ? '#10B981' : '#4F46E5';
+  const chartData = history.map((item, index) => ({
+    ...item,
+    attempt: index + 1,
+    attemptLabel: `第 ${index + 1} 次`
+  }));
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-12 w-32 sm:w-40">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={history} margin={{ top: 6, right: 6, left: 6, bottom: 6 }}>
-            <YAxis domain={[1, 7]} hide />
-            <ReferenceLine y={6} stroke="#F59E0B" strokeDasharray="3 3" />
-            <Tooltip content={<EPATrendTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '2 2' }} />
-            <Line type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} dot={{ r: 3, fill: stroke, stroke: '#FFFFFF', strokeWidth: 1.5 }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <span className={`whitespace-nowrap text-xs font-black ${trend.startsWith('↓') ? 'text-red-600' : trend.startsWith('↑') ? 'text-emerald-600' : 'text-slate-500'}`}>{trend}</span>
+    <div className={compact ? 'h-16 w-36 sm:w-44' : 'h-80 w-full sm:h-96'}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={compact ? { top: 18, right: 3, left: 3, bottom: 1 } : { top: 28, right: 18, left: 0, bottom: 12 }} barCategoryGap={compact ? '22%' : '32%'}>
+          {!compact && <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />}
+          {!compact && <XAxis dataKey="attemptLabel" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 700 }} />}
+          <YAxis
+            domain={[0, 7]}
+            ticks={[1, 2, 3, 4, 5, 6, 7]}
+            tickFormatter={value => EPA_LEVEL_LABELS[value] || ''}
+            hide={compact}
+            width={34}
+            tick={{ fontSize: 11, fill: '#64748B', fontWeight: 700 }}
+          />
+          <ReferenceLine y={6} stroke="#F59E0B" strokeDasharray="4 3" label={compact ? undefined : { value: 'Level 4 達標', fill: '#D97706', fontSize: 11, fontWeight: 700, position: 'insideTopRight' }} />
+          <Tooltip content={<EPATrendTooltip />} cursor={{ fill: '#F8FAFC' }} />
+          <Bar dataKey="value" radius={[compact ? 3 : 7, compact ? 3 : 7, 0, 0]} maxBarSize={compact ? 22 : 72} isAnimationActive={false}>
+            {chartData.map((item, index) => <Cell key={`${item.date}-${index}`} fill={EPA_ATTEMPT_COLORS[index % EPA_ATTEMPT_COLORS.length]} />)}
+            <LabelList dataKey="value" position="top" formatter={value => EPA_LEVEL_LABELS[value] || ''} style={{ fill: '#4338CA', fontSize: compact ? 9 : 12, fontWeight: 900 }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 };
 
-const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
+const EPATrendModal = ({ row, onClose }) => {
+  if (!row) return null;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" onClick={onClose} role="presentation">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="epa-trend-title" onClick={event => event.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-indigo-500">EPA 歷次評核趨勢</p>
+            <h3 id="epa-trend-title" className="mt-1 text-lg font-black text-slate-900 sm:text-xl">{row.title}</h3>
+            <p className="mt-1 text-xs font-medium text-slate-500">共 {row.attempts} 次評核・最新結果 {row.result}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="關閉趨勢圖">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-4 sm:p-6">
+          <EPATrendBarChart history={row.history} />
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {row.history.map((item, index) => (
+              <div key={`${item.date}-${index}`} className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: EPA_ATTEMPT_COLORS[index % EPA_ATTEMPT_COLORS.length] }} />
+                第 {index + 1} 次：Level {item.level}<span className="font-medium text-slate-400">{item.date || '未註明日期'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => {
+  const [expandedRow, setExpandedRow] = useState(null);
+
+  return (
+  <>
   <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
     <div className="px-4 md:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
       <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -420,7 +470,7 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
               <td className="px-5 py-3.5 font-bold text-gray-800">{row.title}</td>
               <td className="px-4 py-3.5 text-gray-700">{row.result}<div className="text-[11px] text-gray-400">{row.date || '尚無日期'}</div></td>
               <td className="px-4 py-3.5 text-center font-bold text-gray-600">{row.attempts}</td>
-              <td className="min-w-48 px-4 py-2.5">{row.history?.length ? <EPATrendSparkline history={row.history} trend={row.trend} /> : <span className={`font-bold ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-gray-500'}`}>{row.trend}</span>}</td>
+              <td className="min-w-56 px-4 py-2.5">{row.history?.length ? <div className="flex items-center gap-2"><button type="button" onClick={() => setExpandedRow(row)} className="group relative rounded-lg border border-slate-200 bg-slate-50 px-1 transition hover:border-indigo-300 hover:bg-indigo-50" aria-label={`放大查看 ${row.title} 歷次 EPA 評核趨勢`}><EPATrendBarChart history={row.history} compact /><Maximize2 className="absolute right-1 top-1 h-3.5 w-3.5 text-slate-300 transition group-hover:text-indigo-500" /></button><span className={`whitespace-nowrap text-xs font-black ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-slate-500'}`}>{row.trend}</span></div> : <span className={`font-bold ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-gray-500'}`}>{row.trend}</span>}</td>
               <td className="px-4 py-3.5"><StatusBadge status={row.status} /></td>
               <td className="px-5 py-3.5 text-right">
                 <a href={row.link} className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold text-xs">查看 <ArrowRight className="w-3.5 h-3.5" /></a>
@@ -433,7 +483,7 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
 
     <div className="md:hidden divide-y divide-gray-100">
       {rows.map(row => (
-        <a key={row.id} href={row.link} className="block p-4 active:bg-gray-50">
+        <div key={row.id} className="block p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-bold text-gray-800 leading-snug">{row.title}</p>
@@ -442,15 +492,18 @@ const ProgressMatrix = ({ title, icon: Icon, iconColor, rows }) => (
             </div>
             <div className="flex flex-col items-end gap-2 flex-shrink-0">
               <StatusBadge status={row.status} />
-              <ArrowRight className="w-4 h-4 text-indigo-500" />
+              <a href={row.link} className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600">查看 <ArrowRight className="w-4 h-4 text-indigo-500" /></a>
             </div>
           </div>
-          {row.history?.length > 0 && <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span className="text-[11px] font-bold text-slate-400">歷次 Level 趨勢</span><EPATrendSparkline history={row.history} trend={row.trend} /></div>}
-        </a>
+          {row.history?.length > 0 && <button type="button" onClick={() => setExpandedRow(row)} className="group mt-3 flex w-full items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-left active:bg-indigo-50" aria-label={`放大查看 ${row.title} 歷次 EPA 評核趨勢`}><div><span className="block text-[11px] font-bold text-slate-400">歷次 Level 趨勢</span><span className={`mt-1 block text-xs font-black ${row.trend.startsWith('↓') ? 'text-red-600' : row.trend.startsWith('↑') ? 'text-emerald-600' : 'text-slate-500'}`}>{row.trend}</span></div><div className="relative"><EPATrendBarChart history={row.history} compact /><Maximize2 className="absolute right-1 top-1 h-3.5 w-3.5 text-slate-300" /></div></button>}
+        </div>
       ))}
     </div>
   </section>
-);
+  {expandedRow && <EPATrendModal row={expandedRow} onClose={() => setExpandedRow(null)} />}
+  </>
+  );
+};
 
 const isValidSatisfaction = value => {
   const score = Number(value);
