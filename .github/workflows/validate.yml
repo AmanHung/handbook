@@ -1,0 +1,24 @@
+name: Validate pull request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx eslint src/components/KSAAssessment.jsx src/components/DashboardCharts.jsx src/data/KSA_Config.js --report-unused-disable-directives --max-warnings 0
+      # PassportSection.jsx 在本次修改前已有 4 個 Hook 警告；維持既有基線，不掩蓋新增警告。
+      - run: npx eslint src/components/PassportSection.jsx --report-unused-disable-directives --max-warnings 4
+      - run: npm run build
