@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ClipboardCheck, Save, Loader2, AlertCircle, 
-  CheckCircle2, User, ChevronRight, Calendar // 新增 Calendar icon
-} from 'lucide-react';
-import { 
-  KSA_PHASES, KSA_DOMAINS, getScoreStyle, SCORING_RANGES 
+import React, { useState, useEffect, useCallback } from 'react';
+import { ClipboardCheck, Save, Loader2, CheckCircle2, User, Calendar } from 'lucide-react';
+import {
+  KSA_PHASES, KSA_DOMAINS, KSA_SCORE_OPTIONS, KSA_MILESTONE_VERSION,
+  LEGACY_KSA_DOMAINS, isMilestoneRecord, toMilestonePhaseId
 } from '../data/KSA_Config';
 
 const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiUrl }) => {
@@ -12,40 +10,44 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // 表單狀態
   const [formData, setFormData] = useState({});
   const [comment, setComment] = useState('');
   
-  // [新] 評估日期狀態 (預設今天)
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
+  const currentRecord = records.find(record => isMilestoneRecord(record) && Number(record.phaseId) === toMilestonePhaseId(activePhase));
+  const legacyRecord = records.find(record => !isMilestoneRecord(record) && Number(record.phaseId) === activePhase);
+  const isReadOnly = !isTeacher;
 
   // 1. 讀取資料
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     if (!studentEmail) return;
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}?type=getKSA&studentEmail=${studentEmail}`);
+      const res = await fetch(`${apiUrl}?type=getKSA&studentEmail=${encodeURIComponent(studentEmail)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRecords(data.records || []);
+      return data.records || [];
     } catch (e) {
       console.error("Fetch error:", e);
+      return [];
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl, studentEmail]);
 
   useEffect(() => {
     fetchRecords();
-  }, [studentEmail]);
+  }, [fetchRecords]);
 
   // 當切換階段時，載入該階段的資料到表單 (若有)
   useEffect(() => {
-    const currentRecord = records.find(r => r.phaseId == activePhase);
     if (currentRecord) {
       setFormData(currentRecord.scores || {});
       setComment(currentRecord.comment || '');
-      // [新] 載入儲存的日期，若無則顯示今天
       if (currentRecord.timestamp) {
         setEvalDate(currentRecord.timestamp.split('T')[0]);
       }
@@ -55,46 +57,62 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       setComment('');
       setEvalDate(new Date().toISOString().split('T')[0]);
     }
-  }, [activePhase, records]);
+    setSaveError('');
+  }, [activePhase, currentRecord]);
 
   // 2. 儲存資料
   const handleSave = async () => {
     if (!isTeacher) return;
     
-    let allFilled = true;
-    KSA_DOMAINS.forEach(domain => {
-      domain.items.forEach(item => {
-        if (!formData[item.id]) allFilled = false;
-      });
-    });
+    const allFilled = KSA_DOMAINS.every(domain => domain.items.every(item =>
+      Object.hasOwn(formData, item.id) && KSA_SCORE_OPTIONS.includes(Number(formData[item.id]))
+    ));
 
     if (!allFilled) {
-      alert("請完成所有項目的評分 (1-9分) 後再儲存");
+      alert('請完成 15 個里程碑項目的評分（0–5 分，可使用半分）後再儲存。');
       return;
     }
 
     setSaving(true);
+    setSaveError('');
     const payload = {
       type: 'saveKSA',
       studentEmail,
       studentName,
-      phaseId: activePhase,
-      scores: formData,
+      phaseId: toMilestonePhaseId(activePhase),
+      assessmentVersion: KSA_MILESTONE_VERSION,
+      scores: Object.fromEntries(KSA_DOMAINS.flatMap(domain => domain.items.map(item => [item.id, Number(formData[item.id])]))),
       comment: comment,
-      evalDate: evalDate, // [新] 傳送選擇的日期
+      evalDate,
       teacherSign: userProfile?.displayName || 'Unknown Teacher',
       updatedBy: userProfile?.email
     };
 
     try {
-      await fetch(apiUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-      alert('KSA 評估已儲存！');
-      fetchRecords();
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json();
+      if (result?.status === 'error' || result?.success === false) throw new Error(result?.message || '伺服器拒絕儲存');
+      const matchesSavedRecord = record => isMilestoneRecord(record)
+        && Number(record.phaseId) === toMilestonePhaseId(activePhase)
+        && Object.entries(payload.scores).every(([id, value]) =>
+          Object.hasOwn(record.scores || {}, id) && record.scores[id] !== null && Number(record.scores[id]) === value
+        );
+      let updatedRecords = await fetchRecords();
+      if (!updatedRecords.some(matchesSavedRecord)) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        updatedRecords = await fetchRecords();
+      }
+      if (!updatedRecords.some(matchesSavedRecord)) {
+        throw new Error('未能在後端讀回新制里程碑紀錄');
+      }
+      alert('里程碑評估已儲存。');
     } catch (e) {
-      alert('儲存失敗');
+      console.error('Milestone KSA save failed:', e);
+      setSaveError('無法確認里程碑紀錄已寫入。請先重新整理檢查，避免重複提交。');
     } finally {
       setSaving(false);
     }
@@ -104,9 +122,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
     setFormData(prev => ({ ...prev, [itemId]: score }));
   };
 
-  const currentRecord = records.find(r => r.phaseId == activePhase);
-  const isReadOnly = !isTeacher || (currentRecord && !isTeacher); 
-
   return (
     <div className="animate-in fade-in space-y-6">
       {/* 標題 */}
@@ -114,7 +129,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
         <div>
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <ClipboardCheck className="w-6 h-6 text-purple-600" />
-            KSA 學員考核表
+            藥師核心能力里程碑評估
           </h2>
           <p className="text-sm text-gray-500 mt-1">學員：{studentName}</p>
         </div>
@@ -124,7 +139,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       {/* 階段分頁 Tab */}
       <div className="flex overflow-x-auto gap-2 pb-2">
         {KSA_PHASES.map(phase => {
-          const hasRecord = records.some(r => r.phaseId == phase.id);
+          const hasRecord = records.some(record => isMilestoneRecord(record) && Number(record.phaseId) === toMilestonePhaseId(phase.id));
           return (
             <button
               key={phase.id}
@@ -147,7 +162,6 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
       {/* 內容區塊 */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         
-        {/* [新] 狀態列 & 日期選擇 */}
         <div className="p-4 bg-gray-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="font-bold text-gray-700 flex items-center gap-2">
             {KSA_PHASES.find(p => p.id === activePhase)?.label} 評估表
@@ -161,7 +175,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
                 type="date" 
                 value={evalDate}
                 onChange={(e) => setEvalDate(e.target.value)}
-                disabled={isReadOnly} // 學生或非編輯模式時鎖定
+                  disabled={isReadOnly}
                 className="text-sm font-medium text-gray-700 outline-none bg-transparent w-full sm:w-auto disabled:text-gray-400 disabled:cursor-not-allowed"
               />
             </div>
@@ -174,35 +188,36 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
           </div>
         </div>
 
-        <div className="p-6 space-y-8">
+        <div className="border-b border-blue-100 bg-blue-50 px-4 py-3 text-xs font-medium text-blue-800">
+          共 6 大核心能力、15 個次核心能力；採 0–5 分、每 0.5 分一級。Excel 的數值僅為範例，不會自動帶入學員評分，也不設自動達標門檻。
+        </div>
+        {legacyRecord && <div className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">本階段另有舊版 KSA 紀錄（1–9 分）。下方新里程碑表單不會套用舊分數；舊紀錄保留於頁面底部供查閱。</div>}
+        <div className="p-4 space-y-8 sm:p-6">
           {KSA_DOMAINS.map(domain => (
             <section key={domain.id}>
-              <h3 className="text-lg font-bold text-gray-800 mb-4 border-l-4 border-purple-500 pl-3">
-                {domain.title}
+              <h3 className="mb-4 border-l-4 pl-3 text-lg font-bold text-gray-800" style={{ borderColor: domain.color }}>
+                {domain.code}・{domain.title}
               </h3>
               <div className="grid gap-4">
                 {domain.items.map(item => {
                   const score = formData[item.id];
                   return (
-                    <div key={item.id} className="bg-gray-50 p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="font-bold text-gray-700 w-32">{item.label}</div>
+                    <div key={item.id} className="flex flex-col gap-4 rounded-lg bg-gray-50 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0 font-bold text-gray-700 md:w-60"><span className="mr-2" style={{ color: domain.color }}>{item.id}</span>{item.label}</div>
                       
-                      <div className="flex-1 flex flex-wrap gap-1">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => {
-                          const isSelected = score == num;
-                          let colorClass = 'border-gray-300 hover:border-gray-400';
-                          if (num <= 3) colorClass = isSelected ? 'bg-red-500 text-white border-red-600' : 'hover:bg-red-50';
-                          else if (num <= 6) colorClass = isSelected ? 'bg-blue-500 text-white border-blue-600' : 'hover:bg-blue-50';
-                          else colorClass = isSelected ? 'bg-green-500 text-white border-green-600' : 'hover:bg-green-50';
-
+                      <div className="flex flex-1 flex-wrap gap-1.5">
+                        {KSA_SCORE_OPTIONS.map(num => {
+                          const isSelected = Object.hasOwn(formData, item.id) && Number(score) === num;
                           return (
                             <button
                               key={num}
+                              type="button"
                               onClick={() => !isReadOnly && handleScoreChange(item.id, num)}
-                              disabled={isReadOnly && !isSelected}
-                              className={`w-8 h-8 md:w-10 md:h-10 rounded text-sm font-bold border transition-all ${colorClass} ${
-                                isReadOnly && !isSelected ? 'opacity-20 cursor-not-allowed' : ''
-                              }`}
+                              disabled={isReadOnly}
+                              aria-label={`${item.id} ${item.label} ${num} 分`}
+                              aria-pressed={isSelected}
+                              className={`h-9 min-w-9 rounded border px-2 text-sm font-bold transition-all ${isSelected ? 'border-transparent text-white shadow-sm' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'} disabled:cursor-not-allowed disabled:opacity-60`}
+                              style={isSelected ? { backgroundColor: domain.color } : undefined}
                             >
                               {num}
                             </button>
@@ -210,12 +225,8 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
                         })}
                       </div>
 
-                      <div className="w-32 text-right">
-                         {score ? (
-                           <span className={`px-2 py-1 rounded text-xs font-bold ${getScoreStyle(score)}`}>
-                             {score <= 3 ? '有待加強' : score <= 6 ? '達到預期' : '表現優秀'}
-                           </span>
-                         ) : <span className="text-gray-400 text-xs">未評分</span>}
+                      <div className="text-right md:w-20">
+                         {Object.hasOwn(formData, item.id) ? <span className="text-sm font-black" style={{ color: domain.color }}>{score}／5 分</span> : <span className="text-xs text-gray-400">未評分</span>}
                       </div>
                     </div>
                   );
@@ -242,6 +253,7 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
           </section>
         </div>
 
+        {saveError && <p role="alert" className="border-t border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{saveError}</p>}
         {isTeacher && (
           <div className="p-4 bg-gray-50 border-t flex justify-end">
             <button
@@ -250,11 +262,19 @@ const KSAAssessment = ({ studentEmail, studentName, isTeacher, userProfile, apiU
               className="px-6 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
-              儲存評估
+              儲存里程碑評估
             </button>
           </div>
         )}
       </div>
+      {legacyRecord && <section className="rounded-xl border border-amber-200 bg-white p-4 sm:p-5">
+        <h3 className="font-bold text-amber-800">舊版 KSA 紀錄（唯讀）</h3>
+        <p className="mt-1 text-xs text-gray-500">原 12 項、1–9 分量尺；不與新里程碑分數混算。{legacyRecord.teacherSign ? `評核教師：${legacyRecord.teacherSign}` : ''}</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {LEGACY_KSA_DOMAINS.map(domain => <div key={domain.title} className="rounded-lg bg-amber-50/60 p-3"><h4 className="text-sm font-bold text-gray-700">{domain.title}</h4><div className="mt-2 space-y-1.5">{domain.items.map(item => <p key={item.id} className="flex justify-between gap-2 text-xs text-gray-600"><span>{item.label}</span><span className="font-bold">{Object.hasOwn(legacyRecord.scores || {}, item.id) ? `${legacyRecord.scores[item.id]}／9` : '—'}</span></p>)}</div></div>)}
+        </div>
+        {legacyRecord.comment && <p className="mt-3 text-xs text-gray-600">原教師總評：{legacyRecord.comment}</p>}
+      </section>}
     </div>
   );
 };

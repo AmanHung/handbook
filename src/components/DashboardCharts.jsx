@@ -12,22 +12,23 @@ import {
 import { DOPS_FORMS } from '../data/dopsForms';
 import { EPA_CONFIG } from '../data/EPA_Config';
 import { FINAL_ASSESSMENT_CATEGORIES } from '../data/FinalAssessment_Config';
-import { KSA_DOMAINS } from '../data/KSA_Config';
+import { KSA_DOMAINS, KSA_PHASES, isMilestoneRecord, fromMilestonePhaseId } from '../data/KSA_Config';
 
 const CHART_COLORS = ['#4F46E5', '#10B981'];
 const EPA_LEVEL_LABELS = ['', '2a', '2b', '3a', '3b', '3c', '4', '5'];
 const EPA_ATTEMPT_COLORS = ['#3B82F6', '#10B981', '#14B8A6', '#6366F1', '#A855F7', '#F97316', '#F43F5E'];
-const KSA_DOMAIN_META = {
-  knowledge: { shortLabel: 'K', label: '專業知識', color: '#2563EB', badgeClass: 'border-blue-200 bg-blue-50 text-blue-700' },
-  skills: { shortLabel: 'S', label: '專業技能', color: '#0D9488', badgeClass: 'border-teal-200 bg-teal-50 text-teal-700' },
-  attitude: { shortLabel: 'A', label: '專業態度', color: '#D97706', badgeClass: 'border-amber-200 bg-amber-50 text-amber-700' }
-};
+const KSA_DOMAIN_META = Object.fromEntries(KSA_DOMAINS.map(domain => [domain.id, {
+  shortLabel: domain.code,
+  label: domain.title.split('（')[0],
+  color: domain.color
+}]));
 const KSA_ITEMS = KSA_DOMAINS.flatMap(domain => domain.items.map(item => ({
   ...item,
   domain: domain.id,
-  domainLabel: KSA_DOMAIN_META[domain.id]?.label || domain.title
+  domainLabel: KSA_DOMAIN_META[domain.id]?.label || domain.title,
+  axisLabel: item.id
 })));
-const KSA_ITEM_DOMAIN_BY_LABEL = Object.fromEntries(KSA_ITEMS.map(item => [item.label, item.domain]));
+const KSA_ITEM_BY_CODE = Object.fromEntries(KSA_ITEMS.map(item => [item.id, item]));
 
 const STATUS_STYLES = {
   passed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -87,10 +88,11 @@ const extractAverageScore = scores => {
 };
 
 const extractKSAItemProfile = record => {
-  if (!record) return null;
+  if (!isMilestoneRecord(record)) return null;
   const profile = KSA_ITEMS.reduce((result, item) => {
-    const value = Number(record.scores?.[item.id]);
-    result[item.id] = Number.isFinite(value) && value > 0 && value <= 9 ? value : null;
+    const hasScore = Object.hasOwn(record.scores || {}, item.id) && record.scores[item.id] !== null && record.scores[item.id] !== '';
+    const value = hasScore ? Number(record.scores[item.id]) : null;
+    result[item.id] = hasScore && Number.isFinite(value) && value >= 0 && value <= 5 ? value : null;
     return result;
   }, {});
   return Object.values(profile).some(value => value !== null) ? profile : null;
@@ -98,7 +100,7 @@ const extractKSAItemProfile = record => {
 
 const averageKSAItemProfiles = profiles => KSA_ITEMS.reduce((result, item) => {
   const values = profiles.map(profile => profile?.[item.id]).filter(Number.isFinite);
-  result[item.id] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+  result[item.id] = values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : null;
   return result;
 }, {});
 
@@ -656,8 +658,8 @@ const CohortAssessmentMatrix = ({ title, subtitle, icon: Icon, rows }) => (
 );
 
 const KSAColoredTick = ({ payload, x, y, textAnchor }) => {
-  const domain = KSA_ITEM_DOMAIN_BY_LABEL[payload?.value];
-  const meta = KSA_DOMAIN_META[domain] || KSA_DOMAIN_META.knowledge;
+  const item = KSA_ITEM_BY_CODE[payload?.value];
+  const meta = KSA_DOMAIN_META[item?.domain] || KSA_DOMAIN_META.patient_care;
   return (
     <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" fill={meta.color} fontSize="11" fontWeight="800">
       {payload?.value}
@@ -668,7 +670,7 @@ const KSAColoredTick = ({ payload, x, y, textAnchor }) => {
 const KSAGroupLegend = () => (
   <div className="flex flex-wrap justify-center gap-2 text-[11px] font-black">
     {Object.entries(KSA_DOMAIN_META).map(([domain, meta]) => (
-      <span key={domain} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${meta.badgeClass}`}>
+      <span key={domain} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1" style={{ color: meta.color }}>
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.color }} />
         {meta.shortLabel}・{meta.label}
       </span>
@@ -677,9 +679,27 @@ const KSAGroupLegend = () => (
 );
 
 const getKSADomainAverage = (radarData, domain, key) => {
-  const values = radarData.filter(item => item.domain === domain).map(item => Number(item[key])).filter(value => Number.isFinite(value) && value > 0);
-  return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : 0;
+  const values = radarData.filter(item => item.domain === domain).map(item => item[key]).filter(Number.isFinite);
+  return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)) : null;
 };
+
+const KSARadarTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0]?.payload;
+  const meta = KSA_DOMAIN_META[item?.domain];
+  return <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-lg">
+    <p className="font-black" style={{ color: meta?.color }}>{item?.itemId}・{item?.subject}</p>
+    <p className="mt-1 text-slate-500">{item?.domainLabel}</p>
+    {payload.map(series => <p key={series.dataKey} className="mt-1 font-bold text-slate-700">{series.name}：{Number.isFinite(series.value) ? `${series.value}／5 分` : '無資料'}</p>)}
+  </div>;
+};
+
+const KSAItemKey = ({ radarData, scoreKey }) => <div className="grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2">
+  {radarData.map(item => <div key={item.itemId} className="flex items-start justify-between gap-2 text-[11px] leading-4">
+    <span className="flex min-w-0 gap-2"><span className="shrink-0 font-black" style={{ color: KSA_DOMAIN_META[item.domain]?.color }}>{item.itemId}</span><span className="text-slate-600">{item.subject}</span></span>
+    {scoreKey && <span className="shrink-0 font-black text-slate-700">{Number.isFinite(item[scoreKey]) ? `${item[scoreKey]}／5` : '—'}</span>}
+  </div>)}
+</div>;
 
 const CohortKSARadar = ({ radarData, series }) => {
   const latestSeries = series.find(item => item.key === 'latest');
@@ -688,7 +708,7 @@ const CohortKSARadar = ({ radarData, series }) => {
     <section className="overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-sm">
       <div className="border-b border-teal-100 bg-gradient-to-r from-teal-50 via-white to-indigo-50 px-4 py-4 md:px-5">
         <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
-          <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Target className="h-5 w-5 text-teal-600" />全體 KSA 細項能力輪廓</h2><p className="mt-1 text-xs text-slate-500">12 個評核細項分別呈現；每位學員取最近一次評核計算全體平均，有前次資料時同步呈現成長變化。</p></div>
+          <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Target className="h-5 w-5 text-teal-600" />全體里程碑細項能力輪廓</h2><p className="mt-1 text-xs text-slate-500">15 個里程碑細項分別呈現；每位學員取最近一次新制評核計算全體平均，舊版 KSA 紀錄不混入。</p></div>
           <div className="flex flex-wrap gap-2 text-[11px] font-bold"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700">最近一次：{latestSeries?.learners || 0} 人</span>{previousSeries && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">前一次：{previousSeries.learners} 人</span>}</div>
         </div>
       </div>
@@ -698,12 +718,12 @@ const CohortKSARadar = ({ radarData, series }) => {
             <KSAGroupLegend />
             <div className="mt-2 h-[25rem] sm:h-[28rem]">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="66%" data={radarData}>
+              <RadarChart cx="50%" cy="50%" outerRadius="64%" data={radarData}>
                 <PolarGrid stroke="#CBD5E1" />
-                <PolarAngleAxis dataKey="subject" tick={<KSAColoredTick />} />
-                <PolarRadiusAxis angle={30} domain={[0, 9]} ticks={[0, 3, 6, 9]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                <PolarAngleAxis dataKey="axisLabel" tick={<KSAColoredTick />} />
+                <PolarRadiusAxis angle={30} domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
                 {series.map(item => <Radar key={item.key} name={item.label} dataKey={item.key} stroke={item.color} strokeWidth={3} fill={item.color} fillOpacity={item.key === 'latest' ? 0.2 : 0.08} />)}
-                <Tooltip /><Legend />
+                <Tooltip content={<KSARadarTooltip />} /><Legend />
               </RadarChart>
             </ResponsiveContainer>
             </div>
@@ -712,18 +732,19 @@ const CohortKSARadar = ({ radarData, series }) => {
             {Object.entries(KSA_DOMAIN_META).map(([domain, meta]) => {
               const latestAverage = getKSADomainAverage(radarData, domain, 'latest');
               const previousAverage = getKSADomainAverage(radarData, domain, 'previous');
-              const change = previousSeries ? Number((latestAverage - previousAverage).toFixed(1)) : null;
+              const change = previousSeries && latestAverage !== null && previousAverage !== null ? Number((latestAverage - previousAverage).toFixed(1)) : null;
               return (
                 <div key={domain} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
-                  <div className="flex items-center justify-between gap-3"><p className="text-sm font-black" style={{ color: meta.color }}>{meta.shortLabel}・{meta.label}</p><div className="text-right"><span className="text-2xl font-black" style={{ color: meta.color }}>{latestAverage}</span><span className="text-xs font-bold text-slate-400">／9</span></div></div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width: `${Math.min((latestAverage / 9) * 100, 100)}%`, backgroundColor: meta.color }} /></div>
+                  <div className="flex items-center justify-between gap-3"><p className="text-sm font-black" style={{ color: meta.color }}>{meta.shortLabel}・{meta.label}</p><div className="text-right"><span className="text-2xl font-black" style={{ color: meta.color }}>{latestAverage ?? '—'}</span><span className="text-xs font-bold text-slate-400">／5</span></div></div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width: `${Math.min(((latestAverage ?? 0) / 5) * 100, 100)}%`, backgroundColor: meta.color }} /></div>
                   <p className={`mt-2 text-right text-[11px] font-bold ${change === null ? 'text-slate-400' : change >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{change === null ? '尚無前次資料' : `較前次 ${change > 0 ? '+' : ''}${change}`}</p>
                 </div>
               );
             })}
           </div>
+          <div className="xl:col-span-5"><p className="mb-2 text-xs font-black text-slate-500">里程碑細項對照與最近一次平均分數</p><KSAItemKey radarData={radarData} scoreKey="latest" /></div>
         </div>
-      ) : <div className="p-10 text-center text-sm font-medium text-slate-400">目前尚無可彙整的 KSA 評估資料。</div>}
+      ) : <div className="p-10 text-center text-sm font-medium text-slate-400">目前尚無新制里程碑評估資料；舊版 KSA 分數不納入本圖。</div>}
     </section>
   );
 };
@@ -812,7 +833,7 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
     const change = satisfactionTimeline.length > 1 ? Number((satisfactionTimeline.at(-1).score - satisfactionTimeline.at(-2).score).toFixed(1)) : null;
     const cohortEmails = new Set((students || []).map(student => normalizeEmail(student.email)));
     const ksaByEmail = new Map();
-    (dashboardData.ksa || []).filter(record => cohortEmails.has(normalizeEmail(record.email))).forEach(record => {
+    (dashboardData.ksa || []).filter(record => isMilestoneRecord(record) && cohortEmails.has(normalizeEmail(record.email))).forEach(record => {
       const email = normalizeEmail(record.email);
       if (!ksaByEmail.has(email)) ksaByEmail.set(email, []);
       ksaByEmail.get(email).push(record);
@@ -830,12 +851,13 @@ const OverallDashboard = ({ dashboardData, students, updatedAt, onSelectStudent 
     const previousKSAAverage = averageKSAItemProfiles(previousKSAProfiles);
     const ksaRadarData = KSA_ITEMS.map(item => ({
       subject: item.label,
+      axisLabel: item.axisLabel,
       itemId: item.id,
       domain: item.domain,
       domainLabel: item.domainLabel,
       latest: latestKSAAverage[item.id],
       previous: previousKSAAverage[item.id],
-      fullMark: 9
+      fullMark: 5
     }));
     const ksaSeries = [
       ...(previousKSAProfiles.length ? [{ key: 'previous', label: '前一次平均', learners: previousKSAProfiles.length, color: '#10B981' }] : []),
@@ -1059,21 +1081,24 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
       .map(row => ({ ...row, type: row.type || (epaRows.some(item => item.id === row.id) ? 'EPA' : 'DOPS') }))
       .sort((a, b) => priorityOrder[a.status] - priorityOrder[b.status] || a.title.localeCompare(b.title, 'zh-Hant'));
 
-    const sortedKSA = sortByDate(studentKSA);
+    const sortedKSA = sortByDate(studentKSA.filter(isMilestoneRecord));
     const selectedKSA = sortedKSA.slice(-2);
     const radarData = KSA_ITEMS.map(item => ({
       subject: item.label,
+      axisLabel: item.axisLabel,
       itemId: item.id,
       domain: item.domain,
       domainLabel: item.domainLabel,
-      fullMark: 9
+      fullMark: 5
     }));
     const ksaSeries = selectedKSA.map((record, index) => {
       const key = index === selectedKSA.length - 1 ? 'latest' : 'previous';
-      const label = `階段 ${record.phaseId}`;
+      const phaseId = fromMilestonePhaseId(record.phaseId);
+      const label = KSA_PHASES.find(phase => phase.id === phaseId)?.label || `第 ${phaseId} 次`;
       radarData.forEach(item => {
-        const value = Number(record.scores?.[item.itemId]);
-        item[key] = Number.isFinite(value) && value > 0 && value <= 9 ? value : 0;
+        const hasScore = Object.hasOwn(record.scores || {}, item.itemId) && record.scores[item.itemId] !== null && record.scores[item.itemId] !== '';
+        const value = hasScore ? Number(record.scores[item.itemId]) : null;
+        item[key] = hasScore && Number.isFinite(value) && value >= 0 && value <= 5 ? value : null;
       });
       return { key, label };
     });
@@ -1174,21 +1199,22 @@ const DashboardCharts = ({ viewMode = 'individual', studentEmail, studentProfile
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100">
-          <div className="mb-3"><h3 className="font-bold text-gray-800">KSA 細項能力：最近兩階段</h3><p className="mt-1 text-xs text-slate-500">12 個評核細項分別成軸，文字顏色區分 K、S、A 三類。</p></div>
+          <div className="mb-3"><h3 className="font-bold text-gray-800">里程碑細項能力：最近兩次評核</h3><p className="mt-1 text-xs text-slate-500">15 個評核細項分別成軸，六大核心能力各有固定顏色；舊版 KSA 分數不與新制混算。</p></div>
           <KSAGroupLegend />
           <div className="mt-2 h-[25rem] w-full sm:h-[28rem]">
             {processedData.ksaSeries.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="65%" data={processedData.radarData}>
+                <RadarChart cx="50%" cy="50%" outerRadius="64%" data={processedData.radarData}>
                   <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" tick={<KSAColoredTick />} />
-                  <PolarRadiusAxis angle={30} domain={[0, 9]} tick={{ fontSize: 10 }} />
+                  <PolarAngleAxis dataKey="axisLabel" tick={<KSAColoredTick />} />
+                  <PolarRadiusAxis angle={30} domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} tick={{ fontSize: 10 }} />
                   {processedData.ksaSeries.map((series, index) => <Radar key={series.key} name={series.label} dataKey={series.key} stroke={CHART_COLORS[index]} strokeWidth={2} fill={CHART_COLORS[index]} fillOpacity={0.14} />)}
-                  <Tooltip /><Legend />
+                  <Tooltip content={<KSARadarTooltip />} /><Legend />
                 </RadarChart>
               </ResponsiveContainer>
-            ) : <div className="h-full flex items-center justify-center text-gray-400">尚無 KSA 評估資料</div>}
+            ) : <div className="h-full flex items-center justify-center text-center text-gray-400">尚無新制里程碑評估資料；舊版 KSA 紀錄不顯示於本圖。</div>}
           </div>
+          {processedData.ksaSeries.length > 0 && <div className="mt-3"><p className="mb-2 text-xs font-black text-slate-500">里程碑細項與最新分數</p><KSAItemKey radarData={processedData.radarData} scoreKey="latest" /></div>}
         </section>
 
         <section className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">

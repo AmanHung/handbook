@@ -1185,7 +1185,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
               <div className={assessmentType === 'ksa' ? 'block animate-in fade-in' : 'hidden'}>
                 {mountedTabs.includes('ksa') && (
-                  <KSAAssessment studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
+                  <KSAAssessment key={selectedStudentEmail} studentEmail={selectedStudentEmail} studentName={selectedStudentName} isTeacher={isTeacherOrAdmin} userProfile={userProfile} apiUrl={GAS_API_URL} />
                 )}
               </div>
 
