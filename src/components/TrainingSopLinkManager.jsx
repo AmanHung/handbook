@@ -300,7 +300,7 @@ const TrainingSopLinkManager = ({ user, sops, videos, initialTrack = 'pgy', onTr
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <p className="text-sm text-gray-600">
             已選擇 <strong className={resourceType === 'sop' ? 'text-indigo-700' : 'text-purple-700'}>{resourceType === 'sop' ? selectedSopIds.length : selectedVideoIds.length}</strong> 份；
-            {resourceType === 'sop' ? '未勾選文件時，護照會顯示「尚無相關 SOP」。' : '影片推薦僅供參考，仍須由管理者確認後儲存。'}
+            {resourceType === 'sop' ? '未勾選文件時，不顯示相關 SOP 按鈕。' : '影片推薦僅供參考，仍須由管理者確認後儲存。'}
           </p>
           <button type="button" onClick={saveLinks} disabled={saving} className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-white font-bold disabled:opacity-50 ${resourceType === 'sop' ? 'bg-indigo-600' : 'bg-purple-600'}`}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

@@ -594,7 +594,7 @@ const PassportSection = ({ user, userRole, userProfile, previewFixture }) => {
     const relatedSopIds = isMainItem ? resolveTrainingSopIds(item.id, getTrainingGroupSopIds(item.title, [item], sopsById)) : [];
     const relatedVideoIds = isMainItem ? resolveTrainingVideoIds(item.id) : [];
     return <LearningRecordRow key={item.id} id={`training-${item.id}`} title={item.sub_item || item.title} teacher={record.teacher} date={record.date ? new Date(record.date).toLocaleDateString('zh-TW') : ''} note={record.note} status={record.status} isTeacher={isTeacherOrAdmin} disabled={submitting || Boolean(errorMsg) || passportOwner.current !== selectedStudentEmail} onEvaluate={() => openEvaluateModal(item)} mainItem={isMainItem} highlighted={focusedTrainingId === item.id}>
-          {isMainItem && (relatedSopIds.length > 0 || relatedVideoIds.length > 0 || sopsLoaded) ? (
+          {isMainItem && (relatedSopIds.length > 0 || relatedVideoIds.length > 0) ? (
             <div className="mt-2 ml-6 flex flex-wrap items-center gap-2">
               {relatedSopIds.length > 0 ? (
                 <>
@@ -610,9 +610,7 @@ const PassportSection = ({ user, userRole, userProfile, previewFixture }) => {
                   </button>
                   {renderReadStatus(relatedSopIds)}
                 </>
-              ) : (
-                <span className="text-xs font-bold text-gray-400">尚無相關 SOP</span>
-              )}
+              ) : null}
               {videosLoaded && relatedVideoIds.length > 0 && (
                 <button
                   type="button"
@@ -686,9 +684,7 @@ const PassportSection = ({ user, userRole, userProfile, previewFixture }) => {
                       </button>
                       {renderReadStatus(groupSopIds)}
                     </>
-                  ) : (
-                    <span className="text-xs font-bold text-gray-400">尚無相關 SOP</span>
-                  )}
+                  ) : null}
                   {videosLoaded && groupVideoIds.length > 0 && (
                     <button
                       type="button"
@@ -702,8 +698,6 @@ const PassportSection = ({ user, userRole, userProfile, previewFixture }) => {
                     </button>
                   )}
                 </div>
-              ) : sopsLoaded ? (
-                <span className="self-start sm:self-auto text-xs font-bold text-gray-400">尚無相關 SOP</span>
               ) : null}
             </div>
           )}

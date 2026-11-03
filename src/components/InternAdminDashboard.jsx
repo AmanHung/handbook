@@ -1,12 +1,12 @@
 import InternDashboardCharts from './InternDashboardCharts';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Download, Eye, FileText, Loader2, X } from 'lucide-react';
+import { AlertCircle, Eye, Loader2, X } from 'lucide-react';
 import { auth, db } from '../firebase';
 import InternPassport, { InternRecordHistory } from './InternPassport';
 import { saveInternEntry } from '../services/internPassportStore';
 import { subscribeInternWorkspace } from '../services/internWorkspace';
 import { isTeachingRole } from '../utils/learnerIdentity';
-import { INTERN_RECORD_KINDS, buildInternExport, buildInternRecordsCsv, downloadInternExport, getInternRecordStatus, getInternRecordTitle, summarizeIntern } from '../utils/internAdmin';
+import { INTERN_RECORD_KINDS, getInternRecordStatus, getInternRecordTitle, summarizeIntern } from '../utils/internAdmin';
 
 const tabFor = kind => ({ materialRead: 'training', training: 'training', rotation: 'training', exam: 'assessment', osce: 'assessment', osceFeedback: 'assessment', dops: 'assessment', dopsFeedback: 'assessment', safety: 'safety', deliverable: 'outcome', review: 'outcome', final: 'outcome', signoff: 'outcome' })[kind] || 'feedback';
 
@@ -20,7 +20,6 @@ export default function InternAdminDashboard({ students, user, userRole, preview
   const [workspaces, setWorkspaces] = useState({});
   const [retryKey, setRetryKey] = useState(0);
   const [drawer, setDrawer] = useState(null);
-  const [message, setMessage] = useState('');
   const cohorts = [...new Set(students.map(student => student.internshipCohort || ''))].sort();
   const filtered = useMemo(() => students.filter(student => cohort === 'ALL' || JSON.stringify(student.internshipCohort || '') === cohort), [students, cohort]);
   const uidKey = JSON.stringify(filtered.map(student => student.id).sort());
@@ -44,13 +43,6 @@ export default function InternAdminDashboard({ students, user, userRole, preview
   const totals = summaries.reduce((sum, item) => ({ completed: sum.completed + item.progress.complete, osce: sum.osce + item.osce, safety: sum.safety + item.safety, reinforce: sum.reinforce + item.reinforce, records: sum.records + item.records }), { completed: 0, osce: 0, safety: 0, reinforce: 0, records: 0 });
   const rows = ready ? scope.flatMap(student => entriesByStudent[student.id].map(entry => ({ student, entry }))).filter(({ entry }) => (kind === 'all' || entry.kind === kind) && `${getInternRecordTitle(entry)} ${entry.actorName || ''} ${entry.payload?.note || ''}`.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => (b.entry.createdAt?.toMillis?.() || b.entry.createdAt?.seconds * 1000 || 0) - (a.entry.createdAt?.toMillis?.() || a.entry.createdAt?.seconds * 1000 || 0)) : [];
   const drawerStudent = drawer && filtered.find(student => student.id === drawer.uid);
-  const exportRecords = format => {
-    if (!isTeachingRole(userRole) || !ready) return;
-    const scopeName = view === 'overall' ? cohort === 'ALL' ? '全部梯次' : JSON.parse(cohort) || '未設定梯次' : scope[0].displayName || '個別實習生';
-    const content = format === 'csv' ? buildInternRecordsCsv(scope, entriesByStudent) : JSON.stringify(buildInternExport(scope, entriesByStudent), null, 2);
-    downloadInternExport(content, format, scopeName);
-    setMessage(`已匯出${scopeName}的完整紀錄，包含歷次評核；不受下方搜尋條件影響。`);
-  };
   const save = async (uid, entry) => {
     if (!isTeachingRole(userRole)) throw new Error('目前身分不能評核。');
     if (!loaded(uid)) throw new Error('目前尚未確認最新紀錄，請等候連線恢復後再儲存。');
@@ -60,13 +52,12 @@ export default function InternAdminDashboard({ students, user, userRole, preview
   };
   if (!isTeachingRole(userRole)) return <p role="alert">只有指導藥師與管理者可查看後台紀錄。</p>;
   return <section aria-label="實習生後台管理" className="space-y-5">
-    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-4"><div className="flex flex-wrap justify-between gap-3 items-start"><div><h2 className="text-lg font-bold text-indigo-900">實習生學習成效與紀錄</h2><p className="text-sm text-indigo-700 mt-1">依梯次查看進度、完整評核歷程與成果，並由後台統一匯出。</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={!ready} onClick={() => exportRecords('csv')} className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-indigo-200 rounded-lg text-indigo-700 text-sm font-bold disabled:opacity-40"><Download size={16} />匯出 CSV</button><button type="button" disabled={!ready} onClick={() => exportRecords('json')} className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-indigo-200 rounded-lg text-indigo-700 text-sm font-bold disabled:opacity-40"><FileText size={16} />匯出完整 JSON</button></div></div>
+    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-4"><div className="flex flex-wrap justify-between gap-3 items-start"><div><h2 className="text-lg font-bold text-indigo-900">實習生學習成效與紀錄</h2><p className="text-sm text-indigo-700 mt-1">依梯次查看進度、完整評核歷程與成果。</p></div></div>
       <div className="flex flex-wrap gap-3 items-center"><label className="text-sm text-indigo-900">實習梯次<select aria-label="實習梯次" value={cohort} onChange={event => setCohort(event.target.value)} className="ml-2 border rounded-lg p-2 bg-white"><option value="ALL">全部梯次</option>{cohorts.map(value => <option key={value} value={JSON.stringify(value)}>{value || '未設定梯次'}</option>)}</select></label><div className="flex rounded-lg border border-indigo-200 bg-white p-1">{[['individual', '個別實習生'], ['overall', '全部實習生']].map(([value, label]) => <button type="button" key={value} aria-pressed={view === value} onClick={() => setView(value)} className={`px-3 py-1.5 text-sm rounded-md ${view === value ? 'bg-indigo-600 text-white' : 'text-indigo-700'}`}>{label}</button>)}</div>{view === 'individual' && <label className="text-sm text-indigo-900">實習生<select aria-label="後台實習生" value={selectedUid} onChange={event => { setSelectedUid(event.target.value); setDrawer(null); }} className="ml-2 border rounded-lg p-2 bg-white">{!filtered.length && <option value="">尚無實習生</option>}{filtered.map(student => <option key={student.id} value={student.id}>{student.displayName || student.email}</option>)}</select></label>}</div>
-      <p className="text-xs text-indigo-700">匯出範圍以目前梯次及個別／全部選擇為準。評核與表單保留歷次版本；教材列最新閱讀確認。</p>
+      <p className="text-xs text-indigo-700">評核與表單保留歷次版本；教材列最新閱讀確認。</p>
     </div>
-    {message && <p role="status" className="p-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-800">{message}</p>}
-    {!preview && scope.some(student => workspaces[student.id]?.status === 'reconnecting') && <p role="status" className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-amber-800 text-sm">正在重新確認最新資料，統計、評核及匯出暫停；連線恢復後會自動更新。</p>}
-    {scope.some(student => errors[student.id]) && <div role="alert" className="p-3 bg-red-50 rounded-lg text-red-700 flex flex-wrap gap-2 items-center text-sm"><AlertCircle size={18} /><p>部分實習生資料無法讀取，統計及匯出暫停。</p><button type="button" onClick={() => setRetryKey(value => value + 1)} className="border border-red-300 rounded-md px-3 py-1">重新讀取</button></div>}
+    {!preview && scope.some(student => workspaces[student.id]?.status === 'reconnecting') && <p role="status" className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-amber-800 text-sm">正在重新確認最新資料，統計及評核暫停；連線恢復後會自動更新。</p>}
+    {scope.some(student => errors[student.id]) && <div role="alert" className="p-3 bg-red-50 rounded-lg text-red-700 flex flex-wrap gap-2 items-center text-sm"><AlertCircle size={18} /><p>部分實習生資料無法讀取，統計暫停。</p><button type="button" onClick={() => setRetryKey(value => value + 1)} className="border border-red-300 rounded-md px-3 py-1">重新讀取</button></div>}
     {!students.length ? <p className="bg-white border rounded-xl p-8 text-gray-500 text-center">尚無實習生。請在「參數與權限」將學員類型設為實習生。</p> : <>
       {ready && <InternDashboardCharts students={scope} entriesByStudent={entriesByStudent} overall={view === 'overall'} onOpen={(uid, assessment, formId, recordId) => setDrawer({ uid, tab: 'assessment', assessment, formId, recordId })} />}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[['核心訓練通過', ready ? `${totals.completed}／${scope.length * 50}` : '—'], ['OSCE 通過', ready ? `${totals.osce}／${scope.length * 4}` : '—'], ['安全訓練完成', ready ? `${totals.safety}／${scope.length * 5}` : '—'], ['待再加強', ready ? `${totals.reinforce} 項` : '—']].map(([label, value]) => <div key={label} className="bg-white border border-gray-100 rounded-xl p-4"><p className="text-xs text-gray-500">{label}</p><p className="font-bold text-xl text-indigo-900 mt-2">{value}</p></div>)}</div>

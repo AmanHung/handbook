@@ -176,7 +176,7 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                 )}
               </div>
               <h4 className="font-bold text-gray-800 text-base mb-1 group-hover:text-yellow-600">{topic.title}</h4>
-              <p className="text-xs text-gray-500">{topic.description}</p>
+              {topic.description && <p className="text-xs text-gray-500">{topic.description}</p>}
             </button>
           );
         })}

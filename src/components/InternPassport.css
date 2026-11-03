@@ -15,3 +15,4 @@
   .ip-shared-assessment .grid-cols-12 > div:first-child { max-height:240px; }
   .ip-shared-assessment .p-6 { padding:14px; }
 }
+.ip-plan-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none}.ip-plan-link:hover{background:#edf5f9;border-color:#7ba1b9}.ip-plan-link:focus-visible{outline:2px solid #167595;outline-offset:3px}
