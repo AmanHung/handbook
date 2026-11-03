@@ -3,6 +3,7 @@ import {
   FEEDBACK_FORMS, DELIVERABLES, SCORE_DEPARTMENTS, SCORE_DIMENSIONS, numericScore,
 } from '../data/internPassport.js';
 import { dopsFields } from './dopsWorkflow.js';
+import { isInternDopsForm } from '../data/internDopsForms.js';
 
 export const STUDENT_ENTRY_KINDS = ['deliverable', 'feedback', 'osceFeedback', 'dopsFeedback'];
 export const TEACHER_ENTRY_KINDS = ['training', 'rotation', 'exam', 'osce', 'dops', 'safety', 'review', 'care', 'final', 'signoff'];
@@ -19,6 +20,7 @@ export function validateInternEntry(kind, targetId, input, isTeacher) {
   if (!(isTeacher ? TEACHER_ENTRY_KINDS : STUDENT_ENTRY_KINDS).includes(kind)) throw new Error('此身分不能填寫這類紀錄。');
   const payload = { ...input };
   if (!validDate(payload.date)) throw new Error('請填寫有效的紀錄日期。');
+  if (['dops', 'dopsFeedback'].includes(kind) && !isInternDopsForm(targetId)) throw new Error('此 DOPS 未列入實習生訓練計畫。');
   if (['training', 'learning'].includes(kind) && !hasTarget(INTERN_ALL_ITEMS, targetId)) throw new Error('找不到訓練項目。');
   if (kind === 'rotation') {
     if (!hasTarget(INTERN_DOMAINS, targetId) || !validDate(payload.startDate) || !validDate(payload.endDate) || payload.endDate < payload.startDate) throw new Error('請確認輪訓起訖日期。');

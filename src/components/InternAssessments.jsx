@@ -4,6 +4,7 @@ import OSCEAssessment from './OSCEAssessment';
 import DOPSAssessment from './DOPSAssessment';
 import { createInternAssessmentAdapter, INTERN_OSCE_CONFIG } from '../services/internAssessmentAdapter';
 import { sortInternEntries } from '../services/internPassportStore';
+import { INTERN_DOPS_FORMS, isInternDopsForm } from '../data/internDopsForms';
 
 export default function InternAssessments({ student, entries, isTeacher, currentUserName, onSave, type, targetFormId, targetRecordId }) {
   const live = useRef({ entries, onSave });
@@ -24,5 +25,5 @@ export default function InternAssessments({ student, entries, isTeacher, current
   const common = { studentEmail: student.email || `${student.id}@preview.test`, studentName: student.displayName, assessmentStore: store, revision: entries.length, targetRecordId };
   return <div className="ip-shared-assessment">{type === 'osce'
     ? <OSCEAssessment {...common} isTeacher={isTeacher} userProfile={{ displayName: currentUserName }} configuration={INTERN_OSCE_CONFIG} />
-    : <DOPSAssessment {...common} userRole={isTeacher ? student.viewerRole === 'admin' ? 'admin' : 'teacher' : 'student'} currentUserName={currentUserName} targetFormId={targetFormId} />}</div>;
+    : <><p className="ip-hint">依實習生訓練計畫附件 5，DOPS 評估僅包含「抗腫瘤藥物調配作業安全防護裝備」。</p>{targetFormId && !isInternDopsForm(targetFormId) && <p className="ip-notice">此項未列入實習訓練計畫，既有紀錄請至後台歷史紀錄查看。</p>}<DOPSAssessment {...common} forms={INTERN_DOPS_FORMS} userRole={isTeacher ? student.viewerRole === 'admin' ? 'admin' : 'teacher' : 'student'} currentUserName={currentUserName} targetFormId={targetFormId} /></>}</div>;
 }

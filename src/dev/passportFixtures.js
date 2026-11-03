@@ -17,9 +17,6 @@ export const demoEntries = () => {
   add('safety', 'equipment', { status: 'pass', note: '完成包藥機與磨粉機安全訓練。' });
   const dopsData = (id, score) => Object.fromEntries(dopsFields(id).filter(field => !field.id.startsWith('feedback_student')).map(field => [field.id, field.type === 'score_5' ? '4' : field.type === 'score_10' ? score : field.type === 'yes_no' ? '符合' : '示範教師回饋，正式內容由指導藥師填寫。']));
   add('dops', 'dops_chemo_ppe', { instanceId: 'demo-ppe-1', phase: 'teacher_graded', formData: dopsData('dops_chemo_ppe', 8), note: '' });
-  add('dops', 'dops_op_dispensing', { instanceId: 'demo-opd-1', phase: 'teacher_graded', formData: dopsData('dops_op_dispensing', 7), note: '' });
-  const assessmentId = entries.at(-1).id;
-  add('dopsFeedback', 'dops_op_dispensing', { assessmentId, phase: 'completed', note: '示範操作心得，將加強處方核對與流程掌握。', improve: '依指導藥師建議加強後再評。' }, '陳同學');
   add('deliverable', 'literature', { note: '示範文獻閱讀心得摘要，正式內容由實習生填寫。' }, '陳同學');
   add('care', 'demo-care', { progress: '符合', attitude: '優', note: '學習積極，已討論下一階段住院輪訓目標。' });
   return entries;

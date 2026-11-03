@@ -1,6 +1,7 @@
 import { INTERN_OSCE_STATIONS } from '../data/internPassport.js';
 import { dopsFields, projectDopsRecords, matchingAssessmentFeedback } from '../utils/dopsWorkflow.js';
 import { validateInternEntry } from '../utils/internPassportValidation.js';
+import { isInternDopsForm } from '../data/internDopsForms.js';
 
 export const INTERN_OSCE_CONFIG = {
   topics: INTERN_OSCE_STATIONS.map(station => ({ ...station, description: `${station.source}・逐項 1–5 分，整體 0–10 分；由教師判定結果。` })),
@@ -17,8 +18,12 @@ export function createInternAssessmentAdapter({ readEntries, persist, isTeacher 
   const saveEntry = entry => persist({ ...entry, payload: validateInternEntry(entry.kind, entry.targetId, entry.payload, isTeacher) });
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return {
-    async listDops(id) { return { records: projectDopsRecords(readEntries(), id) }; },
+    async listDops(id) {
+      if (!isInternDopsForm(id)) throw new Error('此 DOPS 未列入實習生訓練計畫。');
+      return { records: projectDopsRecords(readEntries(), id) };
+    },
     async saveDops(input) {
+      if (!isInternDopsForm(input.dopsId)) throw new Error('此 DOPS 未列入實習生訓練計畫，既有歷史紀錄仍保留。');
       if (isTeacher) {
         const fields = dopsFields(input.dopsId).filter(field => !field.id.startsWith('feedback_student')).map(field => field.id);
         await saveEntry({ kind: 'dops', targetId: input.dopsId, payload: {

@@ -5,8 +5,9 @@ import { validateInternEntry } from '../src/utils/internPassportValidation.js';
 import { projectDopsRecords, dopsFields, dopsOutcome } from '../src/utils/dopsWorkflow.js';
 import { getLatestEntries, getCompletionChecks, getSafetyRecord } from '../src/data/internPassport.js';
 import { buildInternAssessmentRows } from '../src/utils/internDashboard.js';
-import { buildInternRecordsCsv } from '../src/utils/internAdmin.js';
+import { buildInternRecordsCsv, summarizeIntern } from '../src/utils/internAdmin.js';
 import { DOPS_FORMS } from '../src/data/dopsForms.js';
+import { INTERN_DOPS_FORMS } from '../src/data/internDopsForms.js';
 
 const date = '2026-11-03';
 const formId = 'dops_chemo_ppe';
@@ -89,16 +90,32 @@ test('實習 OSCE 四站各自保留歷史，重測須填對應的新回饋，�
   assert.equal(getCompletionChecks(getLatestEntries(legacy)).find(item => item.id === 'feedback_phone').done, true);
 });
 
-test('全部九份 PGY DOPS 表單可經相同資料契約完成實習生評核，未安排者不列必修', async () => {
+test('實習 DOPS 依附件 5 僅提供 PPE，其餘 PGY 表單不可新增實習評核或回饋', async () => {
   const { entries, teacher, student } = runtime();
+  assert.equal(DOPS_FORMS.length, 9);
+  assert.deepEqual(INTERN_DOPS_FORMS.map(form => form.id), [formId]);
   assert.equal(buildInternAssessmentRows(entries).dops.length, 1);
-  for (const form of DOPS_FORMS) {
-    const formData = Object.fromEntries(dopsFields(form.id).filter(field => !field.id.startsWith('feedback_student')).map(field => [field.id, field.type === 'score_5' ? 'N/A' : field.type === 'score_10' ? 8 : field.type === 'yes_no' ? '符合' : '教師回饋']));
-    await teacher.saveDops({ dopsId: form.id, instanceId: `NEW_${form.id}`, status: 'teacher_graded', formData: { ...formData, evaluation_date: date } });
-    await student.saveDops({ dopsId: form.id, instanceId: `NEW_${form.id}`, status: 'completed', formData: { feedback_student_thoughts: '實習生心得' } });
-    assert.equal(projectDopsRecords(entries, form.id)[0].status, 'completed');
+  for (const form of DOPS_FORMS.filter(form => form.id !== formId)) {
+    await assert.rejects(teacher.listDops(form.id), /未列入實習生訓練計畫/);
+    await assert.rejects(teacher.saveDops({ dopsId: form.id }), /未列入實習生訓練計畫/);
+    await assert.rejects(student.saveDops({ dopsId: form.id }), /未列入實習生訓練計畫/);
+    for (const [kind, isTeacher] of [['dops', true], ['dopsFeedback', false]]) {
+      assert.throws(() => validateInternEntry(kind, form.id, { date, note: '' }, isTeacher), /未列入實習生訓練計畫/);
+    }
   }
-  assert.equal(buildInternAssessmentRows(entries).dops.filter(row => row.passed).length, 9);
+  assert.equal(entries.length, 0);
+  await grade(teacher, 8); await feedback(student);
+  assert.equal(buildInternAssessmentRows(entries).dops.filter(row => row.passed).length, 1);
+});
+
+test('既有計畫外 DOPS 保留後台歷史與匯出，不增加儀表板項目或阻擋實習結訓檢核', async () => {
+  const { entries, teacher, student } = runtime();
+  entries.push({ id: 'legacy', kind: 'dops', targetId: 'dops_op_dispensing', actorName: '原評核教師', createdAt: { seconds: 1 }, payload: { date, note: '既有歷史', instanceId: 'old_attempt', phase: 'teacher_graded', formData: { global_rating: 6 } } });
+  assert.deepEqual(buildInternAssessmentRows(entries).dops.map(row => row.id), [formId]);
+  assert.equal(summarizeIntern({ id: 'student' }, entries).reinforce, 0);
+  await grade(teacher, 8); await feedback(student);
+  assert.equal(getCompletionChecks(getLatestEntries(entries)).find(item => item.id === 'dops').done, true);
   const csv = buildInternRecordsCsv([{ id: 'student' }], { student: entries });
-  assert.ok(csv.includes('DOPS 評分與教師回饋') && csv.includes('實習生心得') && csv.includes('NEW_dops_chemo_ppe'));
+  assert.ok(csv.includes('old_attempt') && csv.includes('既有歷史') && csv.includes('原評核教師'));
+  assert.equal(entries[0].id, 'legacy');
 });
