@@ -83,10 +83,22 @@ export const FEEDBACK_FORMS = [
     items: ['藥學專業知識', '教學態度', '教學熱忱', '敬業精神', '教學方法與技巧', '解說、表達能力', '人際溝通能力', '解決工作問題的能力', '協助學員解決學習問題的能力', '協助學員解決問題的熱忱'] },
 ];
 
+import { projectDopsRecords, matchingAssessmentFeedback, sortAssessments } from '../utils/dopsWorkflow.js';
+
 export const getLatestEntries = entries => [...entries].sort((a, b) => {
   const millis = entry => entry.createdAt?.toMillis?.() ?? ((entry.createdAt?.seconds || 0) * 1000);
   return millis(a) - millis(b) || String(a.id).localeCompare(String(b.id));
-}).reduce((result, entry) => ({ ...result, [`${entry.kind}:${entry.targetId}`]: entry }), {});
+}).reduce((result, entry) => ({ ...result, [`${entry.kind}:${entry.targetId}${entry.kind === 'dops' ? `:${entry.payload.instanceId}` : ['osceFeedback', 'dopsFeedback'].includes(entry.kind) && entry.payload.assessmentId ? `:${entry.payload.assessmentId}` : ''}`]: entry }), {});
+
+export const getSafetyRecord = (latest, id) => {
+  const legacy = latest[`safety:${id}`];
+  if (id !== 'ppe') return legacy;
+  const entries = Object.values(latest);
+  const dops = sortAssessments(entries).filter(entry => entry.kind === 'dops' && entry.targetId === 'dops_chemo_ppe').at(-1);
+  if (!dops || legacy && sortAssessments([legacy, dops]).at(-1).id === legacy.id) return legacy;
+  const record = projectDopsRecords(entries, 'dops_chemo_ppe').find(item => item.assessmentId === dops.id);
+  return { ...dops, payload: { ...dops.payload, status: record.status === 'completed' ? 'pass' : record.status === 'needs_improvement' ? 'reinforce' : record.status } };
+};
 
 export const getTrainingProgress = latest => {
   const complete = INTERN_BASE_ITEMS.filter(item => latest[`training:${item.id}`]?.payload.status === 'pass').length;
@@ -103,10 +115,11 @@ export const getCompletionChecks = latest => [
   { id: 'training', title: '附件 1 的 50 項訓練評核及格', done: getTrainingProgress(latest).percent === 100 },
   { id: 'retests', title: '已安排之測驗與增列課程無待加強項目', done: !Object.values(latest).some(entry => entry.payload.status === 'reinforce') },
   ...INTERN_OSCE_STATIONS.map(station => ({ id: station.id, title: `OSCE：${station.title}`, done: latest[`osce:${station.id}`]?.payload.status === 'pass' })),
-  ...SAFETY_ITEMS.map(item => ({ id: item.id, title: item.title, done: latest[`safety:${item.id}`]?.payload.status === 'pass' })),
+  ...SAFETY_ITEMS.map(item => ({ id: item.id, title: item.title, done: getSafetyRecord(latest, item.id)?.payload.status === 'pass' })),
+  { id: 'dops', title: '已安排的 DOPS 完成學員回饋並通過', done: [...new Set(Object.values(latest).filter(entry => entry.kind === 'dops').map(entry => entry.targetId))].every(id => projectDopsRecords(Object.values(latest), id)[0]?.status === 'completed') },
   ...DELIVERABLES.map(item => ({ id: item.id, title: item.title, done: latest[`review:${item.id}`]?.payload.status === 'pass' && Boolean(latest[`deliverable:${item.id}`]) && latest[`review:${item.id}`]?.payload.submissionId === latest[`deliverable:${item.id}`]?.id })),
   ...FEEDBACK_FORMS.map(form => ({ id: form.id, title: form.title, done: Boolean(latest[`feedback:${form.id}`]) })),
-  ...INTERN_OSCE_STATIONS.map(station => ({ id: `feedback_${station.id}`, title: `OSCE 雙向回饋：${station.title}`, done: Boolean(latest[`osceFeedback:${station.id}`]) })),
+  ...INTERN_OSCE_STATIONS.map(station => ({ id: `feedback_${station.id}`, title: `OSCE 雙向回饋：${station.title}`, done: Boolean(matchingAssessmentFeedback(latest[`osce:${station.id}`], Object.values(latest), 'osceFeedback')) })),
   { id: 'final', title: '完成實習生學習評估及總成績', done: calculateFinalScore(latest['final:overall']?.payload) !== null },
 ];
 

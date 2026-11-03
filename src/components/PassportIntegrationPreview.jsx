@@ -24,7 +24,11 @@ export default function PassportIntegrationPreview() {
   const student = interns.find(profile => profile.id === selectedIntern);
   const user = role === 'student' ? track === 'intern' ? { uid: student.id, email: student.email, displayName: student.displayName } : { uid: 'pgy-preview-a', email: 'pgy-a@example.test', displayName: '王藥師（示範）' } : { uid: 'teacher-preview', email: 'teacher@example.test', displayName: '示範指導藥師' };
   const users = useMemo(() => [...interns, ...pgyRuntime.students, { id: 'teacher-preview', email: 'teacher@example.test', displayName: '示範指導藥師', role: 'teacher' }], [interns, pgyRuntime]);
-  const saveEntry = async (uid, entry) => setEntriesByStudent(current => ({ ...current, [uid]: [...(current[uid] || []), { ...entry, planVersion: '11409', studentUid: uid, id: crypto.randomUUID(), actorName: role === 'student' ? interns.find(profile => profile.id === uid)?.displayName : user.displayName, actorUid: user.uid, createdAt: { seconds: Date.now() / 1000 } }] }));
+  const saveEntry = async (uid, entry) => {
+    const saved = { ...entry, planVersion: '11409', studentUid: uid, id: crypto.randomUUID(), actorName: role === 'student' ? interns.find(profile => profile.id === uid)?.displayName : user.displayName, actorUid: user.uid, createdAt: { seconds: Date.now() / 1000 } };
+    setEntriesByStudent(current => ({ ...current, [uid]: [...(current[uid] || []), saved] }));
+    return saved;
+  };
   const combinedEntries = useMemo(() => Object.fromEntries(interns.map(profile => [profile.id, [...(entriesByStudent[profile.id] || []), ...(readsByStudent[profile.id] || []).map(toSopReadEntry)]])), [interns, entriesByStudent, readsByStudent]);
   const previewData = {
     ...library, users, trainingItems: pgyRuntime.items, initialTrack: track, links, videos,

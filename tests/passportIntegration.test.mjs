@@ -8,6 +8,7 @@ import { saveInternEntry, readInternEntries, subscribeInternEntries } from '../s
 import { confirmInternSopRead, subscribeInternSopReads, toSopReadEntry } from '../src/services/internMaterials.js';
 import { summarizeIntern } from '../src/utils/internAdmin.js';
 import { subscribeInternWorkspace } from '../src/services/internWorkspace.js';
+import { dopsFields, projectDopsRecords } from '../src/utils/dopsWorkflow.js';
 
 let env;
 const email = uid => `${uid}@example.test`;
@@ -103,6 +104,38 @@ test('只有管理員可以變更學員類型；學生不能升權，舊 PGY 帳
   await assertSucceeds(updateDoc(doc(adminDb, 'users', 'pgy1'), { trainingType: 'pgy', ...audit('admin1') }));
   const freshDb = context('newstudent').firestore();
   await assertFails(setDoc(doc(freshDb, 'users', 'newstudent'), { role: 'student', trainingType: 'intern', email: email('newstudent'), ...audit('newstudent') }));
+});
+
+test('DOPS 實際保存及學生回饋：本人可填，不能改分數、偽造評核連結或代填別人', async () => {
+  const teacherDb = context('teacher1').firestore();
+  const studentDb = context('intern2').firestore();
+  const formId = 'dops_chemo_ppe';
+  const formData = Object.fromEntries(dopsFields(formId).filter(field => !field.id.startsWith('feedback_student')).map(field => [field.id, field.type === 'yes_no' ? '符合' : field.type === 'score_10' ? 8 : '測試教師回饋']));
+  const assessment = await saveInternEntry(teacherDb, user('teacher1'), 'intern2', { kind: 'dops', targetId: formId, payload: { date: '2026-11-03', note: '', instanceId: 'NEW_integration', phase: 'teacher_graded', formData } });
+  const feedback = { kind: 'dopsFeedback', targetId: formId, payload: { date: '2026-11-03', note: '實作心得', improve: '練習順序', assessmentId: assessment.id, phase: 'completed' } };
+  await saveInternEntry(studentDb, user('intern2'), 'intern2', feedback);
+  const rows = projectDopsRecords(await readInternEntries(studentDb, 'intern2'), formId);
+  assert.equal(rows[0].status, 'completed');
+  assert.equal(rows[0].formData.sign_teacher_name, '測試帳號 teacher1');
+  assert.equal(rows[0].formData.sign_student_name, '測試帳號 intern2');
+  const path = collection(studentDb, 'intern_passports', 'intern2', 'entries');
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, payload: { ...feedback.payload, formData: { global_rating: 10 } } }, 'intern2')));
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, payload: { ...feedback.payload, assessmentId: 'missing' } }, 'intern2')));
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, targetId: 'dops_op_dispensing' }, 'intern2')));
+  await assertFails(addDoc(collection(context('intern1').firestore(), 'intern_passports', 'intern2', 'entries'), rawEntry('intern1', feedback, 'intern2')));
+  await assertFails(addDoc(collection(teacherDb, 'intern_passports', 'intern2', 'entries'), rawEntry('teacher1', feedback, 'intern2')));
+  const draft = await saveInternEntry(teacherDb, user('teacher1'), 'intern2', { kind: 'dops', targetId: formId, payload: { date: '2026-11-03', note: '', instanceId: 'NEW_draft', phase: 'draft', formData: {} } });
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, payload: { ...feedback.payload, assessmentId: draft.id } }, 'intern2')));
+});
+
+test('OSCE 新式回饋須對應同一實習生、同一站的實際評核', async () => {
+  const db = context('teacher1').firestore();
+  const assessment = await saveInternEntry(db, user('teacher1'), 'intern2', { kind: 'osce', targetId: 'dispensing', payload: { date: '2026-11-03', note: '評語', ratings: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5 }, overall: 9, status: 'pass', workflowVersion: 2, teacherFeedback: { attitude: [], skills: [], other: '評語' } } });
+  const feedback = { kind: 'osceFeedback', targetId: 'dispensing', payload: { date: '2026-11-03', note: '心得', improve: '加強', assessmentId: assessment.id } };
+  await saveInternEntry(context('intern2').firestore(), user('intern2'), 'intern2', feedback);
+  const path = collection(context('intern2').firestore(), 'intern_passports', 'intern2', 'entries');
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, targetId: 'phone' }, 'intern2')));
+  await assertFails(addDoc(path, rawEntry('intern2', { ...feedback, payload: { ...feedback.payload, overall: 10 } }, 'intern2')));
 });
 
 test('教師權限被撤銷後，即使沿用同一連線也無法新增評核', async () => {

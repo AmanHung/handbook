@@ -7,7 +7,10 @@ import {
   OSCE_TOPICS, OSCE_ITEMS, OSCE_FEEDBACK_OPTIONS, getOSCEResult 
 } from '../data/OSCE_Config';
 
-const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, targetRecordId, apiUrl }) => {
+const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, currentUserEmail, resolveTeacherEmail, targetRecordId, apiUrl, assessmentStore, configuration, revision }) => {
+  const topics = configuration?.topics || OSCE_TOPICS;
+  const scale = configuration?.scale || [5, 3, 1];
+  const feedbackOptions = configuration?.feedbackOptions || OSCE_FEEDBACK_OPTIONS;
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,13 +27,18 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
 
   // 學生回饋狀態
   const [feedbackData, setFeedbackData] = useState({ reflection: '', improve: '' });
+  const items = selectedTopic && configuration ? configuration.items(selectedTopic) : OSCE_ITEMS;
+  const maxScore = items.length * Math.max(...scale);
+  const topicRecords = records.filter(record => !record.topic_id || record.topic_id === selectedTopic?.id);
+  const resultFor = record => configuration?.manualResult
+    ? { label: record.result === 'pass' ? '通過' : '再加強', color: record.result === 'pass' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700' }
+    : getOSCEResult(record.total_score);
 
   const fetchRecords = async () => {
     if (!studentEmail) return;
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}?type=getOSCE&studentEmail=${studentEmail}`);
-      const data = await res.json();
+      const data = assessmentStore ? await assessmentStore.listOsce() : await (await fetch(`${apiUrl}?type=getOSCE&studentEmail=${studentEmail}`)).json();
       setRecords(data.records || []);
     } catch (e) {
       console.error("Fetch error:", e);
@@ -39,20 +47,22 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
     }
   };
 
-  useEffect(() => { fetchRecords(); }, [studentEmail]);
+  useEffect(() => { fetchRecords(); }, [studentEmail, revision]);
 
   useEffect(() => {
-    if (selectedTopic && records.length > 0 && !viewingRecordId && !isAdding) {
-      setViewingRecordId(records[0].record_id);
+    if (selectedTopic && topicRecords.length > 0 && !viewingRecordId && !isAdding) {
+      setViewingRecordId(topicRecords[0].record_id);
     }
   }, [selectedTopic, records]);
 
   useEffect(() => {
     if (!targetRecordId || !records.some(record => record.record_id === targetRecordId)) return;
-    setSelectedTopic(OSCE_TOPICS[0]);
+    setSelectedTopic(topics.find(topic => topic.id === records.find(record => record.record_id === targetRecordId)?.topic_id) || topics[0]);
     setViewingRecordId(targetRecordId);
     setIsAdding(false);
   }, [targetRecordId, records]);
+
+  useEffect(() => { setFeedbackData({ reflection: '', improve: '' }); }, [viewingRecordId]);
 
   // 計算總分
   const totalScore = Object.values(formData.scores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
@@ -68,8 +78,9 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
   };
 
   const handleSaveAssessment = async () => {
-    const allScoresFilled = OSCE_ITEMS.every(item => formData.scores[item.id] !== undefined);
-    if (!allScoresFilled) return alert('請完成所有(15項)評分項目！');
+    const allScoresFilled = items.every(item => scale.includes(formData.scores[item.id]));
+    if (!allScoresFilled) return alert(`請完成所有 ${items.length} 項評分項目！`);
+    if (configuration?.manualResult && (formData.overall === undefined || formData.overall === '' || Number(formData.overall) < 0 || Number(formData.overall) > 10 || !formData.result)) return alert('請完成整體評估及教師判定。');
 
     setIsSubmitting(true);
     const payload = {
@@ -81,17 +92,19 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
       date: formData.date,
       scores: formData.scores,
       total_score: totalScore,
-      teacher_feedback: formData.teacher_feedback
+      teacher_feedback: formData.teacher_feedback,
+      ...(assessmentStore ? { topic_id: selectedTopic.id, overall: formData.overall, result: formData.result } : {}),
     };
 
     try {
-      await fetch(apiUrl, { method: 'POST', body: JSON.stringify(payload) });
-      alert('OSCE 評估已儲存並寄信通知學員！');
+      if (assessmentStore) await assessmentStore.saveOsce(payload);
+      else await fetch(apiUrl, { method: 'POST', body: JSON.stringify(payload) });
+      alert(assessmentStore ? 'OSCE 評估已儲存，等待學員回饋。' : 'OSCE 評估已儲存並寄信通知學員！');
       setIsAdding(false);
       setFormData({ date: new Date().toISOString().split('T')[0], scores: {}, teacher_feedback: { attitude: [], skills: [], other: '' } });
       fetchRecords();
     } catch (e) {
-      alert('儲存失敗');
+      alert(e.message || '儲存失敗');
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +115,7 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
     setIsSubmitting(true);
     try {
       const record = records.find(item => item.record_id === recordId);
-      const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify({
+      const payload = {
         action: 'save_osce_feedback',
         record_id: recordId,
         teacher_email: resolveTeacherEmail?.(record?.teacher_name) || '',
@@ -114,16 +127,16 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
         assessment_result: record?.total_score ? `${record.total_score} / 75 分` : '',
         feedback_summary: feedbackData.reflection,
         student_feedback: feedbackData
-      }) });
-      const result = await response.json();
+      };
+      const result = assessmentStore ? await assessmentStore.saveOsceFeedback(payload) : await (await fetch(apiUrl, { method: 'POST', body: JSON.stringify(payload) })).json();
       if (result.status !== 'success') throw new Error(result.message || '送出失敗');
-      alert(result.email_sent
+      alert(assessmentStore ? '回饋已送出。' : result.email_sent
         ? '回饋已送出，並已通知原評核教師！'
         : result.email_message === 'send_failed'
           ? '回饋已送出，但教師 Email 通知寄送失敗，請稍後通知管理者。'
           : '回饋已送出，但舊評核紀錄沒有教師 Email，未能寄送通知。');
       fetchRecords();
-    } catch (e) { alert('送出失敗'); } finally { setIsSubmitting(false); }
+    } catch (e) { alert(e.message || '送出失敗'); } finally { setIsSubmitting(false); }
   };
 
   const currentRecord = records.find(r => r.record_id === viewingRecordId);
@@ -132,9 +145,9 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
   if (!selectedTopic) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
-        {OSCE_TOPICS.map(topic => {
+        {topics.map(topic => {
           // ★★★ 抓取最新一筆紀錄並取得結果標籤 ★★★
-          const latestRecord = records.length > 0 ? records[0] : null;
+          const latestRecord = records.find(record => !record.topic_id || record.topic_id === topic.id);
 
           return (
             <button 
@@ -149,8 +162,8 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                 {/* ★★★ 顯示最新分數與結果 ★★★ */}
                 {latestRecord ? (
                   <div className="flex flex-col items-end">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${getOSCEResult(latestRecord.total_score).color}`}>
-                      最新: {latestRecord.total_score} 分 ({getOSCEResult(latestRecord.total_score).label})
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${resultFor(latestRecord).color}`}>
+                      最新: {latestRecord.total_score} 分 ({resultFor(latestRecord).label})
                     </span>
                     <span className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
                       <Calendar className="w-3 h-3"/> {latestRecord.date}
@@ -195,8 +208,8 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
             <History className="w-4 h-4"/> 評估紀錄
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {records.length === 0 ? <div className="text-center py-8 text-gray-400 text-sm">尚無紀錄</div> : 
-              records.map(record => (
+            {topicRecords.length === 0 ? <div className="text-center py-8 text-gray-400 text-sm">尚無紀錄</div> :
+              topicRecords.map(record => (
                 <button
                   key={record.record_id}
                   onClick={() => { setViewingRecordId(record.record_id); setIsAdding(false); }}
@@ -234,19 +247,17 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                     <thead className="bg-yellow-50 text-yellow-800 border-b">
                       <tr>
                         <th className="p-3 w-[60%]">評分項目(觀察重點)</th>
-                        <th className="p-3 text-center">優良(5)</th>
-                        <th className="p-3 text-center">普通(3)</th>
-                        <th className="p-3 text-center">差(1)</th>
+                        {scale.map(value => <th key={value} className="p-3 text-center">{configuration ? `${value} 分` : ({ 5: '優良(5)', 3: '普通(3)', 1: '差(1)' })[value]}</th>)}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {OSCE_ITEMS.map(item => (
+                      {items.map(item => (
                         <tr key={item.id} className="hover:bg-gray-50">
                           <td className="p-3 text-gray-800 font-medium">{item.label}</td>
-                          {[5, 3, 1].map(val => (
+                          {scale.map(val => (
                             <td key={val} className="p-3 text-center">
                               <input 
-                                type="radio" name={`osce_${item.id}`} className="w-5 h-5 text-yellow-600 cursor-pointer"
+                                type="radio" aria-label={`${item.label}：${val} 分`} name={`osce_${item.id}`} className="w-5 h-5 text-yellow-600 cursor-pointer"
                                 checked={formData.scores[item.id] === val}
                                 onChange={() => setFormData({...formData, scores: {...formData.scores, [item.id]: val}})}
                               />
@@ -258,12 +269,13 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                   </table>
                 </div>
 
+                {configuration?.manualResult && <div className="grid gap-4 sm:grid-cols-2"><label>整體評估（0–10 分）<input type="number" min="0" max="10" value={formData.overall ?? ''} onChange={e => setFormData({ ...formData, overall: e.target.value })} className="border rounded p-2 w-full" /></label><label>教師判定<select value={formData.result || ''} onChange={e => setFormData({ ...formData, result: e.target.value })} className="border rounded p-2 w-full"><option value="">請選擇</option><option value="pass">通過</option><option value="reinforce">再加強</option></select></label><p className="text-sm text-gray-500 sm:col-span-2">依實習訓練計畫評分，未另設數值及格門檻。</p></div>}
                 <div className="space-y-4 bg-blue-50 p-5 rounded-lg border border-blue-100">
                   <h3 className="font-bold text-blue-800">綜合意見回饋</h3>
                   <div>
                     <label className="block text-sm font-bold text-blue-700 mb-2">態度表現：</label>
                     <div className="flex flex-wrap gap-2">
-                      {OSCE_FEEDBACK_OPTIONS.attitude.map(opt => (
+                      {feedbackOptions.attitude.map(opt => (
                         <label key={opt} className="flex items-center gap-1.5 text-sm bg-white px-3 py-1.5 rounded border border-blue-200 cursor-pointer hover:bg-blue-100">
                           <input type="checkbox" checked={formData.teacher_feedback.attitude.includes(opt)} onChange={() => handleCheckboxChange('attitude', opt)} className="text-blue-600 rounded"/> {opt}
                         </label>
@@ -273,7 +285,7 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                   <div>
                     <label className="block text-sm font-bold text-blue-700 mb-2">技巧：</label>
                     <div className="flex flex-wrap gap-2">
-                      {OSCE_FEEDBACK_OPTIONS.skills.map(opt => (
+                      {feedbackOptions.skills.map(opt => (
                         <label key={opt} className="flex items-center gap-1.5 text-sm bg-white px-3 py-1.5 rounded border border-blue-200 cursor-pointer hover:bg-blue-100">
                           <input type="checkbox" checked={formData.teacher_feedback.skills.includes(opt)} onChange={() => handleCheckboxChange('skills', opt)} className="text-blue-600 rounded"/> {opt}
                         </label>
@@ -302,18 +314,19 @@ const OSCEAssessment = ({ studentEmail, studentName, isTeacher, userProfile, cur
                     <p className="text-sm text-gray-500 mt-1">評估教師：{currentRecord.teacher_name}</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-gray-800 mb-1">{currentRecord.total_score} <span className="text-sm font-normal text-gray-500">/ 75 分</span></div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getOSCEResult(currentRecord.total_score).color}`}>
-                      {getOSCEResult(currentRecord.total_score).label}
+                    <div className="text-3xl font-bold text-gray-800 mb-1">{currentRecord.total_score} <span className="text-sm font-normal text-gray-500">/ {maxScore} 分</span></div>
+                    {configuration?.manualResult && <p className="text-sm">整體評估：{currentRecord.overall}／10</p>}
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${resultFor(currentRecord).color}`}>
+                      {resultFor(currentRecord).label}
                     </span>
                   </div>
                 </div>
 
                 <div className="space-y-1">
                   <h4 className="font-bold text-gray-700 text-sm mb-2">評分明細：</h4>
-                  {OSCE_ITEMS.map(item => (
+                  {items.map(item => (
                     <div key={item.id} className="flex justify-between items-center text-sm p-2 hover:bg-gray-50 rounded border-b border-gray-50">
-                      <span className="text-gray-600 w-[80%] truncate">{item.label}</span>
+                      <span className="text-gray-600 w-[80%]">{item.label}</span>
                       <span className="font-bold text-gray-800 bg-yellow-50 px-3 py-1 rounded">{currentRecord.scores[item.id] || 0} 分</span>
                     </div>
                   ))}

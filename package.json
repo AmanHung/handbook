@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "test:passport": "node --test tests/internPassport.test.mjs tests/learnerIdentity.test.mjs tests/pgyTrainingStore.test.mjs tests/videoLibrary.test.mjs tests/siteNavigation.test.mjs tests/pgyPreviewFixture.test.mjs tests/internAdmin.test.mjs tests/sessionBoundary.test.mjs",
+    "test:passport": "node --test tests/internAssessments.test.mjs tests/internPassport.test.mjs tests/learnerIdentity.test.mjs tests/pgyTrainingStore.test.mjs tests/videoLibrary.test.mjs tests/siteNavigation.test.mjs tests/pgyPreviewFixture.test.mjs tests/internAdmin.test.mjs tests/sessionBoundary.test.mjs",
     "test:passport:integration": "node scripts/run-passport-integration.mjs"
   },
   "dependencies": {

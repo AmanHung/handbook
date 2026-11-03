@@ -2,9 +2,10 @@ import {
   INTERN_ALL_ITEMS, INTERN_DOMAINS, INTERN_OSCE_STATIONS, SAFETY_ITEMS, PPE_ITEMS,
   FEEDBACK_FORMS, DELIVERABLES, SCORE_DEPARTMENTS, SCORE_DIMENSIONS, numericScore,
 } from '../data/internPassport.js';
+import { dopsFields } from './dopsWorkflow.js';
 
-export const STUDENT_ENTRY_KINDS = ['deliverable', 'feedback', 'osceFeedback'];
-export const TEACHER_ENTRY_KINDS = ['training', 'rotation', 'exam', 'osce', 'safety', 'review', 'care', 'final', 'signoff'];
+export const STUDENT_ENTRY_KINDS = ['deliverable', 'feedback', 'osceFeedback', 'dopsFeedback'];
+export const TEACHER_ENTRY_KINDS = ['training', 'rotation', 'exam', 'osce', 'dops', 'safety', 'review', 'care', 'final', 'signoff'];
 const validDate = value => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
   const parsed = new Date(`${value}T12:00:00Z`);
@@ -38,6 +39,27 @@ export function validateInternEntry(kind, targetId, input, isTeacher) {
   if (kind === 'osce') {
     const station = INTERN_OSCE_STATIONS.find(item => item.id === targetId);
     if (!station || !hasRating(payload.ratings, station.items.length, [1, 2, 3, 4, 5]) || !numericScore(payload.overall, 10)) throw new Error('請完成所有 OSCE 項目及整體評分。');
+    if (payload.workflowVersion) {
+      if (payload.workflowVersion !== 2 || !payload.teacherFeedback || !Array.isArray(payload.teacherFeedback.attitude) || !Array.isArray(payload.teacherFeedback.skills) || typeof payload.teacherFeedback.other !== 'string') throw new Error('教師回饋格式不正確。');
+    }
+  }
+  if (kind === 'dops') {
+    const fields = dopsFields(targetId).filter(field => !field.id.startsWith('feedback_student'));
+    if (!fields.length || !['draft', 'teacher_graded'].includes(payload.phase) || !/^[a-zA-Z0-9_-]{1,100}$/.test(payload.instanceId || '') || !payload.formData || typeof payload.formData !== 'object') throw new Error('DOPS 評核格式不正確。');
+    if (Object.keys(payload.formData).some(id => !fields.some(field => field.id === id))) throw new Error('教師評核不能代填學員回饋或簽名。');
+    fields.forEach(field => {
+      const value = payload.formData[field.id];
+      if ((value === undefined || value === '') && (payload.phase === 'draft' || field.type === 'textarea')) return;
+      const valid = field.type === 'textarea' ? typeof value === 'string' && value.length <= 12000
+        : field.type === 'yes_no' ? ['符合', '不符合'].includes(value)
+        : field.type === 'score_5' ? ['1', '2', '3', '4', '5', 'N/A'].includes(String(value))
+        : numericScore(value, 10) && Number(value) >= 1 && Number.isInteger(Number(value));
+      if (!valid) throw new Error(`請完成有效的 DOPS 評分：${field.label}`);
+    });
+  }
+  if (kind === 'dopsFeedback' || kind === 'osceFeedback' && payload.assessmentId) {
+    if (!/^[a-zA-Z0-9_-]{1,150}$/.test(payload.assessmentId || '') || typeof payload.improve !== 'string' || payload.improve.length > 12000) throw new Error('請確認回饋對應的評核紀錄。');
+    if (kind === 'dopsFeedback' && (!dopsFields(targetId).length || !['draft', 'completed'].includes(payload.phase) || payload.phase === 'completed' && !payload.note?.trim())) throw new Error('請完成 DOPS 學員心得。');
   }
   if (kind === 'safety') {
     const item = SAFETY_ITEMS.find(candidate => candidate.id === targetId);
@@ -81,9 +103,10 @@ export function validateInternEntry(kind, targetId, input, isTeacher) {
   }
   const fields = {
     learning: [], training: ['status'], rotation: ['startDate', 'endDate', 'teacher'],
-    exam: ['title', 'mode', 'score', 'result', 'status'], osce: ['ratings', 'overall', 'status'],
+    exam: ['title', 'mode', 'score', 'result', 'status'], osce: ['ratings', 'overall', 'status', 'workflowVersion', 'teacherFeedback'],
+    dops: ['instanceId', 'phase', 'formData'], dopsFeedback: ['assessmentId', 'phase', 'improve'],
     safety: ['score', 'ratings', 'status'], deliverable: ['url'], review: ['status', 'submissionId'],
-    feedback: ['teacher', 'ratings'], osceFeedback: [], care: ['progress', 'attitude'],
+    feedback: ['teacher', 'ratings'], osceFeedback: ['assessmentId', 'improve'], care: ['progress', 'attitude'],
     final: ['scores', 'literature', 'topic'], signoff: [],
   };
   return Object.fromEntries(['date', 'note', ...fields[kind]].filter(key => payload[key] !== undefined).map(key => [key, payload[key]]));

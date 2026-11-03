@@ -26,6 +26,11 @@ export async function saveInternEntry(db, authenticatedUser, studentUid, entry) 
   if (!isTeacher && (authenticatedUser.uid !== studentUid || getLearnerTrack(actor) !== 'intern')) throw new Error('只能填寫自己的實習紀錄。');
   if (entry.kind === 'signoff' && actor.role !== 'admin') throw new Error('結訓確認須由教學負責人執行。');
   const payload = validateInternEntry(entry.kind, entry.targetId, entry.payload, isTeacher);
+  if (['osceFeedback', 'dopsFeedback'].includes(entry.kind) && payload.assessmentId) {
+    const assessment = await getDocFromServer(doc(entriesRef(db, studentUid), payload.assessmentId));
+    const expectedKind = entry.kind === 'dopsFeedback' ? 'dops' : 'osce';
+    if (!assessment.exists() || assessment.data().kind !== expectedKind || assessment.data().targetId !== entry.targetId || expectedKind === 'dops' && assessment.data().payload.phase !== 'teacher_graded') throw new Error('回饋必須對應已送出的本人評核紀錄。');
+  }
   if (entry.kind === 'signoff') {
     const entries = await readInternEntries(db, studentUid);
     if (!getCompletionChecks(getLatestEntries(entries)).every(check => check.done)) throw new Error('結訓檢核尚未全部完成，請重新載入確認。');
