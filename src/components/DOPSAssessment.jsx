@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { DOPS_FORMS } from '../data/dopsForms';
+import { dopsOutcome } from '../utils/dopsWorkflow';
 import { 
   Save, CheckCircle, Loader2, Lock, Unlock, ArrowLeft, User, CheckCircle2, 
   FileText, Check, X as XIcon, AlertCircle, Clock, ChevronRight, Plus, Calendar,
   Star, AlertTriangle, RotateCcw
 } from 'lucide-react';
 
-const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, targetFormId, targetRecordId, gasApiUrl }) => {
+const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, targetFormId, targetRecordId, gasApiUrl, assessmentStore, revision }) => {
   const [view, setView] = useState('menu'); 
   const [selectedFormId, setSelectedFormId] = useState(null);
   
@@ -50,13 +51,13 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     if (view === 'menu' && studentEmail) {
       loadDashboardSummary();
     }
-  }, [view, studentEmail]);
+  }, [view, studentEmail, revision]);
 
   useEffect(() => {
     if (view === 'form' && selectedFormId && studentEmail) {
       loadRecordsList();
     }
-  }, [view, selectedFormId, studentEmail]);
+  }, [view, selectedFormId, studentEmail, revision]);
 
   useEffect(() => {
     if (currentInstanceId && recordsList.length > 0) {
@@ -91,8 +92,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     setMenuLoading(true);
     try {
       const promises = DOPS_FORMS.map(form => 
-        fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${form.id}`)
-          .then(res => res.json())
+        (assessmentStore ? assessmentStore.listDops(form.id) : fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${form.id}`).then(res => res.json()))
           .then(data => {
             const list = data.records || [];
             if (list.length > 0) {
@@ -122,8 +122,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const loadRecordsList = async () => {
     setListLoading(true);
     try {
-      const response = await fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${selectedFormId}`);
-      const data = await response.json();
+      const data = assessmentStore ? await assessmentStore.listDops(selectedFormId) : await (await fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${selectedFormId}`)).json();
       const list = data.records || [];
       
       setRecordsList(list);
@@ -176,7 +175,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     };
 
     // 教師評分完成
-    if (newStatus === 'teacher_graded') {
+    if (newStatus === 'teacher_graded' && (isTeacher || isAdmin)) {
       if (!finalFormData.global_rating) {
         alert("請填寫整體評估分數！");
         setSaving(false); return;
@@ -211,10 +210,16 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       }
     }
 
+    if (assessmentStore && newStatus === 'completed') {
+      const outcome = dopsOutcome(selectedFormId, finalFormData);
+      targetStatus = outcome.status;
+      alertMessage = outcome.hint;
+    }
+
     const payload = {
       type: 'saveDOPS',
       dopsId: selectedFormId,
-      instanceId: currentInstanceId.startsWith('NEW_') ? null : currentInstanceId, 
+      instanceId: assessmentStore ? currentInstanceId : currentInstanceId.startsWith('NEW_') ? null : currentInstanceId,
       studentEmail,
       studentName,
       formData: finalFormData,
@@ -233,15 +238,16 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
     };
 
     try {
-      const response = await fetch(gasApiUrl, {
+      const result = assessmentStore ? await assessmentStore.saveDops(payload) : await (await fetch(gasApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      });
-      const result = await response.json();
+      })).json();
       if (result.status !== 'success') throw new Error(result.message || '儲存失敗');
       
-      if (newStatus === 'completed') {
+      if (assessmentStore && newStatus === 'completed') {
+        alert(`${alertMessage}\n學員回饋已儲存。`);
+      } else if (newStatus === 'completed') {
         alert(result.email_sent
           ? `${alertMessage}\n\n已通知原評核教師。`
           : result.email_message === 'send_failed'
@@ -254,7 +260,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       await loadRecordsList(); 
 
     } catch (error) {
-      alert("儲存失敗，請檢查網路");
+      alert(error.message || '儲存失敗，請檢查網路');
     }
     setSaving(false);
   };
@@ -333,6 +339,10 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
 
   const RenderResultBlock = () => {
     const score = parseInt(formData.global_rating || 0, 10);
+    if (assessmentStore) {
+      const outcome = dopsOutcome(selectedFormId, formData);
+      return <div className={`p-4 rounded-lg border text-sm font-bold ${outcome.status === 'completed' ? 'bg-green-50 text-green-800' : 'bg-orange-50 text-orange-800'}`}>{outcome.hint}</div>;
+    }
     
     if (score >= 8) {
       return (
@@ -513,7 +523,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
                     <div className="flex gap-4">
                       {/* 顯示教師選定的日期 (formData.evaluation_date) */}
                       <span>教師評估：{formData.sign_teacher_name} ({formData.evaluation_date})</span>
-                      <span>學生回饋：{formData.sign_student_name} ({formData.evaluation_date})</span>
+                      <span>學生回饋：{formData.sign_student_name} ({formData.sign_student_date || formData.evaluation_date})</span>
                     </div>
                     {status === 'completed' && <span className="text-green-600 font-bold flex items-center gap-1"><Lock className="w-4 h-4"/> 已結案</span>}
                   </div>

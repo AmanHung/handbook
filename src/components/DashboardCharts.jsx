@@ -126,7 +126,7 @@ const StatusBadge = ({ status }) => (
   </span>
 );
 
-const MetricCard = ({ icon: Icon, label, value, suffix, detail, color }) => (
+export const MetricCard = ({ icon: Icon, label, value, suffix, detail, color }) => (
   <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm min-w-0">
     <div className="flex items-center gap-2 text-sm font-bold text-gray-600">
       <span className={`p-2 rounded-lg ${color}`}>{React.createElement(Icon, { className: 'w-4 h-4' })}</span>
@@ -158,7 +158,7 @@ const AssessmentChartTooltip = ({ active, payload, type }) => {
   const item = payload[0].payload;
   const displayValue = type === 'epa'
     ? item.value > 0 ? `Level ${EPA_LEVEL_LABELS[item.value]}` : '尚未評核'
-    : item.value > 0 ? `${item.value} / 10 分` : '尚未評核';
+    : item.evaluated ? `${item.value} / 10 分` : '尚未評核';
 
   return (
     <div className="max-w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
@@ -173,12 +173,13 @@ const AssessmentChartTooltip = ({ active, payload, type }) => {
   );
 };
 
-const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
+export const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type, threshold = 8 }) => {
   const isEPA = type === 'epa';
+  const prefix = type === 'osce' ? 'OSCE' : isEPA ? 'EPA' : 'DOPS';
   const chartData = rows.map((row, index) => ({
     ...row,
-    label: `${isEPA ? 'EPA' : 'DOPS'} ${index + 1}`,
-    axisLabel: `${isEPA ? 'EPA' : 'DOPS'}${index + 1}`,
+    label: `${prefix} ${index + 1}`,
+    axisLabel: `${prefix}${index + 1}`,
     value: row.value || 0
   }));
   const achievedCount = rows.filter(row => row.passed).length;
@@ -229,12 +230,12 @@ const AssessmentBIChart = ({ title, subtitle, icon: Icon, rows, type }) => {
                 tick={{ fontSize: 10, fill: '#64748B', fontWeight: 700 }}
               />
               <Tooltip content={<AssessmentChartTooltip type={type} />} cursor={{ fill: '#F8FAFC' }} />
-              <ReferenceLine
+              {threshold !== null && <ReferenceLine
                 y={isEPA ? 6 : 8}
                 stroke="#DC2626"
                 strokeDasharray="5 4"
                 label={{ value: isEPA ? 'Level 4 達標' : '8 分達標', fill: '#DC2626', fontSize: 10, fontWeight: 700, position: 'insideTopRight' }}
-              />
+              />}
               <Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={42}>
                 {chartData.map(item => <Cell key={item.id} fill={STATUS_CHART_COLORS[item.status]} />)}
                 <LabelList dataKey="value" position="top" formatter={value => value > 0 ? isEPA ? EPA_LEVEL_LABELS[value] : value : ''} style={{ fill: '#334155', fontSize: 10, fontWeight: 800 }} />

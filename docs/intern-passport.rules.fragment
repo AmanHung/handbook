@@ -51,14 +51,31 @@ match /intern_passports/{studentUid}/entries/{entryId} {
               && data.payload.ratings.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9']))))
       || (data.kind == 'osceFeedback'
         && data.targetId in ['phone', 'dispensing', 'face_to_face', 'unit_dose']
-        && data.payload.keys().hasOnly(['date', 'note']) && data.payload.note.size() > 0);
+        && data.payload.note.size() > 0
+        && (data.payload.keys().hasOnly(['date', 'note'])
+          || (data.payload.keys().hasOnly(['date', 'note', 'assessmentId', 'improve'])
+            && validAssessmentReference('osce') && data.payload.improve is string && data.payload.improve.size() <= 12000)))
+      || (data.kind == 'dopsFeedback'
+        && data.payload.keys().hasAll(['date', 'note', 'assessmentId', 'improve', 'phase'])
+        && data.payload.keys().hasOnly(['date', 'note', 'assessmentId', 'improve', 'phase'])
+        && data.payload.phase in ['draft', 'completed']
+        && (data.payload.phase == 'draft' || data.payload.note.size() > 0)
+        && data.payload.improve is string && data.payload.improve.size() <= 12000
+        && validAssessmentReference('dops'));
+  }
+  function validAssessmentReference(kind) {
+    let data = request.resource.data;
+    let assessment = get(/databases/$(database)/documents/intern_passports/$(studentUid)/entries/$(data.payload.assessmentId)).data;
+    return data.payload.assessmentId is string
+      && assessment.kind == kind && assessment.targetId == data.targetId
+      && (kind == 'osce' || assessment.payload.phase == 'teacher_graded');
   }
   // 學生僅能讀自己的紀錄；教師與管理者可讀教學紀錄。
   allow read: if internStaff() || (isGoogleUser() && request.auth.uid == studentUid);
   // 每次儲存新增一筆，沒有 update/delete，保留完整評核與重測歷程。
   allow create: if validInternEnvelope() && (
     (internOwner() && validStudentPayload())
-    || (internStaff() && request.resource.data.kind in ['training', 'rotation', 'exam', 'osce', 'safety', 'review', 'care', 'final'])
+    || (internStaff() && request.resource.data.kind in ['training', 'rotation', 'exam', 'osce', 'dops', 'safety', 'review', 'care', 'final'])
     || (isAdmin() && request.resource.data.kind == 'signoff' && request.resource.data.targetId == 'overall')
   );
   allow update, delete: if false;

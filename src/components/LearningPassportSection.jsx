@@ -53,7 +53,7 @@ function InternRecords({ student, user, userRole, listLoading, listError }) {
     if (!confirmed) throw new Error('目前尚未確認最新紀錄，請等候連線恢復後再儲存。');
     if (!auth.currentUser || auth.currentUser.uid !== user.uid || !student?.id) throw new Error('登入身分已變更，請重新整理後再試。');
     try {
-      await saveInternEntry(db, auth.currentUser, student.id, { kind, targetId, payload });
+      return await saveInternEntry(db, auth.currentUser, student.id, { kind, targetId, payload });
     } catch (failure) { throw new Error(failure.code === 'permission-denied' ? '無法儲存，請確認學員身分及資料庫權限。表單內容仍保留。' : failure.message || '儲存未完成，請稍後重試。'); }
   };
   return <InternPassport currentUserName={user.displayName || user.email} student={student ? { ...student, viewerRole: userRole } : null} entries={entries} isTeacher={isTeacher} isSelf={!isTeacher && user.uid === student?.id} onSave={saveEntry} loading={listLoading || loading} error={listError || error || (hasLoaded && !confirmed ? '目前無法確認最新紀錄，正在重新連線；連線恢復後即可填寫。' : '')} />;
