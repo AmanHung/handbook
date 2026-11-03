@@ -1,5 +1,5 @@
 import { INTERN_OSCE_STATIONS, getLatestEntries, INTERN_DOMAINS } from '../data/internPassport.js';
-import { DOPS_FORMS } from '../data/dopsForms.js';
+import { INTERN_DOPS_FORMS } from '../data/internDopsForms.js';
 import { projectDopsRecords, matchingAssessmentFeedback, dopsOutcome } from './dopsWorkflow.js';
 
 export function buildInternAssessmentRows(entries) {
@@ -14,8 +14,7 @@ export function buildInternAssessmentRows(entries) {
       recordId: record?.id, assessment: 'osce',
     };
   });
-  // PPE 為必修，其餘 DOPS 依教師實際安排納入，避免將全部表單誤列為必修。
-  const dops = DOPS_FORMS.filter(form => form.id === 'dops_chemo_ppe' || entries.some(entry => entry.kind === 'dops' && entry.targetId === form.id)).map(form => {
+  const dops = INTERN_DOPS_FORMS.map(form => {
     const records = projectDopsRecords(entries, form.id);
     const record = records[0];
     const graded = record && record.status !== 'draft';

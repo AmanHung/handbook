@@ -84,6 +84,7 @@ export const FEEDBACK_FORMS = [
 ];
 
 import { projectDopsRecords, matchingAssessmentFeedback, sortAssessments } from '../utils/dopsWorkflow.js';
+import { INTERN_DOPS_FORMS } from './internDopsForms.js';
 
 export const getLatestEntries = entries => [...entries].sort((a, b) => {
   const millis = entry => entry.createdAt?.toMillis?.() ?? ((entry.createdAt?.seconds || 0) * 1000);
@@ -116,7 +117,7 @@ export const getCompletionChecks = latest => [
   { id: 'retests', title: '已安排之測驗與增列課程無待加強項目', done: !Object.values(latest).some(entry => entry.payload.status === 'reinforce') },
   ...INTERN_OSCE_STATIONS.map(station => ({ id: station.id, title: `OSCE：${station.title}`, done: latest[`osce:${station.id}`]?.payload.status === 'pass' })),
   ...SAFETY_ITEMS.map(item => ({ id: item.id, title: item.title, done: getSafetyRecord(latest, item.id)?.payload.status === 'pass' })),
-  { id: 'dops', title: '已安排的 DOPS 完成學員回饋並通過', done: [...new Set(Object.values(latest).filter(entry => entry.kind === 'dops').map(entry => entry.targetId))].every(id => projectDopsRecords(Object.values(latest), id)[0]?.status === 'completed') },
+  { id: 'dops', title: '訓練計畫 DOPS 完成學員回饋並通過', done: INTERN_DOPS_FORMS.every(form => { const record = projectDopsRecords(Object.values(latest), form.id)[0]; return !record || record.status === 'completed'; }) },
   ...DELIVERABLES.map(item => ({ id: item.id, title: item.title, done: latest[`review:${item.id}`]?.payload.status === 'pass' && Boolean(latest[`deliverable:${item.id}`]) && latest[`review:${item.id}`]?.payload.submissionId === latest[`deliverable:${item.id}`]?.id })),
   ...FEEDBACK_FORMS.map(form => ({ id: form.id, title: form.title, done: Boolean(latest[`feedback:${form.id}`]) })),
   ...INTERN_OSCE_STATIONS.map(station => ({ id: `feedback_${station.id}`, title: `OSCE 雙向回饋：${station.title}`, done: Boolean(matchingAssessmentFeedback(latest[`osce:${station.id}`], Object.values(latest), 'osceFeedback')) })),

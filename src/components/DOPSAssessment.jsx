@@ -7,7 +7,7 @@ import {
   Star, AlertTriangle, RotateCcw
 } from 'lucide-react';
 
-const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, targetFormId, targetRecordId, gasApiUrl, assessmentStore, revision }) => {
+const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail, currentUserName, resolveTeacherEmail, targetFormId, targetRecordId, gasApiUrl, assessmentStore, revision, forms = DOPS_FORMS }) => {
   const [view, setView] = useState('menu'); 
   const [selectedFormId, setSelectedFormId] = useState(null);
   
@@ -34,7 +34,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const isTeacher = userRole === 'teacher'; 
   const isStudent = userRole === 'student'; 
 
-  const currentFormConfig = DOPS_FORMS.find(f => f.id === selectedFormId);
+  const currentFormConfig = forms.find(f => f.id === selectedFormId);
 
   const canEditScores = (isTeacher || isAdmin) && status === 'draft';
   const canEditStudentFeedback = isStudent && status === 'teacher_graded';
@@ -42,10 +42,10 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const isGlobalReadOnly = status === 'completed' || status === 'needs_improvement';
 
   useEffect(() => {
-    if (!targetFormId || !DOPS_FORMS.some(form => form.id === targetFormId)) return;
+    if (!targetFormId || !forms.some(form => form.id === targetFormId)) return;
     setSelectedFormId(targetFormId);
     setView('form');
-  }, [targetFormId]);
+  }, [targetFormId, forms]);
 
   useEffect(() => {
     if (view === 'menu' && studentEmail) {
@@ -91,7 +91,7 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
   const loadDashboardSummary = async () => {
     setMenuLoading(true);
     try {
-      const promises = DOPS_FORMS.map(form => 
+      const promises = forms.map(form =>
         (assessmentStore ? assessmentStore.listDops(form.id) : fetch(`${gasApiUrl}?type=getDOPSList&studentEmail=${studentEmail}&dopsId=${form.id}`).then(res => res.json()))
           .then(data => {
             const list = data.records || [];
@@ -388,14 +388,14 @@ const DOPSAssessment = ({ studentEmail, studentName, userRole, currentUserEmail,
       <div className="animate-in fade-in">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2"><CheckCircle2 className="w-6 h-6 text-indigo-600" /> DOPS 評估項目</h3>
-          <div className="text-xs text-gray-500">共 {DOPS_FORMS.length} 項</div>
+          <div className="text-xs text-gray-500">共 {forms.length} 項</div>
         </div>
         
         {menuLoading ? (
           <div className="py-12 text-center text-gray-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>讀取進度中...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {DOPS_FORMS.map(form => {
+            {forms.map(form => {
               const summary = dashboardSummary[form.id] || { status: 'draft', score: null, updatedAt: null };
               return (
                 <button key={form.id} onClick={() => { setSelectedFormId(form.id); setView('form'); }} className="flex flex-col text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-indigo-400 transition-all group relative overflow-hidden">
