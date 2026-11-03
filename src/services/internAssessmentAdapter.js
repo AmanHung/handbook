@@ -4,7 +4,7 @@ import { validateInternEntry } from '../utils/internPassportValidation.js';
 import { isInternDopsForm } from '../data/internDopsForms.js';
 
 export const INTERN_OSCE_CONFIG = {
-  topics: INTERN_OSCE_STATIONS.map(station => ({ ...station, description: `${station.source}・逐項 1–5 分，整體 0–10 分；由教師判定結果。` })),
+  topics: INTERN_OSCE_STATIONS,
   items: topic => topic.items.map((label, index) => ({ id: `item_${index}`, label })),
   scale: [5, 4, 3, 2, 1], manualResult: true,
   feedbackOptions: {
