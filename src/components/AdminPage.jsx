@@ -10,8 +10,11 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
+import { getLearnerTrack, getLearnerLabel, getLearnerProfileFields } from '../utils/learnerIdentity';
 import AdminUploader from './AdminUploader.jsx';
-import DashboardCharts from './DashboardCharts.jsx'; 
+import DashboardCharts from './DashboardCharts.jsx';
+import InternAdminDashboard from './InternAdminDashboard';
+import PassportTrackSelector from './PassportTrackSelector';
 import TrainingSopLinkManager from './TrainingSopLinkManager.jsx';
 import { getEditorAuditFields } from '../utils/editorIdentity.js';
 import { 
@@ -25,19 +28,23 @@ const SUPER_ADMIN_EMAILS = [
 
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec"; 
 
-const AdminPage = ({ user, userRole }) => {
+const AdminPage = ({ user, userRole, previewFixture }) => {
+  const preview = import.meta.env.DEV ? previewFixture : null;
+  const [dashboardTrack, setDashboardTrack] = useState(preview?.initialTrack === 'intern' || new URLSearchParams(window.location.search).get('passportTrack') === 'intern' ? 'intern' : 'pgy');
   const canManageRoles = userRole === 'admin' || SUPER_ADMIN_EMAILS.includes(user?.email);
   const [activeTab, setActiveTab] = useState('dashboard'); 
   
   const [sops, setSops] = useState([]);
   const [videos, setVideos] = useState([]);
   const [usersList, setUsersList] = useState([]); 
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState('');
   const [settings, setSettings] = useState({ quickKeywords: [], categories: [] });
   
   const [editingItem, setEditingItem] = useState(null); 
   
   const [editingUser, setEditingUser] = useState(null); 
-  const [userForm, setUserForm] = useState({ displayName: '', arrivalDate: '', role: 'student' });
+  const [userForm, setUserForm] = useState({ displayName: '', arrivalDate: '', role: 'student', trainingType: 'pgy', school: '', internshipCohort: '', internshipEndDate: '' });
 
   const [newKeyword, setNewKeyword] = useState('');
   const [newCategory, setNewCategory] = useState('');
@@ -51,22 +58,25 @@ const AdminPage = ({ user, userRole }) => {
   const [selectedStudentEmail, setSelectedStudentEmail] = useState('');
 
   useEffect(() => {
+    if (preview) { setSops(preview.sops); return; }
     const unsubscribe = onSnapshot(collection(db, 'sop_articles'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       setSops(list);
     });
     return () => unsubscribe();
-  }, []);
+  }, [preview?.sops]);
 
   useEffect(() => {
+    if (preview) { setVideos(preview.videos); return; }
     const unsubscribe = onSnapshot(collection(db, 'training_videos'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       setVideos(list);
     });
     return () => unsubscribe();
-  }, []);
+  }, [preview?.videos]);
 
   useEffect(() => {
+    if (preview) { setSettings(preview.settings); return; }
     const docRef = doc(db, 'site_settings', 'sop_config');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -76,24 +86,27 @@ const AdminPage = ({ user, userRole }) => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [preview?.settings]);
 
   useEffect(() => {
+    if (preview) { setUsersList(preview.users); setUsersLoading(false); setUsersError(''); const pgys = preview.users.filter(profile => getLearnerTrack(profile) === 'pgy'); setSelectedStudentEmail(current => pgys.some(profile => profile.email === current) ? current : pgys[0]?.email || ''); return; }
+    setUsersLoading(true); setUsersError('');
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       setUsersList(list);
+      setUsersLoading(false); setUsersError('');
       
-      const students = list.filter(u => u.role === 'student');
-      if (students.length > 0 && !selectedStudentEmail) {
-        setSelectedStudentEmail(students[0].email);
-      }
-    });
+      const students = list.filter(u => getLearnerTrack(u) === 'pgy');
+      setSelectedStudentEmail(current => students.some(student => student.email === current) ? current : students[0]?.email || '');
+    }, () => { setUsersList([]); setUsersLoading(false); setUsersError('無法讀取學員名單，請確認登入權限與網路後重新整理。'); });
     return () => unsubscribe();
-  }, [selectedStudentEmail]);
+  }, [preview?.users]);
 
   useEffect(() => {
+    if (activeTab !== 'dashboard' || dashboardTrack !== 'pgy') return undefined;
+    if (preview) { setDashboardData(preview.pgyDashboard); setDashboardUpdatedAt(new Date()); setDashboardError(''); setLoadingDashboard(false); return; }
     const requestTarget = dashboardView === 'overall' ? 'ALL' : selectedStudentEmail;
-    if (!requestTarget) return undefined;
+    if (!requestTarget) { setDashboardData(null); setDashboardError('目前沒有可檢視的 PGY 學員，實習生請切換至實習生護照。'); setLoadingDashboard(false); return undefined; }
 
     const controller = new AbortController();
     const fetchDashboardData = async () => {
@@ -118,9 +131,10 @@ const AdminPage = ({ user, userRole }) => {
     };
     fetchDashboardData();
     return () => controller.abort();
-  }, [dashboardView, selectedStudentEmail, dashboardRefreshKey]);
+  }, [activeTab, dashboardTrack, dashboardView, selectedStudentEmail, dashboardRefreshKey, preview?.pgyDashboard]);
 
   const handleDeleteResource = async (collectionName, id) => {
+    if (preview) return;
     if (window.confirm('確定要刪除此項目嗎？')) {
       try {
         await deleteDoc(doc(db, collectionName, id));
@@ -130,12 +144,14 @@ const AdminPage = ({ user, userRole }) => {
   };
   
   const handleEditResource = (item, type) => {
+    if (preview) return;
     setEditingItem({ ...item, type });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const updateSettingArray = async (field, action, value) => {
     if (!value.trim()) return;
+    if (preview) { setSettings(current => ({ ...current, [field]: action === 'add' ? [...new Set([...(current[field] || []), value])] : (current[field] || []).filter(item => item !== value) })); return; }
     const docRef = doc(db, 'site_settings', 'sop_config');
     try {
       if (action === 'add') {
@@ -152,28 +168,30 @@ const AdminPage = ({ user, userRole }) => {
   const openEditUser = (u) => {
     if (!canManageRoles) return;
     setEditingUser(u);
-    setUserForm({
-      displayName: u.displayName || '',
-      arrivalDate: u.arrivalDate || '',
-      role: u.role || 'student'
-    });
+    setUserForm(getLearnerProfileFields(u));
   };
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
     if (!canManageRoles) return alert('只有系統管理員可以調整人員資料與角色。');
     if (!editingUser) return;
+    if (userForm.role === 'student' && userForm.trainingType === 'intern' && userForm.internshipEndDate && userForm.arrivalDate && userForm.internshipEndDate < userForm.arrivalDate) return alert('實習結束日期不得早於開始日期。');
     
     if (SUPER_ADMIN_EMAILS.includes(editingUser.email) && userForm.role !== 'admin') {
        alert("超級管理員必須保留最高權限");
        return;
     }
 
+    if (preview) { alert('此預覽不變更正式人員資料。'); return; }
     try {
       await updateDoc(doc(db, 'users', editingUser.id), {
         displayName: userForm.displayName,
         arrivalDate: userForm.arrivalDate,
         role: userForm.role,
+        trainingType: userForm.trainingType,
+        school: userForm.school,
+        internshipCohort: userForm.internshipCohort,
+        internshipEndDate: userForm.internshipEndDate,
         ...getEditorAuditFields()
       });
       setEditingUser(null);
@@ -185,6 +203,7 @@ const AdminPage = ({ user, userRole }) => {
   };
 
   const handleDeleteUser = async (u) => {
+    if (preview) return;
     if (!canManageRoles) {
       return alert('只有系統管理員可以刪除使用者資料。');
     }
@@ -206,7 +225,7 @@ const AdminPage = ({ user, userRole }) => {
     }
   };
 
-  const studentsOnly = usersList.filter(u => u.role === 'student');
+  const studentsOnly = usersList.filter(u => getLearnerTrack(u) === 'pgy');
 
   return (
     <div className="bg-gray-50 min-h-screen p-0 md:p-6">
@@ -221,7 +240,7 @@ const AdminPage = ({ user, userRole }) => {
               狀態：{sops.length} SOP, {videos.length} 影片, {usersList.length} 用戶
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full md:w-auto">
             <button 
               onClick={() => setActiveTab('dashboard')} 
               className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -249,8 +268,9 @@ const AdminPage = ({ user, userRole }) => {
           </div>
         </div>
 
-        {activeTab === 'dashboard' && (
-          <div className="animate-in fade-in space-y-6 mx-4 md:mx-0">
+        {activeTab === 'dashboard' && <div className="animate-in fade-in space-y-6 mx-4 md:mx-0">
+          <PassportTrackSelector track={dashboardTrack} onChange={setDashboardTrack} />
+          {dashboardTrack === 'intern' ? usersError ? <p role="alert" className="text-red-700 bg-red-50 rounded-xl p-4">{usersError}</p> : usersLoading ? <p className="flex items-center gap-2 text-gray-500 p-6"><Loader2 className="w-5 h-5 animate-spin" />正在讀取實習生名單…</p> : <InternAdminDashboard students={usersList.filter(profile => getLearnerTrack(profile) === 'intern')} user={user} userRole={userRole} previewFixture={preview} /> : <>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
               <div>
                 <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
@@ -316,17 +336,18 @@ const AdminPage = ({ user, userRole }) => {
                 }}
               />
             )}
-          </div>
-        )}
+          </>}
+        </div>}
 
         {activeTab === 'resources' && (
           <div className="space-y-4 md:space-y-8 animate-in fade-in">
-            <AdminUploader 
+            {!preview && <AdminUploader
               editData={editingItem} 
               onCancelEdit={() => setEditingItem(null)}
               onSuccess={() => setEditingItem(null)}
               settings={settings}
-            />
+            /> }
+            {preview && <p className="mx-4 p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">此處顯示示範教材；可在「訓練連結」試用 SOP 與影片關聯管理。</p>}
             
             <div className="bg-white md:rounded-lg shadow-sm overflow-hidden border-t md:border-t-0 border-gray-100">
                <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
@@ -344,8 +365,8 @@ const AdminPage = ({ user, userRole }) => {
                          <td className="px-4 md:px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">{s.category}</span></td>
                          <td className="px-4 md:px-6 py-4">{s.attachmentUrl ? <a href={s.attachmentUrl} target="_blank" rel="noreferrer" className="text-blue-500 flex items-center gap-1"><Paperclip className="w-3 h-3"/>連結</a> : '-'}</td>
                          <td className="px-4 md:px-6 py-4 text-right space-x-2">
-                           <button onClick={() => handleEditResource(s, 'sop')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
-                           <button onClick={() => handleDeleteResource('sop_articles', s.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
+                           <button disabled={Boolean(preview)} onClick={() => handleEditResource(s, 'sop')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
+                           <button disabled={Boolean(preview)} onClick={() => handleDeleteResource('sop_articles', s.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
                          </td>
                        </tr>
                      ))}
@@ -369,8 +390,8 @@ const AdminPage = ({ user, userRole }) => {
                          <td className="px-4 md:px-6 py-4">{v.title}</td>
                          <td className="px-4 md:px-6 py-4"><span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">{v.category}</span></td>
                          <td className="px-4 md:px-6 py-4 text-right space-x-2">
-                           <button onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
-                           <button onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
+                           <button disabled={Boolean(preview)} onClick={() => handleEditResource(v, 'video')} className="text-indigo-600 font-medium text-xs md:text-sm">編輯</button>
+                           <button disabled={Boolean(preview)} onClick={() => handleDeleteResource('training_videos', v.id)} className="text-red-600 font-medium text-xs md:text-sm">刪除</button>
                          </td>
                        </tr>
                      ))}
@@ -383,7 +404,7 @@ const AdminPage = ({ user, userRole }) => {
 
         {activeTab === 'sop-links' && (
           <div className="animate-in fade-in mx-4 md:mx-0">
-            <TrainingSopLinkManager user={user} sops={sops} videos={videos} />
+            <TrainingSopLinkManager user={user} sops={sops} videos={videos} initialTrack={dashboardTrack} onTrackChange={setDashboardTrack} previewFixture={preview} />
           </div>
         )}
 
@@ -474,7 +495,7 @@ const AdminPage = ({ user, userRole }) => {
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs border border-gray-200 font-bold">
-                                PGY 學員
+                                {getLearnerLabel(u)}
                               </span>
                             )}
                           </td>
@@ -518,7 +539,7 @@ const AdminPage = ({ user, userRole }) => {
 
       {editingUser && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingUser(null)}>
-           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                <h3 className="text-lg font-bold text-gray-800">編輯用戶資料</h3>
                <button onClick={() => setEditingUser(null)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
@@ -538,7 +559,7 @@ const AdminPage = ({ user, userRole }) => {
                  />
                </div>
                <div>
-                 <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">到職／實習開始日期</label>
                  <input 
                    type="date" 
                    value={userForm.arrivalDate} 
@@ -555,7 +576,7 @@ const AdminPage = ({ user, userRole }) => {
                      onClick={() => setUserForm({...userForm, role: 'student'})}
                      className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                    >
-                     PGY 學員
+                     學員
                    </button>
                    <button 
                      type="button"
@@ -583,6 +604,12 @@ const AdminPage = ({ user, userRole }) => {
                    <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號無法降級</p>
                  )}
                </div>
+               {userForm.role === 'student' && <label className="block text-sm font-bold text-gray-700">學員類型<select aria-label="學員類型" className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.trainingType} onChange={e => setUserForm({...userForm, trainingType: e.target.value})}><option value="pgy">PGY 藥師</option><option value="intern">實習生</option></select></label>}
+               {userForm.role === 'student' && userForm.trainingType === 'intern' && <div className="space-y-3 border-t pt-3">
+                 <label className="block text-sm font-bold text-gray-700">學校／系所<input className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.school} onChange={e => setUserForm({...userForm, school: e.target.value})} /></label>
+                 <label className="block text-sm font-bold text-gray-700">實習梯次<input className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.internshipCohort} onChange={e => setUserForm({...userForm, internshipCohort: e.target.value})} placeholder="例如：115 年秋季" /></label>
+                 <label className="block text-sm font-bold text-gray-700">實習結束日期<input type="date" min={userForm.arrivalDate || undefined} className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.internshipEndDate} onChange={e => setUserForm({...userForm, internshipEndDate: e.target.value})} /></label>
+               </div>}
                <div className="pt-4 flex gap-3">
                  <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200">取消</button>
                  <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-md">儲存變更</button>

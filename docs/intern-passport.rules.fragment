@@ -1,0 +1,65 @@
+// 將此 match 區塊合併至現行 /databases/{database}/documents 內。
+// 這是新增實習護照的規則片段，不可直接當成完整規則發布。
+// 沿用現行外層 isGoogleUser()、isAdmin() 及 users.role 的管理員保護。
+match /intern_passports/{studentUid}/entries/{entryId} {
+  function internStaff() {
+    return isGoogleUser() && (isAdmin()
+      || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher');
+  }
+  function isInternLearner(uid) {
+    let profile = get(/databases/$(database)/documents/users/$(uid)).data;
+    return profile.role == 'intern' || (profile.role == 'student' && profile.get('trainingType', 'pgy') == 'intern');
+  }
+  function internOwner() {
+    return isGoogleUser() && request.auth.uid == studentUid
+      && isInternLearner(studentUid);
+  }
+  function validInternEnvelope() {
+    let data = request.resource.data;
+    return data.keys().hasAll(['planVersion', 'studentUid', 'kind', 'targetId', 'payload', 'actorUid', 'actorEmail', 'actorName', 'createdAt'])
+      && data.keys().hasOnly(['planVersion', 'studentUid', 'kind', 'targetId', 'payload', 'actorUid', 'actorEmail', 'actorName', 'createdAt'])
+      && data.planVersion == '11409' && data.studentUid == studentUid
+      && data.actorUid == request.auth.uid && data.actorEmail == request.auth.token.email
+      && data.actorName is string && data.actorName.size() > 0 && data.actorName.size() <= 200
+      && data.createdAt == request.time
+      && data.targetId is string && data.targetId.size() > 0 && data.targetId.size() <= 150
+      && data.payload is map && data.payload.date is string
+      && data.payload.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      && data.payload.note is string && data.payload.note.size() <= 12000
+      && isInternLearner(studentUid);
+  }
+  function validStudentPayload() {
+    let data = request.resource.data;
+    return (data.kind == 'deliverable'
+        && data.targetId in ['literature', 'topic', 'oral', 'reflection']
+        && data.payload.keys().hasOnly(['date', 'note', 'url'])
+        && data.payload.url is string
+        && (data.payload.note.size() > 0 || data.payload.url.size() > 0)
+        && (data.payload.url == '' || data.payload.url.matches('^https://.+')))
+      || (data.kind == 'feedback'
+        && data.targetId in ['self', 'satisfaction', 'teacher']
+        && data.payload.keys().hasOnly(['date', 'note', 'ratings', 'teacher'])
+        && data.payload.ratings is map && data.payload.teacher is string
+        && ((data.targetId == 'self' && data.payload.ratings.size() == 12
+              && data.payload.ratings.values().hasOnly([1, 2, 3, 4, 5])
+              && data.payload.ratings.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9','10','11']))
+          || (data.targetId == 'satisfaction' && data.payload.ratings.size() == 18
+              && data.payload.ratings.values().hasOnly([1, 2, 3, 4, 5])
+              && data.payload.ratings.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17']))
+          || (data.targetId == 'teacher' && data.payload.teacher.size() > 0
+              && data.payload.ratings.size() == 10 && data.payload.ratings.values().hasOnly([4, 6, 8, 10])
+              && data.payload.ratings.keys().hasOnly(['0','1','2','3','4','5','6','7','8','9']))))
+      || (data.kind == 'osceFeedback'
+        && data.targetId in ['phone', 'dispensing', 'face_to_face', 'unit_dose']
+        && data.payload.keys().hasOnly(['date', 'note']) && data.payload.note.size() > 0);
+  }
+  // 學生僅能讀自己的紀錄；教師與管理者可讀教學紀錄。
+  allow read: if internStaff() || (isGoogleUser() && request.auth.uid == studentUid);
+  // 每次儲存新增一筆，沒有 update/delete，保留完整評核與重測歷程。
+  allow create: if validInternEnvelope() && (
+    (internOwner() && validStudentPayload())
+    || (internStaff() && request.resource.data.kind in ['training', 'rotation', 'exam', 'osce', 'safety', 'review', 'care', 'final'])
+    || (isAdmin() && request.resource.data.kind == 'signoff' && request.resource.data.targetId == 'overall')
+  );
+  allow update, delete: if false;
+}

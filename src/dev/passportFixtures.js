@@ -1,0 +1,20 @@
+import { INTERN_DOMAINS, INTERN_OSCE_STATIONS, INTERN_PLAN_VERSION } from '../data/internPassport.js';
+export const demoStudent = { id: 'preview-intern', displayName: '陳同學', school: '示範大學・藥學系', internshipCohort: '115 年秋季實習', arrivalDate: '2026-09-01', internshipEndDate: '2026-12-31' };
+export const demoEntries = () => {
+  const entries = [];
+  const add = (kind, targetId, payload, actorName = '示範指導藥師') => entries.push({ id: `demo-${String(entries.length).padStart(3, '0')}`, kind, targetId, planVersion: INTERN_PLAN_VERSION, actorName, createdAt: { seconds: 1790000000 + entries.length }, payload: { date: '2026-10-30', ...payload } });
+  INTERN_DOMAINS[0].items.forEach((item, index) => { if (index < 9) add('training', item.id, { status: 'pass', note: '已於指導藥師監督下完成學習與評核。' }); });
+  INTERN_DOMAINS[1].items.slice(0, 4).forEach(item => add('training', item.id, { status: 'pass', note: '已完成本項輪訓。' }));
+  add('training', 'intern_opd_10', { status: 'reinforce', note: '請再次熟悉疫苗冷鏈與紀錄流程，安排下次討論。' });
+  add('rotation', 'outpatient', { startDate: '2026-09-01', endDate: '2026-10-23', teacher: '示範指導藥師' });
+  add('rotation', 'inpatient', { startDate: '2026-10-26', endDate: '2026-11-20', teacher: '示範指導藥師' });
+  add('exam', 'demo-regular', { title: '處方用藥評估', mode: 'regular', score: 72, status: 'reinforce', note: '建議加強劑量與頻次的判讀。' });
+  add('exam', 'demo-spot', { title: '全自動包藥機作業', mode: 'spot', result: 'correct', status: 'pass' });
+  add('osce', 'phone', { status: 'pass', ratings: Object.fromEntries(INTERN_OSCE_STATIONS[0].items.map((_, index) => [index, 4])), overall: 8, note: '能清楚回覆並適時確認病人理解。' });
+  add('safety', 'infection_written', { score: 90, status: 'pass' });
+  add('safety', 'handwashing', { score: 95, status: 'pass' });
+  add('safety', 'equipment', { status: 'pass', note: '完成包藥機與磨粉機安全訓練。' });
+  add('deliverable', 'literature', { note: '示範文獻閱讀心得摘要，正式內容由實習生填寫。' }, '陳同學');
+  add('care', 'demo-care', { progress: '符合', attitude: '優', note: '學習積極，已討論下一階段住院輪訓目標。' });
+  return entries;
+};

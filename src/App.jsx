@@ -6,7 +6,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth'
 import { auth, db } from './firebase'
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDocFromServer, setDoc, updateDoc, onSnapshot } from 'firebase/firestore'
 import { 
   BookOpen, 
   LogOut, 
@@ -24,9 +24,12 @@ import {
 import QuickLookup from './components/QuickLookup'
 import VideoGallery from './components/VideoGallery'
 import ShiftNavigator from './components/ShiftNavigator'
-import PassportSection from './components/PassportSection'
+import LearningPassportSection from './components/LearningPassportSection'
 import AdminPage from './components/AdminPage'
 import { getEditorAuditFields } from './utils/editorIdentity'
+import { getLearnerTrack, getLearnerLabel } from './utils/learnerIdentity'
+import { getSiteNavigation } from './data/siteNavigation'
+import { createSessionBoundary } from './utils/sessionBoundary'
 import './App.css'
 
 const PHARMACY_INFO_CENTER_URL =
@@ -39,9 +42,10 @@ function App() {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
   const [userRole, setUserRole] = useState('student')
-  const [activeTab, setActiveTab] = useState(initialSection === 'passport' ? 'passport' : 'lookup')
+  const [activeTab, setActiveTab] = useState(['lookup', 'video', 'shift', 'passport', 'admin'].includes(initialSection) ? initialSection : 'lookup')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState('')
 
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [editForm, setEditForm] = useState({ displayName: '', arrivalDate: '' })
@@ -96,41 +100,44 @@ function App() {
   }
 
   useEffect(() => {
+    const session = createSessionBoundary();
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      const isCurrent = session.begin();
       setLoading(true)
+      setUserProfile(null)
+      setUserRole('member')
+      setProfileError('')
       
       if (currentUser) {
         setUser(currentUser)
         
         const userRef = doc(db, 'users', currentUser.uid)
         try {
-          const userSnap = await getDoc(userRef)
+          const userSnap = await getDocFromServer(userRef)
+          if (!isCurrent() || auth.currentUser?.uid !== currentUser.uid) return;
           
           let finalRole = 'student'; 
 
-          if (userSnap.exists()) {
-            const data = userSnap.data();
-            finalRole = data.role || 'student';
-
-            setUserProfile(data);
-          } else {
+          if (!userSnap.exists()) {
             const newUserData = {
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
-              role: finalRole, 
+              role: finalRole,
+              trainingType: 'pgy',
               arrivalDate: '',
               createdAt: new Date().toISOString(),
               ...getEditorAuditFields()
             };
             await setDoc(userRef, newUserData);
-            setUserProfile(newUserData);
+            if (!isCurrent() || auth.currentUser?.uid !== currentUser.uid) return;
           }
-          
-          setUserRole(finalRole);
+          // 帳號角色與學員類型由下方同一份即時訂閱更新，避免兩次讀取相互覆蓋。
 
         } catch (error) {
+          if (!isCurrent() || auth.currentUser?.uid !== currentUser.uid) return;
           console.error("Error fetching user data:", error)
+          setProfileError('無法確認帳號資料，請確認網路後重新登入。')
         }
       } else {
         if (localStorage.getItem('isGuestMode') === 'true') {
@@ -148,11 +155,35 @@ function App() {
           setUserRole('student')
         }
       }
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     })
 
-    return () => unsubscribe()
+    return () => { session.cancel(); unsubscribe(); }
   }, [])
+
+  // 管理者改變學員類型後，同一登入帳號立即更新護照入口。
+  useEffect(() => {
+    if (!user?.uid || user.uid === 'guest_user_12345') return undefined;
+    let active = true;
+    const isCurrent = () => active && auth.currentUser?.uid === user.uid;
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), snapshot => {
+      if (!isCurrent()) return;
+      if (!snapshot.exists()) { setUserProfile(null); setUserRole('member'); setProfileError('找不到使用者資料，請重新登入或聯絡管理員。'); return; }
+      setUserProfile(snapshot.data());
+      setUserRole(snapshot.data().role || 'member');
+      setProfileError('');
+    }, () => {
+      if (!isCurrent()) return;
+      setUserProfile(null);
+      setUserRole('member');
+      setProfileError('無法確認目前身分，學習護照暫停使用，請重新登入。');
+    });
+    return () => { active = false; unsubscribe(); };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!loading && !getSiteNavigation(userRole).some(item => item.id === activeTab)) setActiveTab('lookup');
+  }, [loading, userRole, activeTab]);
 
   const handleOpenProfile = () => {
     setEditForm({
@@ -193,7 +224,8 @@ function App() {
     if (userRole === 'teacher') return '指導藥師';
     if (userRole === 'member') return '一般成員'; // [新增] 一般成員
     if (userRole === 'guest') return '訪客體驗'; 
-    return 'PGY 學員';
+    if (userRole === 'intern') return '實習生';
+    return getLearnerLabel({ ...userProfile, role: userRole });
   };
 
   // ★ 取得身分對應的顏色
@@ -272,14 +304,7 @@ function App() {
             </div>
 
             <div className="hidden md:flex items-center gap-1">
-              {[
-                { id: 'lookup', label: 'SOP 速查', icon: Search },
-                { id: 'video', label: '影音教學', icon: BookOpen },
-                { id: 'shift', label: '排班表', icon: Calendar },
-                // ★ [修改] 若不是訪客，且不是「一般成員」，才顯示學習護照
-                ...(userRole !== 'guest' && userRole !== 'member' ? [{ id: 'passport', label: '學習護照', icon: UserIcon }] : []),
-                ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理', icon: Shield }] : []),
-              ].map(item => (
+              {getSiteNavigation(userRole).map(item => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
@@ -347,14 +372,7 @@ function App() {
 
             <div className="p-2 space-y-1">
               <div className="md:hidden space-y-1 pb-2 mb-2 border-b border-gray-100">
-                {[
-                    { id: 'lookup', label: 'SOP 速查' },
-                    { id: 'video', label: '影音教學' },
-                    { id: 'shift', label: '排班表' },
-                    // ★ [修改] 手機版也加入排除一般成員的邏輯
-                    ...(userRole !== 'guest' && userRole !== 'member' ? [{ id: 'passport', label: '學習護照' }] : []),
-                    ...(isTeacherOrAdmin ? [{ id: 'admin', label: '後台管理' }] : []),
-                ].map(item => (
+                {getSiteNavigation(userRole).map(item => (
                     <button
                     key={item.id}
                     onClick={() => {
@@ -428,9 +446,9 @@ function App() {
                 />
               </div>
 
-              {userRole === 'student' && (
+              {['student', 'intern'].includes(userRole) && (
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">到職日期</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">{getLearnerTrack({ ...userProfile, role: userRole }) === 'intern' ? '實習開始日期' : '到職日期'}</label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
                     <input 
@@ -464,6 +482,7 @@ function App() {
         </div>
       )}
 
+      {profileError && <p role="alert" className="max-w-7xl mx-auto p-4 text-red-700 bg-red-50">{profileError}</p>}
       <main className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-8">
         {activeTab === 'lookup' && <QuickLookup canEdit={userRole !== 'guest'} />}
         {activeTab === 'video' && <VideoGallery />}
@@ -471,7 +490,7 @@ function App() {
         
         {/* ★ [修改] 路由層保護：防止一般成員與訪客渲染學習護照元件 */}
         {activeTab === 'passport' && userRole !== 'guest' && userRole !== 'member' && (
-          <PassportSection 
+          <LearningPassportSection
             user={user} 
             userRole={userRole}
             userProfile={userProfile} 

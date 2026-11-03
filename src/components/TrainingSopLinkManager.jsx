@@ -4,28 +4,11 @@ import {
 } from 'firebase/firestore';
 import { BookOpen, Check, Film, Link2, Loader2, Save, Search, Sparkles } from 'lucide-react';
 import { db } from '../firebase';
+import PassportTrackSelector from './PassportTrackSelector';
+import { buildInternTrainingItems } from '../utils/internAdmin';
 import { getEditorAuditFields } from '../utils/editorIdentity';
 import { getTrainingGroupSopIds } from '../data/trainingSopLinks';
-
-const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbw3-nakNBi0t3W3_-XtQmztYqq9qAj0ZOaGpXKZG41eZfhYjNfIM5xuVXwzSLa1_X3hfA/exec';
-
-const buildTrainingTargets = (items) => {
-  const groups = new Map();
-  (items || []).forEach(item => {
-    const key = `${item.category_id}::${item.title}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        id: item.id,
-        title: item.title || '未命名訓練項目',
-        categoryId: item.category_id,
-        categoryName: item.category_name,
-        items: [],
-      });
-    }
-    groups.get(key).items.push(item);
-  });
-  return [...groups.values()].filter(target => target.title !== '未命名訓練項目');
-};
+import { buildTrainingTargets, fetchTrainingItems, getTrainingVideoIds } from '../utils/videoLibrary';
 
 const normalizeText = (value) => (value || '')
   .toLowerCase()
@@ -59,7 +42,10 @@ const getRecommendedVideoIds = (target, videos) => {
     .map(video => video.id);
 };
 
-const TrainingSopLinkManager = ({ user, sops, videos }) => {
+const TrainingSopLinkManager = ({ user, sops, videos, initialTrack = 'pgy', onTrackChange, previewFixture }) => {
+  const preview = import.meta.env.DEV ? previewFixture : null;
+  const [track, setTrack] = useState(initialTrack);
+  const changeTrack = next => { setTrack(next); onTrackChange?.(next); };
   const [targets, setTargets] = useState([]);
   const [linksByTargetId, setLinksByTargetId] = useState({});
   const [selectedTargetId, setSelectedTargetId] = useState('');
@@ -72,24 +58,26 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     const fetchTargets = async () => {
+      setLoading(true); setMessage('');
       try {
-        const response = await fetch(`${GAS_API_URL}?type=getData&studentEmail=${encodeURIComponent(user?.email || '')}`);
-        const data = await response.json();
-        const nextTargets = buildTrainingTargets(data.items || []);
+        const items = track === 'intern' ? buildInternTrainingItems() : preview?.trainingItems || await fetchTrainingItems(controller.signal);
+        if (cancelled) return;
+        const nextTargets = buildTrainingTargets(items);
         setTargets(nextTargets);
-        if (nextTargets.length > 0) setSelectedTargetId(nextTargets[0].id);
+        setSelectedTargetId(current => nextTargets.some(target => target.id === current) ? current : nextTargets[0]?.id || '');
       } catch (error) {
-        console.error('讀取訓練項目失敗：', error);
-        setMessage('無法讀取訓練項目，請稍後再試。');
-      } finally {
-        setLoading(false);
-      }
+        if (!cancelled) { setTargets([]); setMessage('無法讀取訓練項目，請稍後再試。'); }
+      } finally { if (!cancelled) setLoading(false); }
     };
     fetchTargets();
-  }, [user?.email]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [user?.email, track, preview?.trainingItems]);
 
   useEffect(() => {
+    if (preview) { setLinksByTargetId(preview.links); return; }
     const unsubscribe = onSnapshot(collection(db, 'training_sop_links'), snapshot => {
       const nextLinks = {};
       snapshot.forEach(linkDoc => {
@@ -98,19 +86,18 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
       setLinksByTargetId(nextLinks);
     });
     return () => unsubscribe();
-  }, []);
+  }, [preview?.links]);
 
   const selectedTarget = targets.find(target => target.id === selectedTargetId);
+  const selectedTargetItemIds = useMemo(() => selectedTarget?.items.map(item => item.id) || [], [selectedTarget]);
   const savedLink = linksByTargetId[selectedTargetId];
 
   useEffect(() => {
     setSelectedSopIds(savedLink?.sopIds || []);
-    setSelectedVideoIds((videos || [])
-      .filter(video => (video.trainingItemIds || []).includes(selectedTargetId))
-      .sort(compareVideos)
-      .map(video => video.id));
-    setMessage('');
-  }, [selectedTargetId, savedLink, videos]);
+    setSelectedVideoIds(getTrainingVideoIds(videos || [], selectedTargetItemIds));
+  }, [selectedTargetId, savedLink, videos, selectedTargetItemIds]);
+
+  useEffect(() => { setMessage(''); }, [selectedTargetId]);
 
   const recommendedSopIds = useMemo(() => {
     if (!selectedTarget) return [];
@@ -159,7 +146,10 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
     setMessage('');
     try {
       const selectedIds = resourceType === 'sop' ? selectedSopIds : selectedVideoIds;
-      if (resourceType === 'sop') {
+      if (preview) {
+        if (!preview.onSaveLinks) throw new Error('預覽連結管理尚未就緒');
+        await preview.onSaveLinks(selectedTarget, resourceType, selectedIds);
+      } else if (resourceType === 'sop') {
         await setDoc(doc(db, 'training_sop_links', selectedTarget.id), {
           trainingItemId: selectedTarget.id,
           trainingTitle: selectedTarget.title,
@@ -171,7 +161,7 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
       } else {
         const selectedSet = new Set(selectedIds);
         const changedVideos = (videos || []).filter(video => {
-          const wasSelected = (video.trainingItemIds || []).includes(selectedTarget.id);
+          const wasSelected = (video.trainingItemIds || []).some(id => selectedTargetItemIds.includes(id));
           return wasSelected !== selectedSet.has(video.id);
         });
         if (changedVideos.length > 0) {
@@ -181,7 +171,7 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
             batch.update(doc(db, 'training_videos', video.id), {
               trainingItemIds: shouldLink
                 ? arrayUnion(selectedTarget.id)
-                : arrayRemove(selectedTarget.id),
+                : arrayRemove(...selectedTargetItemIds),
               ...getEditorAuditFields(),
             });
           });
@@ -209,9 +199,10 @@ const TrainingSopLinkManager = ({ user, sops, videos }) => {
       </div>
 
       <div className="p-4 md:p-6 space-y-5">
+        <PassportTrackSelector track={track} onChange={changeTrack} />
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2">1．選擇訓練項目</label>
-          <select value={selectedTargetId} onChange={event => setSelectedTargetId(event.target.value)} className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white font-bold text-gray-800">
+          <select aria-label="選擇訓練項目" value={selectedTargetId} onChange={event => setSelectedTargetId(event.target.value)} className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white font-bold text-gray-800">
             {targets.map(target => (
               <option key={target.id} value={target.id}>{target.categoryName}｜{target.title}</option>
             ))}
