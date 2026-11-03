@@ -569,17 +569,26 @@ const AdminPage = ({ user, userRole, previewFixture }) => {
                </div>
                <div>
                  <label className="block text-sm font-bold text-gray-700 mb-2">系統身分</label>
-                 {/* ★ [修改] 加入一般成員按鈕選項，改為網格排列 */}
-                 <div className="grid grid-cols-2 gap-2">
+                 <div role="group" aria-label="系統身分" className="grid grid-cols-2 gap-2">
                    <button 
                      type="button"
-                     onClick={() => setUserForm({...userForm, role: 'student'})}
-                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                     aria-pressed={userForm.role === 'student' && userForm.trainingType === 'pgy'}
+                     onClick={() => setUserForm({...userForm, role: 'student', trainingType: 'pgy'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' && userForm.trainingType === 'pgy' ? 'bg-gray-600 text-white border-gray-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                    >
-                     學員
+                     PGY 學員
+                   </button>
+                   <button
+                     type="button"
+                     aria-pressed={userForm.role === 'student' && userForm.trainingType === 'intern'}
+                     onClick={() => setUserForm({...userForm, role: 'student', trainingType: 'intern'})}
+                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'student' && userForm.trainingType === 'intern' ? 'bg-teal-600 text-white border-teal-600 shadow-md' : 'bg-white text-teal-700 border-gray-200 hover:bg-teal-50'}`}
+                   >
+                     實習生
                    </button>
                    <button 
                      type="button"
+                     aria-pressed={userForm.role === 'member'}
                      onClick={() => setUserForm({...userForm, role: 'member'})}
                      className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'member' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-blue-600 border-gray-200 hover:bg-gray-50'}`}
                    >
@@ -587,6 +596,7 @@ const AdminPage = ({ user, userRole, previewFixture }) => {
                    </button>
                    <button 
                      type="button"
+                     aria-pressed={userForm.role === 'teacher'}
                      onClick={() => setUserForm({...userForm, role: 'teacher'})}
                      className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'teacher' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-gray-200 hover:bg-gray-50'}`}
                    >
@@ -594,8 +604,9 @@ const AdminPage = ({ user, userRole, previewFixture }) => {
                    </button>
                    <button 
                      type="button"
+                     aria-pressed={userForm.role === 'admin'}
                      onClick={() => setUserForm({...userForm, role: 'admin'})}
-                     className={`py-2 rounded-lg border text-sm font-bold ${userForm.role === 'admin' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-gray-200 hover:bg-gray-50'}`}
+                     className={`col-span-2 py-2 rounded-lg border text-sm font-bold ${userForm.role === 'admin' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-gray-200 hover:bg-gray-50'}`}
                    >
                      管理員
                    </button>
@@ -604,7 +615,7 @@ const AdminPage = ({ user, userRole, previewFixture }) => {
                    <p className="text-xs text-amber-600 mt-2 font-medium flex items-center gap-1"><Crown className="w-3 h-3"/> 超級管理員帳號無法降級</p>
                  )}
                </div>
-               {userForm.role === 'student' && <label className="block text-sm font-bold text-gray-700">學員類型<select aria-label="學員類型" className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.trainingType} onChange={e => setUserForm({...userForm, trainingType: e.target.value})}><option value="pgy">PGY 藥師</option><option value="intern">實習生</option></select></label>}
+               {userForm.role === 'student' && <p className="text-sm text-gray-500">{userForm.trainingType === 'intern' ? '使用實習生學習護照，請填寫下方實習資料。' : '使用 PGY 藥師學習護照。'}</p>}
                {userForm.role === 'student' && userForm.trainingType === 'intern' && <div className="space-y-3 border-t pt-3">
                  <label className="block text-sm font-bold text-gray-700">學校／系所<input className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.school} onChange={e => setUserForm({...userForm, school: e.target.value})} /></label>
                  <label className="block text-sm font-bold text-gray-700">實習梯次<input className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={userForm.internshipCohort} onChange={e => setUserForm({...userForm, internshipCohort: e.target.value})} placeholder="例如：115 年秋季" /></label>
