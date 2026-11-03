@@ -1,0 +1,8 @@
+// 合併到現行 users/{userId} 規則，與實習護照規則一併發布。
+// 這是原條件中的必要限制；不可另加一個 allow update，因為 allow 規則會以 OR 合併。
+// 1. 自己建立帳號時，除既有 role == 'student' 外，再加：
+//    && request.resource.data.get('trainingType', 'pgy') == 'pgy'
+// 2. 自己更新個人資料時，除既有 role 不變外，再加：
+//    && request.resource.data.get('trainingType', 'pgy') == resource.data.get('trainingType', 'pgy')
+// 3. 管理員可指派類型；所有寫入若有 trainingType，僅允許 'pgy' 或 'intern'。
+// 舊帳號沒有 trainingType 時，以 'pgy' 相容；舊 role == 'intern' 另由護照規則辨識。

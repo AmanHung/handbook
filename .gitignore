@@ -14,6 +14,10 @@ dist-ssr
 
 # Local backend snapshots and deployment notes
 backend/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
 
 # Editor directories and files
 .vscode/*

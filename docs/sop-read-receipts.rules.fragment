@@ -1,0 +1,16 @@
+// 合併至正式規則既有的 sop_read_receipts match，取代該 match，勿另增重複 allow。
+// 沿用既有 Google 登入者可讀取的範圍及 PGY 欄位契約；禁止覆寫別人的確認。
+match /sop_read_receipts/{receiptId} {
+  allow read: if isGoogleUser();
+  allow create: if isGoogleUser()
+    && request.resource.data.studentUid == request.auth.uid
+    && request.resource.data.studentEmail == request.auth.token.email
+    && request.resource.data.confirmedAt == request.time;
+  allow update: if isGoogleUser()
+    && resource.data.studentUid == request.auth.uid
+    && request.resource.data.studentUid == request.auth.uid
+    && request.resource.data.studentEmail == request.auth.token.email
+    && request.resource.data.confirmedAt == request.time;
+  allow delete: if isAdmin()
+    || (isGoogleUser() && resource.data.studentUid == request.auth.uid);
+}

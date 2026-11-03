@@ -1,172 +1,98 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase.js';
-import { Search, Play, Film, ExternalLink, Video } from 'lucide-react';
-
-const getVideoSequence = (title) => {
-  const match = (title || '').match(/[-－](\d{1,2})/);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-};
+import { Search, Play, Film, ExternalLink, X } from 'lucide-react';
+import {
+  VIDEO_TOPICS, getVideoSeries, getVideoTopic, compareVideos, getVideoEmbedUrl,
+} from '../utils/videoLibrary';
 
 const VideoGallery = () => {
-  const [activeCategory, setActiveCategory] = useState('全部');
+  const [topic, setTopic] = useState('all');
+  const [series, setSeries] = useState('all');
+  const [keyword, setKeyword] = useState('');
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [videoError, setVideoError] = useState('');
+  const [playingId, setPlayingId] = useState('');
 
-  useEffect(() => {
-    const q = query(collection(db, 'training_videos'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setVideos(list);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching videos:", error);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  useEffect(() => onSnapshot(collection(db, 'training_videos'), snapshot => {
+    setVideos(snapshot.docs.map(item => ({ ...item.data(), id: item.id })));
+    setLoading(false);
+    setVideoError('');
+  }, () => {
+    setVideoError('影片讀取失敗，請確認網路或登入狀態後重新整理。');
+    setLoading(false);
+  }), []);
 
-  // ★★★ 升級版：通吃所有 YouTube 格式的轉換器 ★★★
-  const getEmbedUrl = (url) => {
-    if (!url) return null;
-    try {
-      // 使用正則表達式，涵蓋 watch?v=, youtu.be, embed, shorts, 以及手機版 m.youtube
-      const regExp = /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-      const match = url.match(regExp);
-      
-      // 如果有成功抓出 11 碼的 YouTube 影片 ID
-      if (match && match[1]) {
-        return `https://www.youtube.com/embed/${match[1]}`;
-      }
-    } catch (e) { 
-      return null; 
-    }
-    return null; // 如果都不是，回傳 null 變成外部連結
-  };
-
-  const preferredCategoryOrder = [
-    '管制藥品智慧藥櫃',
-    '兒科分包機操作',
-    '錠劑自動包藥機操作',
-    '設備操作與故障排除',
-    '處方評估與調劑',
-    '臨床藥學與藥事照護',
-    '特殊製劑調配',
-  ];
-  const categoryRank = (category) => {
-    const index = preferredCategoryOrder.indexOf(category);
-    return index === -1 ? preferredCategoryOrder.length : index;
-  };
-  const categories = [
-    '全部',
-    ...new Set(videos.map(video => video.category).filter(Boolean)),
-  ].sort((a, b) => {
-    if (a === '全部') return -1;
-    if (b === '全部') return 1;
-    return categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'zh-Hant');
+  const visibleTopics = VIDEO_TOPICS.filter(item => videos.some(video => getVideoTopic(video) === item.id));
+  const topicVideos = videos.filter(video => topic === 'all' || getVideoTopic(video) === topic);
+  const seriesNames = [...new Set(topicVideos.map(getVideoSeries))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const filtered = videos.filter(video => {
+    const text = [video.title, video.description, getVideoSeries(video), ...(video.keywords || [])].join(' ').toLowerCase();
+    return (topic === 'all' || getVideoTopic(video) === topic)
+      && (series === 'all' || getVideoSeries(video) === series)
+      && (!keyword.trim() || text.includes(keyword.trim().toLowerCase()));
   });
-  const filteredVideos = (activeCategory === '全部'
-    ? videos
-    : videos.filter(video => video.category === activeCategory))
-    .slice()
-    .sort((a, b) => categoryRank(a.category) - categoryRank(b.category)
-      || (a.category || '').localeCompare(b.category || '', 'zh-Hant')
-      || getVideoSequence(a.title) - getVideoSequence(b.title)
-      || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true }));
+  const grouped = visibleTopics.map(item => ({ ...item,
+    videos: filtered.filter(video => getVideoTopic(video) === item.id).sort((a, b) =>
+      getVideoSeries(a).localeCompare(getVideoSeries(b), 'zh-Hant') || compareVideos(a, b)),
+  })).filter(item => item.videos.length > 0);
+  const clearFilters = () => { setTopic('all'); setSeries('all'); setKeyword(''); setPlayingId(''); };
 
   return (
-    <div className="bg-transparent md:bg-white md:rounded-lg md:shadow-md p-0 md:p-6">
-      <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4 md:mb-6 flex items-center px-4 md:px-0 pt-4 md:pt-0">
-        <span className="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3">
-          <Film className="w-5 h-5 md:w-6 md:h-6" />
-        </span>
-        影音教學專區
-      </h2>
-
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-2 md:mb-6 scrollbar-hide px-4 md:px-0">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-              activeCategory === cat
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-white md:bg-gray-100 text-gray-600 border border-gray-200 md:border-transparent hover:bg-gray-200'
-            }`}
-          >
-            {cat}
+    <div className="space-y-5 px-4 py-5 md:p-6 bg-white md:rounded-2xl shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><Film className="text-purple-600" />影音教學專區</h2>
+          <p className="mt-2 text-sm text-slate-500">依主題或系列尋找影片，也可直接搜尋關鍵字。</p></div>
+        <span className="rounded-full bg-purple-50 px-4 py-2 text-sm font-bold text-purple-700">共 {videos.length} 部影片</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2" aria-label="影片主題">
+        {[{ id: 'all', title: '全部影片', description: '瀏覽完整教材庫' }, ...visibleTopics].map(item => (
+          <button key={item.id} type="button" aria-pressed={topic === item.id}
+            onClick={() => { setTopic(item.id); setSeries('all'); setPlayingId(''); }}
+            className={`text-left rounded-xl border p-3 transition-colors ${topic === item.id ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-200 text-slate-700 hover:border-purple-300 bg-white'}`}>
+            <span className="flex justify-between gap-2 font-bold">{item.title}<span>{item.id === 'all' ? videos.length : videos.filter(video => getVideoTopic(video) === item.id).length}</span></span>
+            <span className={`block text-xs mt-1 ${topic === item.id ? 'text-purple-100' : 'text-slate-500'}`}>{item.description}</span>
           </button>
         ))}
       </div>
-
-      {loading ? (
-        <div className="text-center py-12 text-gray-500 flex flex-col items-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
-          影片載入中...
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <label className="relative flex-1"><span className="sr-only">搜尋教學影片</span><Search className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+            <input aria-label="搜尋教學影片" value={keyword} onChange={event => setKeyword(event.target.value)} placeholder="搜尋影片、操作步驟或關鍵字…" className="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-lg text-sm" /></label>
         </div>
-      ) : filteredVideos.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-6 md:gap-6">
-          {filteredVideos.map((video) => {
-            const embedUrl = getEmbedUrl(video.url);
-            
-            return (
-              <div key={video.id} className="group bg-white border-t border-b md:border border-gray-100 md:rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
-                <div className="relative w-full aspect-video bg-gray-900">
-                   {embedUrl ? (
-                     <iframe 
-                       src={embedUrl} 
-                       title={video.title}
-                       className="w-full h-full"
-                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                       allowFullScreen
-                     />
-                   ) : (
-                     <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white flex-col p-4 text-center">
-                       <Video className="w-12 h-12 mb-3 text-gray-400" />
-                       <p className="mb-3 font-medium text-sm">此影片為外部連結</p>
-                       <a href={video.url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2 transition-colors">
-                         <ExternalLink className="w-4 h-4" /> 點擊前往觀看
-                       </a>
-                     </div>
-                   )}
-                </div>
-                
-                <div className="p-4 flex flex-col flex-grow">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-gray-800 line-clamp-2 group-hover:text-purple-600 transition-colors text-lg leading-snug">
-                      {video.title}
-                    </h3>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-md font-medium">
-                      {video.category || '未分類'}
-                    </span>
-                  </div>
-
-                  {video.description && (
-                    <p className="text-sm text-gray-500 line-clamp-3 mb-4 flex-grow">
-                      {video.description}
-                    </p>
-                  )}
-                  
-                  {embedUrl && (
-                    <div className="pt-3 mt-auto border-t border-gray-50 flex justify-end">
-                       <a href={video.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400 hover:text-purple-600 flex items-center gap-1">
-                         <ExternalLink className="w-3 h-3" /> 開啟原始連結
-                       </a>
-                    </div>
-                  )}
+        <div className="flex flex-wrap gap-2" aria-label="影片系列">
+          {['all', ...seriesNames].map(name => <button key={name} type="button" aria-pressed={series === name} onClick={() => { setSeries(name); setPlayingId(''); }}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold border ${series === name ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-600'}`}>
+            {name === 'all' ? '全部系列' : name}（{name === 'all' ? topicVideos.length : topicVideos.filter(video => getVideoSeries(video) === name).length}）</button>)}
+        </div>
+      </div>
+      {videoError && <div role="alert" className="text-red-700 bg-red-50 p-4 rounded-lg">{videoError}</div>}
+      <div className="flex items-center justify-between gap-2 text-sm"><span role="status" className="text-slate-500">{loading ? '影片載入中…' : `顯示 ${filtered.length}／${videos.length} 部影片`}</span><button type="button" onClick={clearFilters} className="flex items-center gap-1 text-purple-700 font-bold"><X className="w-4 h-4" />清除篩選</button></div>
+      {!loading && !videoError && filtered.length === 0 && <p className="py-12 text-center text-slate-500 rounded-xl border border-dashed">找不到符合條件的影片，請調整搜尋或清除篩選。</p>}
+      {grouped.map(group => <section key={group.id} aria-label={group.title}>
+        <h3 className="font-bold text-lg text-slate-800 mb-3">{group.title}<span className="ml-2 text-sm text-slate-400">{group.videos.length} 部</span></h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {group.videos.map(video => {
+            const embedUrl = getVideoEmbedUrl(video.url);
+            return <article key={video.id} className="rounded-xl overflow-hidden border border-slate-200 flex flex-col bg-white">
+              <div className="aspect-video bg-slate-900 text-white">
+                {playingId === video.id && embedUrl ? <iframe src={embedUrl} title={video.title} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                  : embedUrl ? <button type="button" aria-label={`播放：${video.title}`} onClick={() => setPlayingId(video.id)} className="w-full h-full flex flex-col items-center justify-center gap-2 hover:bg-purple-950"><span className="rounded-full bg-white/15 p-4"><Play className="w-7 h-7" /></span><span className="text-sm">點選播放</span></button>
+                    : <a href={video.url} target="_blank" rel="noopener noreferrer" className="w-full h-full flex flex-col items-center justify-center gap-2"><ExternalLink className="w-8 h-8" /><span className="text-sm">開啟影片／播放清單</span></a>}
+              </div>
+              <div className="p-4 flex-1 flex flex-col gap-3">
+                <span className="text-xs text-purple-700 font-bold">{getVideoSeries(video)}</span>
+                <h4 className="font-bold text-slate-800 leading-relaxed">{video.title}</h4>
+                {video.description && <p className="text-sm text-slate-500 line-clamp-3">{video.description}</p>}
+                <div className="mt-auto border-t border-slate-100 pt-3 space-y-2">
+                  <a href={video.url} target="_blank" rel="noopener noreferrer" className="inline-flex text-xs text-slate-500 items-center gap-1"><ExternalLink className="w-3.5 h-3.5" />開啟原始連結</a>
                 </div>
               </div>
-            );
+            </article>;
           })}
         </div>
-      ) : (
-        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 mx-4 md:mx-0">
-          <p className="text-gray-500 font-medium">此分類目前沒有影片</p>
-        </div>
-      )}
+      </section>)}
     </div>
   );
 };

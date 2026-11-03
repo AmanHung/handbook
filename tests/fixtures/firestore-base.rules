@@ -1,0 +1,37 @@
+// 僅供隔離模擬器使用，並非正式環境規則快照或部署檔。
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isGoogleUser() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email != null;
+    }
+    function isAdmin() {
+      return isGoogleUser() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    function validAudit() {
+      return isGoogleUser() && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedByEmail == request.auth.token.email
+        && request.resource.data.updatedByName is string && request.resource.data.updatedAt == request.time;
+    }
+    match /users/{uid} {
+      allow read: if isGoogleUser();
+      allow create: if validAudit() && request.auth.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'student'
+        && request.resource.data.get('trainingType', 'pgy') == 'pgy';
+      allow update: if validAudit()
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.get('trainingType', 'pgy') in ['pgy', 'intern']
+        && (isAdmin() || (request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.get('trainingType', 'pgy') == resource.data.get('trainingType', 'pgy')));
+      allow delete: if isAdmin() && request.auth.uid != uid;
+    }
+    match /sop_articles/{sopId} {
+      allow read: if true;
+    }
+    // INSERT_SOP_READ_RULES
+    // INSERT_INTERN_RULES
+  }
+}

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ExternalLink, Paperclip } from 'lucide-react';
 import { getCategorySopIds, getTrainingGroupSopIds } from '../data/trainingSopLinks';
+import { getTrainingVideoIds } from '../utils/videoLibrary';
 import { 
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, UserCheck,
   BookOpen, Calendar, Film, Loader2, PlayCircle, User, Save, X, List, FileText,
@@ -12,6 +13,11 @@ import {
   GraduationCap, Layout, CheckSquare, ClipboardCheck, FileEdit, Stethoscope, 
   Award, HeartHandshake, Home, ArrowRight // [新] 引入關懷圖示
 } from 'lucide-react';
+
+import SopDocumentContent from './SopDocumentContent';
+import { LearningRecordGroup, LearningRecordRow, LearningRecordsToolbar, LearningRecordsComplete, LearningEvaluationDialog } from './LearningRecords';
+import { savePgyEvaluation, savePgyPeriod } from '../services/pgyTrainingStore';
+import { getLearnerTrack } from '../utils/learnerIdentity';
 
 // 引入子元件
 import PreTrainingAssessment from './PreTrainingAssessment';
@@ -47,52 +53,7 @@ const processSopImageUrl = (url) => {
   return { isImage: false, src: url };
 };
 
-const renderSopContent = (text) => {
-  if (!text) return null;
-  const regex = /(!?)\[([^\]]*)\]\(([^)]+)\)/g;
-  const parts = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
-    }
-    const isImage = match[1] === '!';
-    const label = match[2];
-    const url = match[3];
-    const imageInfo = processSopImageUrl(url);
-    parts.push(isImage
-      ? { type: 'image', alt: label, url: imageInfo.isImage ? imageInfo.src : url }
-      : { type: 'link', label: label || url, url });
-    lastIndex = regex.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', content: text.substring(lastIndex) });
-  }
-
-  return (
-    <div className="whitespace-pre-wrap leading-relaxed text-gray-700">
-      {parts.map((part, index) => {
-        if (part.type === 'text') return <span key={index}>{part.content}</span>;
-        if (part.type === 'image') {
-          return (
-            <figure key={index} className="my-5">
-              <img src={part.url} alt={part.alt} className="max-w-full h-auto rounded-xl border border-gray-200 shadow-sm" loading="lazy" />
-              {part.alt && <figcaption className="text-xs text-gray-500 text-center mt-2">{part.alt}</figcaption>}
-            </figure>
-          );
-        }
-        return (
-          <a key={index} href={part.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline font-bold inline-flex items-center gap-1">
-            {part.label}<ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        );
-      })}
-    </div>
-  );
-};
+const renderSopContent = text => <SopDocumentContent text={text} />;
 
 const formatSopDate = (timestamp) => {
   if (!timestamp) return '';
@@ -119,13 +80,7 @@ const getVideoEmbedUrl = (url) => {
   return '';
 };
 
-const getVideoSequence = (title) => {
-  const match = (title || '').match(/[-－](\d{1,2})/);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-};
-
-const compareVideos = (a, b) => getVideoSequence(a.title) - getVideoSequence(b.title)
-  || (a.title || '').localeCompare(b.title || '', 'zh-Hant', { numeric: true });
+const focusedTrainingId = new URLSearchParams(window.location.search).get('trainingItemId') || '';
 
 const normalizeTeacherName = (name) => String(name || '').trim().replace(/\s+/g, '').toLowerCase();
 
@@ -142,8 +97,12 @@ const assessmentDeepLink = (() => {
   };
 })();
 
-const PassportSection = ({ user, userRole, userProfile }) => {
+const PassportSection = ({ user, userRole, userProfile, previewFixture }) => {
+  const previewRuntime = import.meta.env.DEV ? previewFixture : null;
   const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(true);
+  const passportRequest = useRef(0);
+  const passportOwner = useRef('');
   const [teacherDirectory, setTeacherDirectory] = useState({});
   const isTeacherOrAdmin = ['teacher', 'admin'].includes(userRole);
   
@@ -154,7 +113,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [selectedStudentDate, setSelectedStudentDate] = useState('');
 
   // 導航狀態: todo(待辦事項), records(訓練紀錄), assessment(學習評估), outcome(學習成果)
-  const [activeMainTab, setActiveMainTab] = useState(assessmentDeepLink.assessment ? 'assessment' : 'todo');
+  const [activeMainTab, setActiveMainTab] = useState(previewRuntime ? 'records' : focusedTrainingId ? 'records' : assessmentDeepLink.assessment ? 'assessment' : 'todo');
   const [assessmentType, setAssessmentType] = useState(assessmentDeepLink.assessment || 'pre_training');
 
   // 追蹤已經載入過的標籤 (達成秒切換)
@@ -164,12 +123,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const [editPeriods, setEditPeriods] = useState({}); 
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
-  const [showAllTrainingItems, setShowAllTrainingItems] = useState(false);
+  const [showAllTrainingItems, setShowAllTrainingItems] = useState(Boolean(focusedTrainingId));
   const [errorMsg, setErrorMsg] = useState(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEval, setCurrentEval] = useState({ itemId: '', itemName: '', status: 'pass', date: '', note: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [evaluationError, setEvaluationError] = useState('');
   const [savingPeriod, setSavingPeriod] = useState(null);
   const [sopsById, setSopsById] = useState({});
   const [sopsLoaded, setSopsLoaded] = useState(false);
@@ -189,30 +149,29 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   // 初始化學員名單
   useEffect(() => {
+    if (previewRuntime) { setStudents(previewRuntime.students); setSelectedStudentEmail(previewRuntime.students[0].email); setStudentsLoading(false); return; }
     if (isTeacherOrAdmin) {
       const fetchStudents = async () => {
+        setStudentsLoading(true);
         try {
           const q = query(collection(db, 'users'), where('role', '==', 'student'));
           const snap = await getDocs(q);
-          const list = snap.docs.map(d => d.data());
+          const list = snap.docs.map(d => d.data()).filter(profile => getLearnerTrack(profile) === 'pgy');
           setStudents(list);
 
-          if (list.length > 0) {
-            const isCurrentEmailValid = list.some(s => s.email === selectedStudentEmail);
-            if (!selectedStudentEmail || !isCurrentEmailValid) {
-              setSelectedStudentEmail(list[0].email);
-            }
-          }
+          setSelectedStudentEmail(current => list.some(student => student.email === current) ? current : list[0]?.email || '');
         } catch (error) {
           console.error("讀取學生名單失敗:", error);
-        }
+          setErrorMsg("無法讀取 PGY 學員名單，請稍後重試。");
+        } finally { setStudentsLoading(false); }
       };
       fetchStudents();
     }
-  }, [userRole]);
+  }, [isTeacherOrAdmin, previewRuntime]);
 
   // 從後台使用者資料建立教師姓名與 Google 登入 Email 的對照，供新舊評核紀錄共用。
   useEffect(() => {
+    if (previewRuntime) { setTeacherDirectory({}); return; }
     const fetchTeacherDirectory = async () => {
       try {
         const teacherQuery = query(collection(db, 'users'), where('role', 'in', ['teacher', 'admin']));
@@ -238,7 +197,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     };
 
     fetchTeacherDirectory();
-  }, []);
+  }, [previewRuntime]);
 
   const resolveTeacherEmail = useCallback((teacherName) => (
     teacherDirectory[normalizeTeacherName(teacherName)] || ''
@@ -275,6 +234,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   }, [selectedStudentEmail, activeMainTab]);
 
   useEffect(() => {
+    if (previewRuntime) { setConfiguredLinksByTargetId(previewRuntime.links); return; }
     const unsubscribe = onSnapshot(collection(db, 'training_sop_links'), snapshot => {
       const nextLinks = {};
       snapshot.forEach(linkDoc => {
@@ -283,9 +243,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setConfiguredLinksByTargetId(nextLinks);
     }, error => console.error('讀取訓練 SOP 連結失敗：', error));
     return () => unsubscribe();
-  }, []);
+  }, [previewRuntime]);
 
   useEffect(() => {
+    if (previewRuntime) { setVideosById({}); setVideosLoaded(true); return; }
     const unsubscribe = onSnapshot(collection(db, 'training_videos'), snapshot => {
       const nextVideos = {};
       snapshot.forEach(videoDoc => {
@@ -298,9 +259,10 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setVideosLoaded(true);
     });
     return () => unsubscribe();
-  }, []);
+  }, [previewRuntime]);
 
   useEffect(() => {
+    if (previewRuntime) { setSopReadReceipts({}); return; }
     if (!selectedStudentEmail) {
       setSopReadReceipts({});
       return undefined;
@@ -318,18 +280,22 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       setSopReadReceipts(nextReceipts);
     }, error => console.error('讀取 SOP 閱讀紀錄失敗：', error));
     return () => unsubscribe();
-  }, [selectedStudentEmail]);
+  }, [selectedStudentEmail, previewRuntime]);
 
   const fetchPassportData = async (email) => {
     setErrorMsg(null);
     if (!email) return;
 
+    const requestId = ++passportRequest.current;
+    if (passportOwner.current !== email) { setPassportData({ items: [], records: {}, periods: {} }); setEditPeriods({}); }
     setLoading(true);
     try {
-      const response = await fetch(`${GAS_API_URL}?type=getData&studentEmail=${email}`);
+      const response = await (previewRuntime?.fetch || fetch)(`${GAS_API_URL}?type=getData&studentEmail=${encodeURIComponent(email)}`);
       const data = await response.json();
       if (data.status === 'error') throw new Error(data.message);
 
+      if (requestId !== passportRequest.current) return;
+      passportOwner.current = email;
       setPassportData(data);
       setEditPeriods(data.periods || {});
 
@@ -340,38 +306,45 @@ const PassportSection = ({ user, userRole, userProfile }) => {
         }
       }
     } catch (error) {
+      if (requestId !== passportRequest.current) return;
       console.error("讀取失敗:", error);
       setErrorMsg("無法讀取護照資料，請確認網路或權限設定。");
     }
-    setLoading(false);
+    if (requestId === passportRequest.current) setLoading(false);
   };
+
+  useEffect(() => {
+    const focusedItem = passportData.items.find(item => item.id === focusedTrainingId);
+    if (focusedItem) setExpandedGroups(current => current[focusedItem.category_id]
+      ? current : { ...current, [focusedItem.category_id]: true });
+  }, [passportData.items]);
+
+  useEffect(() => {
+    if (!focusedTrainingId || loading || activeMainTab !== 'records') return undefined;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`training-${focusedTrainingId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expandedGroups, loading, activeMainTab]);
 
   const openEvaluateModal = (item) => {
     if (!isTeacherOrAdmin) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     setCurrentEval({ itemId: item.id, itemName: item.sub_item || item.title, status: 'pass', date: today, note: '' });
+    setEvaluationError('');
     setIsModalOpen(true);
   };
 
   const handleSubmitEval = async () => {
+    if (!isTeacherOrAdmin || submitting) return;
     setSubmitting(true);
-    const teacherDisplayName = userProfile?.displayName || user.displayName || user.email.split('@')[0];
+    setEvaluationError('');
     try {
-      await fetch(GAS_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          type: 'saveEval', studentEmail: selectedStudentEmail, itemId: currentEval.itemId,
-          status: currentEval.status, assessDate: currentEval.date, teacherName: teacherDisplayName, note: currentEval.note
-        })
-      });
+      await savePgyEvaluation(GAS_API_URL, { studentEmail: selectedStudentEmail, itemId: currentEval.itemId, status: currentEval.status, assessDate: currentEval.date, teacherName: userProfile?.displayName || user.displayName || user.email, note: currentEval.note }, previewRuntime?.fetch || fetch);
       await fetchPassportData(selectedStudentEmail);
       setIsModalOpen(false);
-      alert("評核已儲存！");
-    } catch (error) {
-      alert("儲存失敗");
-    }
-    setSubmitting(false);
+    } catch (error) { setEvaluationError(error.message || '儲存失敗，請稍後重試。'); }
+    finally { setSubmitting(false); }
   };
 
   const handlePeriodChange = (catId, field, value) => {
@@ -379,21 +352,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   };
 
   const handleSavePeriod = async (catId) => {
+    if (!isTeacherOrAdmin || savingPeriod) return;
     setSavingPeriod(catId);
-    const periodData = editPeriods[catId];
     try {
-      await fetch(GAS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'savePeriod', studentEmail: selectedStudentEmail, categoryId: catId,
-          startDate: periodData?.startDate || '', endDate: periodData?.endDate || '', updatedBy: userProfile?.displayName || user.displayName
-        })
-      });
+      await savePgyPeriod(GAS_API_URL, { studentEmail: selectedStudentEmail, ...editPeriods[catId], categoryId: catId, updatedBy: userProfile?.displayName || user.displayName || user.email }, previewRuntime?.fetch || fetch);
       await fetchPassportData(selectedStudentEmail);
-    } catch (error) {
-      alert("日期儲存失敗");
-    }
-    setSavingPeriod(null);
+    } catch (error) { alert(error.message || '日期儲存失敗'); }
+    finally { setSavingPeriod(null); }
   };
 
   const toggleGroup = (groupId, defaultExpanded = false) => {
@@ -404,6 +369,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   };
 
   const loadSops = useCallback(async () => {
+    if (previewRuntime) { setSopsById(previewRuntime.sops); setSopsLoaded(true); return; }
     if (sopsLoaded || sopLoading) return;
     setSopLoading(true);
     setSopError('');
@@ -421,7 +387,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     } finally {
       setSopLoading(false);
     }
-  }, [sopsLoaded, sopLoading]);
+  }, [sopsLoaded, sopLoading, previewRuntime]);
 
   useEffect(() => {
     if (activeMainTab === 'records' && selectedStudentEmail) {
@@ -575,10 +541,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
     return configuredLink ? (configuredLink.sopIds || []) : fallbackSopIds;
   };
 
-  const resolveTrainingVideoIds = (targetId) => Object.values(videosById)
-    .filter(video => (video.trainingItemIds || []).includes(targetId))
-    .sort(compareVideos)
-    .map(video => video.id);
+  const resolveTrainingVideoIds = (targetIds) => getTrainingVideoIds(Object.values(videosById), targetIds);
 
   const getSopReadState = (sopId) => {
     const receipt = sopReadReceipts[sopId];
@@ -605,6 +568,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
   const confirmActiveSopRead = async () => {
     const activeSop = sopsById[activeSopId];
     if (!activeSop || userRole !== 'student' || user?.email !== selectedStudentEmail) return;
+    if (previewRuntime) { setSopReadReceipts(current => ({ ...current, [activeSopId]: { sopVersion: getSopVersion(activeSop) } })); return; }
     setSavingReadReceipt(true);
     try {
       const receiptId = `${encodeURIComponent(user.email)}__${activeSopId}`;
@@ -627,24 +591,9 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
   const renderItemRow = (item, isMainItem = false) => {
     const record = passportData.records[item.id] || {};
-    const status = record.status; 
-    const relatedSopIds = isMainItem
-      ? resolveTrainingSopIds(item.id, getTrainingGroupSopIds(item.title, [item], sopsById))
-      : [];
+    const relatedSopIds = isMainItem ? resolveTrainingSopIds(item.id, getTrainingGroupSopIds(item.title, [item], sopsById)) : [];
     const relatedVideoIds = isMainItem ? resolveTrainingVideoIds(item.id) : [];
-    return (
-      <div key={item.id} className={`p-3 pl-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 ${isMainItem ? 'bg-white' : ''}`}>
-        <div className="flex-1">
-          <p className={`text-sm flex items-start gap-2 ${isMainItem ? 'font-bold text-gray-700' : 'font-medium text-gray-800'}`}>
-            <span className="mt-1">{isMainItem ? <FileText className="w-4 h-4 text-gray-500" /> : <Circle className="w-2 h-2 text-gray-300 fill-gray-300 mt-1" />}</span>
-            {item.sub_item || item.title}
-          </p>
-          {record.teacher && (
-            <p className="text-xs text-green-600 mt-1 ml-6 flex items-center gap-1">
-              <UserCheck className="w-3 h-3" /> {record.teacher} ({new Date(record.date).toLocaleDateString()})
-              {record.note && <span className="text-gray-400"> - {record.note}</span>}
-            </p>
-          )}
+    return <LearningRecordRow key={item.id} id={`training-${item.id}`} title={item.sub_item || item.title} teacher={record.teacher} date={record.date ? new Date(record.date).toLocaleDateString('zh-TW') : ''} note={record.note} status={record.status} isTeacher={isTeacherOrAdmin} disabled={submitting || Boolean(errorMsg) || passportOwner.current !== selectedStudentEmail} onEvaluate={() => openEvaluateModal(item)} mainItem={isMainItem} highlighted={focusedTrainingId === item.id}>
           {isMainItem && (relatedSopIds.length > 0 || relatedVideoIds.length > 0 || sopsLoaded) ? (
             <div className="mt-2 ml-6 flex flex-wrap items-center gap-2">
               {relatedSopIds.length > 0 ? (
@@ -678,19 +627,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               )}
             </div>
           ) : null}
-        </div>
-        <div className="flex items-center gap-2 ml-6 sm:ml-0">
-          {status === 'pass' && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> 教師評核通過</span>}
-          {status === 'improve' && <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 需再加強</span>}
-          {!status && <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-bold">訓練尚未評核</span>}
-          {isTeacherOrAdmin && (
-            <button onClick={() => openEvaluateModal(item)} className="px-3 py-1 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-md text-xs font-bold transition-colors">
-              {status ? '重評' : '評核'}
-            </button>
-          )}
-        </div>
-      </div>
-    );
+    </LearningRecordRow>;
   };
 
   const getSecondLevelSopIds = (items) => {
@@ -724,7 +661,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             getTrainingGroupSopIds(mainTitle, subItems, sopsById)
           )
         : [];
-      const groupVideoIds = isGroup ? resolveTrainingVideoIds(subItems[0].id) : [];
+      const groupVideoIds = isGroup ? resolveTrainingVideoIds(subItems.map(item => item.id)) : [];
       return (
         <div key={idx} className="mb-4 last:mb-0 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
           {isGroup && (
@@ -809,13 +746,13 @@ const PassportSection = ({ user, userRole, userProfile }) => {
               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
                 <User className="w-4 h-4 text-gray-400" />
                 <select 
-                  value={selectedStudentEmail}
+                  aria-label="選擇 PGY 學員" value={selectedStudentEmail}
                   onChange={(e) => setSelectedStudentEmail(e.target.value)} 
                   className="bg-transparent text-sm font-bold text-gray-700 outline-none min-w-[150px]"
                 >
                   {students.length > 0 ? (
                     students.map(s => <option key={s.email} value={s.email}>{s.displayName || s.email}</option>)
-                  ) : <option disabled>載入中...</option>}
+                  ) : <option value="" disabled>{studentsLoading ? '載入中…' : '目前沒有 PGY 學員'}</option>}
                 </select>
               </div>
             ) : (
@@ -854,7 +791,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <ClipboardList className="w-5 h-5" /> 訓練紀錄
           </button>
           <button
-            onClick={() => setActiveMainTab('assessment')}
+            disabled={Boolean(previewRuntime)} title={previewRuntime ? '此整合預覽先驗證學習紀錄流程' : undefined} onClick={() => setActiveMainTab('assessment')}
             className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeMainTab === 'assessment' 
                 ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
@@ -864,7 +801,7 @@ const PassportSection = ({ user, userRole, userProfile }) => {
             <GraduationCap className="w-5 h-5" /> 學習評估
           </button>
           <button
-            onClick={() => setActiveMainTab('outcome')}
+            disabled={Boolean(previewRuntime)} title={previewRuntime ? '此整合預覽先驗證學習紀錄流程' : undefined} onClick={() => setActiveMainTab('outcome')}
             className={`flex-1 py-3 text-center font-bold text-sm sm:text-base flex items-center justify-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeMainTab === 'outcome' 
                 ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
@@ -1020,100 +957,22 @@ const PassportSection = ({ user, userRole, userProfile }) => {
 
         {/* 2. 訓練紀錄 */}
         {activeMainTab === 'records' && (
-          <div className="space-y-4 animate-in fade-in">
-            {loading ? (
-              <div className="text-center py-12 text-gray-400 flex flex-col items-center">
-                <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                <p>正在同步雲端護照資料...</p>
-              </div>
-            ) : (
-              trainingGroups.length > 0 ? (
-                <>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-bold text-indigo-800">
-                        {showAllTrainingItems ? '完整訓練紀錄' : '待評核與未通過項目'}
-                      </p>
-                      <p className="text-xs text-indigo-600 mt-0.5">
-                        尚有 {pendingTrainingCount} 項待完成，共 {passportData.items.length} 項訓練。
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={toggleTrainingRecordView}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-sm font-bold transition-colors shadow-sm"
-                    >
-                      {showAllTrainingItems ? <CheckCircle2 className="w-4 h-4" /> : <List className="w-4 h-4" />}
-                      {showAllTrainingItems ? '只看待評核' : '全部展開'}
-                    </button>
-                  </div>
-
-                  {visibleTrainingGroups.length > 0 ? visibleTrainingGroups.map((group) => {
-                  const completeGroup = groupedItems[group.id];
-                  const isExpanded = expandedGroups[group.id] ?? !showAllTrainingItems;
-                  const progress = completeGroup.items.length > 0 ? Math.round((completeGroup.items.filter(item => passportData.records[item.id]?.status === 'pass').length / completeGroup.items.length) * 100) : 0;
-                  const serverPeriod = passportData.periods[group.id] || {};
-                  const editPeriod = editPeriods[group.id] || serverPeriod;
-                  const isSaving = savingPeriod === group.id;
-                  const hasChanged = editPeriod.startDate !== serverPeriod.startDate || editPeriod.endDate !== serverPeriod.endDate;
-                  const secondLevelSopIds = new Set(getSecondLevelSopIds(completeGroup.items));
-                  const categorySopIds = getCategorySopIds(group.id, sopsById)
-                    .filter(sopId => !secondLevelSopIds.has(sopId));
-
-                  return (
-                    <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                      <div className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <button onClick={() => toggleGroup(group.id, !showAllTrainingItems)} className="flex items-center gap-3 hover:text-indigo-600 transition-colors text-left flex-1">
-                          {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
-                          <div>
-                            <span className="font-bold text-gray-700 block sm:inline">{group.title}</span>
-                          </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${progress === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{progress}%</span>
-                        </button>
-                        
-                        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-                          {categorySopIds.length > 0 && (
-                            <button
-                              type="button"
-                              data-training-category-id={group.id}
-                              onClick={() => openRelatedSops(categorySopIds)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 text-xs font-bold transition-colors"
-                            >
-                              <BookOpen className="w-3.5 h-3.5" />
-                              分類 SOP
-                              <span className="bg-white/80 px-1.5 rounded-full">{categorySopIds.length}</span>
-                            </button>
-                          )}
-                          <div className="flex items-center gap-2 text-xs sm:text-sm bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm">
-                            <Clock className="w-3.5 h-3.5 text-gray-400" />
-                            {isTeacherOrAdmin ? (
-                                <>
-                                  <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.startDate || ''} onChange={(e) => handlePeriodChange(group.id, 'startDate', e.target.value)} />
-                                  <span className="text-gray-300">➜</span>
-                                  <input type="date" className="bg-transparent w-24 sm:w-auto outline-none" value={editPeriod.endDate || ''} onChange={(e) => handlePeriodChange(group.id, 'endDate', e.target.value)} />
-                                  {(hasChanged || isSaving) && <button onClick={() => handleSavePeriod(group.id)} disabled={isSaving} className="ml-1 p-1 rounded-full bg-indigo-100 text-indigo-600">{isSaving ? <Loader2 className="w-3 h-3 animate-spin"/> : <Save className="w-3 h-3"/>}</button>}
-                                </>
-                            ) : (
-                                <span>{serverPeriod.startDate || '--'} ➜ {serverPeriod.endDate || '--'}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      {isExpanded && <div className="bg-white p-3 border-t border-gray-100">{renderGroupContent(group.items)}</div>}
-                    </div>
-                  );
-                  }) : (
-                    <div className="text-center py-10 text-green-700 border border-dashed border-green-200 rounded-lg bg-green-50">
-                      <CheckCircle2 className="w-8 h-8 mx-auto mb-2" />
-                      <p className="font-bold">目前沒有待評核或未通過的項目</p>
-                      <p className="text-xs mt-1">可按「全部展開」查看完整訓練紀錄。</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg bg-gray-50">📋 目前護照內容是空的</div>
-              )
-            )}
+          <div className="space-y-4 learning-records animate-in fade-in">
+            {loading ? <div className="text-center py-12 text-gray-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />正在同步雲端護照資料…</div> : trainingGroups.length > 0 ? <>
+              <LearningRecordsToolbar showAll={showAllTrainingItems} pendingCount={pendingTrainingCount} totalCount={passportData.items.length} onToggle={toggleTrainingRecordView} />
+              {visibleTrainingGroups.length ? visibleTrainingGroups.map(group => {
+                const fullGroup = groupedItems[group.id];
+                const expanded = expandedGroups[group.id] ?? !showAllTrainingItems;
+                const progress = Math.round(fullGroup.items.filter(item => passportData.records[item.id]?.status === 'pass').length / fullGroup.items.length * 100);
+                const savedPeriod = passportData.periods[group.id] || {};
+                const edited = editPeriods[group.id] || savedPeriod;
+                const changed = (edited.startDate || '') !== (savedPeriod.startDate || '') || (edited.endDate || '') !== (savedPeriod.endDate || '');
+                const secondLevelSopIds = new Set(getSecondLevelSopIds(fullGroup.items));
+                const categorySopIds = getCategorySopIds(group.id, sopsById).filter(id => !secondLevelSopIds.has(id));
+                const resources = categorySopIds.length ? <button type="button" data-training-category-id={group.id} onClick={() => openRelatedSops(categorySopIds)} className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold"><BookOpen className="w-3.5 h-3.5" />分類 SOP <span>{categorySopIds.length}</span></button> : null;
+                return <LearningRecordGroup key={group.id} title={group.title} progress={progress} expanded={expanded} onToggle={() => toggleGroup(group.id, !showAllTrainingItems)} period={edited} isTeacher={isTeacherOrAdmin} disabled={Boolean(errorMsg) || passportOwner.current !== selectedStudentEmail} saving={savingPeriod === group.id} changed={changed} onPeriodChange={(key,value) => handlePeriodChange(group.id,key,value)} onSavePeriod={() => handleSavePeriod(group.id)} resources={resources}>{renderGroupContent(group.items)}</LearningRecordGroup>;
+              }) : <LearningRecordsComplete />}
+            </> : <div className="text-center py-8 text-gray-400">目前護照內容是空的</div>}
           </div>
         )}
 
@@ -1510,25 +1369,8 @@ const PassportSection = ({ user, userRole, userProfile }) => {
       )}
 
       {/* Evaluate Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800">考核評分</h3>
-              <button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5 text-gray-400" /></button>
-            </div>
-            <div className="p-4 space-y-4">
-               <div><label className="block text-xs font-bold text-gray-500 mb-1">項目</label><p className="font-bold">{currentEval.itemName}</p></div>
-               <div><label className="block text-xs font-bold text-gray-500 mb-1">日期</label><input type="date" value={currentEval.date} onChange={e => setCurrentEval({...currentEval, date: e.target.value})} className="w-full border rounded p-2"/></div>
-               <div className="flex gap-2">
-                 <button onClick={() => setCurrentEval({...currentEval, status: 'pass'})} className={`flex-1 py-2 rounded border font-bold ${currentEval.status==='pass'?'bg-green-100 text-green-700':'bg-white'}`}>合格</button>
-                 <button onClick={() => setCurrentEval({...currentEval, status: 'improve'})} className={`flex-1 py-2 rounded border font-bold ${currentEval.status==='improve'?'bg-orange-100 text-orange-700':'bg-white'}`}>再加強</button>
-               </div>
-               <button onClick={handleSubmitEval} disabled={submitting} className="w-full py-2 bg-indigo-600 text-white rounded font-bold">{submitting ? '儲存中...' : '確認送出'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isModalOpen && <LearningEvaluationDialog itemName={currentEval.itemName} date={currentEval.date} status={currentEval.status} onDateChange={date => setCurrentEval(current => ({ ...current, date }))} onStatusChange={status => setCurrentEval(current => ({ ...current, status }))} onSubmit={handleSubmitEval} onClose={() => !submitting && setIsModalOpen(false)} busy={submitting} error={evaluationError} />}
+
     </div>
   );
 };
